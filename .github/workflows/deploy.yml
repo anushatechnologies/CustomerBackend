@@ -1,0 +1,134 @@
+name: Deploy CustomerBackend to AWS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ap-south-2
+  ECR_REGISTRY: 191481838776.dkr.ecr.ap-south-2.amazonaws.com
+  ECR_REPOSITORY: hinchmart
+
+jobs:
+  build-and-push:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push Docker image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $REGISTRY/$ECR_REPOSITORY:latest .
+          docker push $REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $REGISTRY/$ECR_REPOSITORY:latest
+
+  deploy:
+    name: Deploy to EC2
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Copy docker-compose.yml to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "docker-compose.yml"
+          target: "~/customer-backend/"
+
+      - name: Deploy Container via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+          ECR_REGISTRY: ${{ env.ECR_REGISTRY }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USERNAME: ${{ secrets.DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_DDL_AUTO: ${{ secrets.DB_DDL_AUTO }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: AWS_REGION,ECR_REGISTRY,DB_HOST,DB_PORT,DB_NAME,DB_USERNAME,DB_PASSWORD,DB_DDL_AUTO
+          script: |
+            set -e
+            mkdir -p ~/customer-backend
+            cd ~/customer-backend
+
+            # Create production .env without exposing secret values in logs
+            cat << 'EOF' > .env
+            SERVER_PORT=9000
+            SHOW_SQL=false
+            FORMAT_SQL=false
+            EOF
+
+            cat << EOF >> .env
+            DB_HOST=$DB_HOST
+            DB_PORT=$DB_PORT
+            DB_NAME=$DB_NAME
+            DB_USERNAME=$DB_USERNAME
+            DB_PASSWORD=$DB_PASSWORD
+            DB_DDL_AUTO=$DB_DDL_AUTO
+            EOF
+
+            # Apply strict file permissions
+            chmod 600 .env
+
+            # Authenticate with Amazon ECR
+            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+
+            # Pull latest image and recreate container
+            docker compose pull
+            docker compose down || true
+            docker compose up -d
+
+            # Wait for Spring Boot Actuator health endpoint to return UP
+            echo "Waiting for application to be UP at http://localhost:9000/actuator/health..."
+            HEALTH_CHECK_URL="http://localhost:9000/actuator/health"
+            MAX_ATTEMPTS=30
+            ATTEMPT=1
+            SUCCESS=false
+
+            while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+              RESPONSE=$(curl -s $HEALTH_CHECK_URL || true)
+              echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: Response -> $RESPONSE"
+              if echo "$RESPONSE" | grep -q '"status":"UP"'; then
+                SUCCESS=true
+                break
+              fi
+              ATTEMPT=$((ATTEMPT + 1))
+              sleep 3
+            done
+
+            if [ "$SUCCESS" != "true" ]; then
+              echo "ERROR: Health check failed to reach UP status after $MAX_ATTEMPTS attempts!"
+              echo "Showing last 100 Docker logs for customer-backend:"
+              docker logs --tail 100 customer-backend
+              exit 1
+            fi
+
+            echo "customer-backend container deployed and verified UP on http://localhost:9000/actuator/health."

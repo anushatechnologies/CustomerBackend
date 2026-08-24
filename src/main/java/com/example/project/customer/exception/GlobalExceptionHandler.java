@@ -17,6 +17,11 @@ public class GlobalExceptionHandler {
         return response(HttpStatus.NOT_FOUND, exception.getMessage());
     }
 
+    @ExceptionHandler(BannerNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleBannerNotFound(BannerNotFoundException exception) {
+        return response(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
     @ExceptionHandler(CustomerConflictException.class)
     public ResponseEntity<Map<String, String>> handleConflict(CustomerConflictException exception) {
         return response(HttpStatus.CONFLICT, exception.getMessage());

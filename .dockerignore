@@ -1,7 +1,7 @@
 target/
-*.log
-.env
+.git/
+.gitignore
 .idea/
 *.iml
 .vscode/
-
+HELP.md
