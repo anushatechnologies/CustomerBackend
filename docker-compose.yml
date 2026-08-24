@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  customer-backend:
+    image: 191481838776.dkr.ecr.ap-south-2.amazonaws.com/hinchmart:latest
+    container_name: customer-backend
+    restart: always
+    ports:
+      - "9000:9000"
+    env_file:
+      - .env
+    environment:
+      SERVER_PORT: ${SERVER_PORT:-9000}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_NAME: ${DB_NAME}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_DDL_AUTO: ${DB_DDL_AUTO:-update}
+      SHOW_SQL: ${SHOW_SQL:-false}
+      FORMAT_SQL: ${FORMAT_SQL:-false}
