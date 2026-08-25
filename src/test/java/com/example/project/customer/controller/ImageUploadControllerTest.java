@@ -48,13 +48,13 @@ class ImageUploadControllerTest {
                 "image bytes".getBytes()
         );
 
-        ImageUploadResponse response = new ImageUploadResponse(
-                "products/shoe-123.jpg",
-                "https://bucket.s3.ap-south-2.amazonaws.com/products/shoe-123.jpg",
-                "shoe.jpg",
-                "image/jpeg",
-                11
-        );
+        ImageUploadResponse response = ImageUploadResponse.builder()
+                .imageKey("products/shoe-123.jpg")
+                .fileUrl("https://bucket.s3.ap-south-2.amazonaws.com/products/shoe-123.jpg")
+                .fileName("shoe.jpg")
+                .mimeType("image/jpeg")
+                .fileSize(11L)
+                .build();
 
         when(s3ImageService.uploadImage(any(), eq("products"))).thenReturn(response);
 
@@ -81,13 +81,13 @@ class ImageUploadControllerTest {
                 "png bytes".getBytes()
         );
 
-        ImageUploadResponse response = new ImageUploadResponse(
-                "products/uuid.png",
-                "https://bucket.s3.ap-south-2.amazonaws.com/products/uuid.png",
-                "product.png",
-                "image/png",
-                9
-        );
+        ImageUploadResponse response = ImageUploadResponse.builder()
+                .imageKey("products/uuid.png")
+                .fileUrl("https://bucket.s3.ap-south-2.amazonaws.com/products/uuid.png")
+                .fileName("product.png")
+                .mimeType("image/png")
+                .fileSize(9L)
+                .build();
 
         when(s3ImageService.uploadImage(any(), eq(ImageFolder.PRODUCTS))).thenReturn(response);
 
@@ -107,13 +107,13 @@ class ImageUploadControllerTest {
                 "webp bytes".getBytes()
         );
 
-        ImageUploadResponse response = new ImageUploadResponse(
-                "categories/uuid.webp",
-                "https://bucket.s3.ap-south-2.amazonaws.com/categories/uuid.webp",
-                "cat.webp",
-                "image/webp",
-                10
-        );
+        ImageUploadResponse response = ImageUploadResponse.builder()
+                .imageKey("categories/uuid.webp")
+                .fileUrl("https://bucket.s3.ap-south-2.amazonaws.com/categories/uuid.webp")
+                .fileName("cat.webp")
+                .mimeType("image/webp")
+                .fileSize(10L)
+                .build();
 
         when(s3ImageService.uploadImage(any(), eq(ImageFolder.CATEGORIES))).thenReturn(response);
 
@@ -133,13 +133,13 @@ class ImageUploadControllerTest {
                 "banner bytes".getBytes()
         );
 
-        ImageUploadResponse response = new ImageUploadResponse(
-                "banners/uuid.jpg",
-                "https://bucket.s3.ap-south-2.amazonaws.com/banners/uuid.jpg",
-                "banner.jpg",
-                "image/jpeg",
-                12
-        );
+        ImageUploadResponse response = ImageUploadResponse.builder()
+                .imageKey("banners/uuid.jpg")
+                .fileUrl("https://bucket.s3.ap-south-2.amazonaws.com/banners/uuid.jpg")
+                .fileName("banner.jpg")
+                .mimeType("image/jpeg")
+                .fileSize(12L)
+                .build();
 
         when(s3ImageService.uploadImage(any(), eq(ImageFolder.BANNERS))).thenReturn(response);
 

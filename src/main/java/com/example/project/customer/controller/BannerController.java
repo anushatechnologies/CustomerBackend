@@ -51,8 +51,9 @@ public class BannerController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<ApiResponse<BannerResponse>> updateBanner(@PathVariable Integer id,
-                                                                    @Valid @RequestBody BannerRequest request) {
+    public ResponseEntity<ApiResponse<BannerResponse>> updateBanner(
+            @PathVariable Integer id,
+            @Valid @RequestBody BannerRequest request) {
         BannerResponse updated = bannerService.updateBanner(id, request);
         return ResponseEntity.ok(ApiResponse.ok("Banner updated successfully", updated));
     }
