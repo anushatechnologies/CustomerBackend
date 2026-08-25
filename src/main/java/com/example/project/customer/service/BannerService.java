@@ -15,5 +15,7 @@ public interface BannerService {
 
     BannerResponse updateBanner(Integer id, BannerRequest request);
 
+    BannerResponse uploadBannerImage(Integer id, org.springframework.web.multipart.MultipartFile file);
+
     void deleteBanner(Integer id);
 }

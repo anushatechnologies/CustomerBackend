@@ -15,9 +15,11 @@ import java.util.List;
 public class BannerServiceImpl implements BannerService {
 
     private final BannerRepository bannerRepository;
+    private final S3ImageService s3ImageService;
 
-    public BannerServiceImpl(BannerRepository bannerRepository) {
+    public BannerServiceImpl(BannerRepository bannerRepository, S3ImageService s3ImageService) {
         this.bannerRepository = bannerRepository;
+        this.s3ImageService = s3ImageService;
     }
 
     @Override
@@ -57,8 +59,35 @@ public class BannerServiceImpl implements BannerService {
     }
 
     @Override
+    public BannerResponse uploadBannerImage(Integer id, org.springframework.web.multipart.MultipartFile file) {
+        Banner banner = findBanner(id);
+        com.example.project.customer.dto.ImageUploadResponse uploadResponse =
+                s3ImageService.uploadImage(file, com.example.project.customer.dto.ImageFolder.BANNERS);
+
+        // If replacing an existing S3 image, safely clean up the old one
+        if (banner.getImageUrl() != null && !banner.getImageUrl().isBlank()) {
+            try {
+                s3ImageService.deleteImage(banner.getImageUrl());
+            } catch (Exception e) {
+                // Log and continue, don't fail update if old image deletion fails
+            }
+        }
+
+        banner.setImageUrl(uploadResponse.getImageUrl());
+        return toResponse(bannerRepository.save(banner));
+    }
+
+    @Override
     public void deleteBanner(Integer id) {
-        bannerRepository.delete(findBanner(id));
+        Banner banner = findBanner(id);
+        if (banner.getImageUrl() != null && !banner.getImageUrl().isBlank()) {
+            try {
+                s3ImageService.deleteImage(banner.getImageUrl());
+            } catch (Exception e) {
+                // Log and continue, don't fail entity delete if S3 delete fails
+            }
+        }
+        bannerRepository.delete(banner);
     }
 
     private Banner findBanner(Integer id) {

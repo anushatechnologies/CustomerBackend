@@ -19,3 +19,5 @@ services:
       DB_DDL_AUTO: ${DB_DDL_AUTO:-update}
       SHOW_SQL: ${SHOW_SQL:-false}
       FORMAT_SQL: ${FORMAT_SQL:-false}
+      AWS_REGION: ${AWS_REGION:-ap-south-2}
+      AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME:-hinchmart-storage-191481838776-ap-south-2-an}

@@ -204,6 +204,39 @@ class BannerControllerTest {
     }
 
     @Test
+    @DisplayName("POST /api/banners/{id}/image - Should upload banner image and return updated banner")
+    void uploadBannerImage_Success() throws Exception {
+        org.springframework.mock.web.MockMultipartFile file = new org.springframework.mock.web.MockMultipartFile(
+                "file",
+                "promo.jpg",
+                "image/jpeg",
+                "image data".getBytes()
+        );
+
+        BannerResponse updated = new BannerResponse(
+                1,
+                "Summer Sale",
+                "https://hinchmart-storage-191481838776-ap-south-2-an.s3.ap-south-2.amazonaws.com/banners/promo-uuid.jpg",
+                "CATEGORY",
+                "summer-deals",
+                "HOME_HERO",
+                1,
+                true,
+                null,
+                null,
+                LocalDateTime.now()
+        );
+
+        when(bannerService.uploadBannerImage(eq(1), any())).thenReturn(updated);
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/banners/1/image")
+                        .file(file))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bannerId").value(1))
+                .andExpect(jsonPath("$.imageUrl").value("https://hinchmart-storage-191481838776-ap-south-2-an.s3.ap-south-2.amazonaws.com/banners/promo-uuid.jpg"));
+    }
+
+    @Test
     @DisplayName("DELETE /api/banners/{id} - Should delete banner and return 204 No Content")
     void deleteBanner_Success() throws Exception {
         doNothing().when(bannerService).deleteBanner(1);

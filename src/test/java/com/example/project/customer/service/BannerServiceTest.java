@@ -31,6 +31,9 @@ class BannerServiceTest {
     @Mock
     private BannerRepository bannerRepository;
 
+    @Mock
+    private S3ImageService s3ImageService;
+
     @InjectMocks
     private BannerServiceImpl bannerService;
 
@@ -174,13 +177,39 @@ class BannerServiceTest {
     }
 
     @Test
-    @DisplayName("deleteBanner should delete banner when exists")
+    @DisplayName("uploadBannerImage should upload image to S3 and update banner imageUrl")
+    void uploadBannerImage_Success() {
+        when(bannerRepository.findById(1)).thenReturn(Optional.of(banner));
+        when(bannerRepository.save(any(Banner.class))).thenReturn(banner);
+
+        org.springframework.mock.web.MockMultipartFile file = new org.springframework.mock.web.MockMultipartFile(
+                "file", "new-banner.jpg", "image/jpeg", "bytes".getBytes()
+        );
+        com.example.project.customer.dto.ImageUploadResponse uploadResponse =
+                new com.example.project.customer.dto.ImageUploadResponse(
+                        "banners/new-uuid.jpg", "https://bucket.s3.ap-south-2.amazonaws.com/banners/new-uuid.jpg",
+                        "new-banner.jpg", "image/jpeg", 5
+                );
+
+        when(s3ImageService.uploadImage(any(), any(com.example.project.customer.dto.ImageFolder.class)))
+                .thenReturn(uploadResponse);
+
+        BannerResponse response = bannerService.uploadBannerImage(1, file);
+
+        assertNotNull(response);
+        verify(s3ImageService).uploadImage(file, com.example.project.customer.dto.ImageFolder.BANNERS);
+        verify(bannerRepository).save(banner);
+    }
+
+    @Test
+    @DisplayName("deleteBanner should delete banner and invoke S3 cleanup when exists")
     void deleteBanner_Success() {
         when(bannerRepository.findById(1)).thenReturn(Optional.of(banner));
 
         bannerService.deleteBanner(1);
 
         verify(bannerRepository).delete(banner);
+        verify(s3ImageService).deleteImage(banner.getImageUrl());
     }
 
     @Test

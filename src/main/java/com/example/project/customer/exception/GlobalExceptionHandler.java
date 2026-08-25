@@ -45,6 +45,21 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(errors);
     }
 
+    @ExceptionHandler(InvalidImageException.class)
+    public ResponseEntity<Map<String, String>> handleInvalidImage(InvalidImageException exception) {
+        return response(HttpStatus.BAD_REQUEST, exception.getMessage());
+    }
+
+    @ExceptionHandler(ImageStorageException.class)
+    public ResponseEntity<Map<String, String>> handleImageStorage(ImageStorageException exception) {
+        return response(HttpStatus.INTERNAL_SERVER_ERROR, "Image storage error: " + exception.getMessage());
+    }
+
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, String>> handleMaxSizeExceeded(org.springframework.web.multipart.MaxUploadSizeExceededException exception) {
+        return response(HttpStatus.BAD_REQUEST, "File upload size exceeded maximum limit of 10MB");
+    }
+
     private ResponseEntity<Map<String, String>> response(HttpStatus status, String message) {
         return ResponseEntity.status(status).body(Map.of("message", message));
     }

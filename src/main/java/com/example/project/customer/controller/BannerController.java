@@ -51,6 +51,13 @@ public class BannerController {
         return bannerService.updateBanner(id, request);
     }
 
+    @PostMapping(value = "/{id}/image", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<BannerResponse> uploadBannerImage(
+            @PathVariable Integer id,
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        return ResponseEntity.ok(bannerService.uploadBannerImage(id, file));
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteBanner(@PathVariable Integer id) {
         bannerService.deleteBanner(id);
