@@ -83,19 +83,19 @@ public class Product {
     @Builder.Default
     private Integer moq = 1;
 
-    @Column(name = "stock_qty", nullable = false)
+    @Column(name = "stock_qty")
     @Builder.Default
     private Integer stockQty = 0;
 
-    @Column(name = "is_active", nullable = false)
+    @Column(name = "is_active")
     @Builder.Default
     @JsonProperty("active")
-    private boolean active = true;
+    private Boolean active = true;
 
     @Column(name = "is_24hour_delivery")
     @Builder.Default
     @JsonProperty("is24HourDelivery")
-    private boolean is24HourDelivery = false;
+    private Boolean is24HourDelivery = false;
 
     @Column(name = "rating")
     @Builder.Default
@@ -130,13 +130,23 @@ public class Product {
     private LocalDateTime createdAt;
 
     @JsonProperty("is24HourDelivery")
-    public boolean is24HourDelivery() {
-        return is24HourDelivery;
+    public Boolean is24HourDelivery() {
+        return is24HourDelivery != null && is24HourDelivery;
     }
 
     @JsonProperty("is24HourDelivery")
-    public void setIs24HourDelivery(boolean is24HourDelivery) {
-        this.is24HourDelivery = is24HourDelivery;
+    public void setIs24HourDelivery(Boolean is24HourDelivery) {
+        this.is24HourDelivery = is24HourDelivery != null ? is24HourDelivery : false;
+    }
+
+    @JsonProperty("active")
+    public Boolean isActive() {
+        return active != null && active;
+    }
+
+    @JsonProperty("active")
+    public void setActive(Boolean active) {
+        this.active = active != null ? active : true;
     }
 
     @PrePersist
@@ -152,6 +162,15 @@ public class Product {
         }
         if (this.moq == null) {
             this.moq = 1;
+        }
+        if (this.stockQty == null) {
+            this.stockQty = 0;
+        }
+        if (this.active == null) {
+            this.active = true;
+        }
+        if (this.is24HourDelivery == null) {
+            this.is24HourDelivery = false;
         }
     }
 }
