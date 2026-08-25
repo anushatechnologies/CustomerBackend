@@ -1,5 +1,6 @@
 package com.example.project.customer.controller;
 
+import com.example.project.customer.common.ApiResponse;
 import com.example.project.customer.dto.SubcategoryRequest;
 import com.example.project.customer.dto.SubcategoryResponse;
 import com.example.project.customer.service.SubcategoryService;
@@ -7,21 +8,46 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/subcategories")
 public class SubcategoryController {
-    private final SubcategoryService service;
-    public SubcategoryController(SubcategoryService service) { this.service = service; }
+
+    private final SubcategoryService subcategoryService;
+
+    public SubcategoryController(SubcategoryService subcategoryService) {
+        this.subcategoryService = subcategoryService;
+    }
+
     @PostMapping
-    public ResponseEntity<SubcategoryResponse> create(@Valid @RequestBody SubcategoryRequest request) { return ResponseEntity.status(HttpStatus.CREATED).body(service.create(request)); }
+    public ResponseEntity<ApiResponse<SubcategoryResponse>> create(@Valid @RequestBody SubcategoryRequest request) {
+        SubcategoryResponse response = subcategoryService.create(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.created("Subcategory created successfully", response));
+    }
+
     @GetMapping("/{id}")
-    public SubcategoryResponse getById(@PathVariable Integer id) { return service.getById(id); }
+    public ApiResponse<SubcategoryResponse> getById(@PathVariable Integer id) {
+        return ApiResponse.ok(subcategoryService.getById(id));
+    }
+
     @GetMapping
-    public List<SubcategoryResponse> getAll() { return service.getAll(); }
+    public ApiResponse<List<SubcategoryResponse>> getAll(
+            @RequestParam(required = false) Integer categoryId,
+            @RequestParam(required = false) Boolean active) {
+        return ApiResponse.ok(subcategoryService.getAll(categoryId, active));
+    }
+
     @PutMapping("/{id}")
-    public SubcategoryResponse update(@PathVariable Integer id, @Valid @RequestBody SubcategoryRequest request) { return service.update(id, request); }
+    public ApiResponse<SubcategoryResponse> update(@PathVariable Integer id, @Valid @RequestBody SubcategoryRequest request) {
+        return ApiResponse.ok("Subcategory updated successfully", subcategoryService.update(id, request));
+    }
+
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Integer id) { service.delete(id); return ResponseEntity.noContent().build(); }
+    public ResponseEntity<Void> delete(@PathVariable Integer id) {
+        subcategoryService.delete(id);
+        return ResponseEntity.noContent().build();
+    }
 }

@@ -41,8 +41,12 @@ public class BannerServiceImpl implements BannerService {
         List<Banner> banners;
         if (Boolean.TRUE.equals(active) && position != null && !position.isBlank()) {
             banners = bannerRepository.findByPositionAndIsActiveTrueOrderBySortOrderAsc(position);
+        } else if (Boolean.FALSE.equals(active) && position != null && !position.isBlank()) {
+            banners = bannerRepository.findByPositionAndIsActiveFalseOrderBySortOrderAsc(position);
         } else if (Boolean.TRUE.equals(active)) {
             banners = bannerRepository.findByIsActiveTrueOrderBySortOrderAsc();
+        } else if (Boolean.FALSE.equals(active)) {
+            banners = bannerRepository.findByIsActiveFalseOrderBySortOrderAsc();
         } else if (position != null && !position.isBlank()) {
             banners = bannerRepository.findByPositionOrderBySortOrderAsc(position);
         } else {
@@ -64,12 +68,11 @@ public class BannerServiceImpl implements BannerService {
         com.example.project.customer.dto.ImageUploadResponse uploadResponse =
                 s3ImageService.uploadImage(file, com.example.project.customer.dto.ImageFolder.BANNERS);
 
-        // If replacing an existing S3 image, safely clean up the old one
         if (banner.getImageUrl() != null && !banner.getImageUrl().isBlank()) {
             try {
                 s3ImageService.deleteImage(banner.getImageUrl());
             } catch (Exception e) {
-                // Log and continue, don't fail update if old image deletion fails
+                // Ignore cleanup error
             }
         }
 
@@ -84,7 +87,7 @@ public class BannerServiceImpl implements BannerService {
             try {
                 s3ImageService.deleteImage(banner.getImageUrl());
             } catch (Exception e) {
-                // Log and continue, don't fail entity delete if S3 delete fails
+                // Ignore cleanup error
             }
         }
         bannerRepository.delete(banner);
@@ -97,12 +100,13 @@ public class BannerServiceImpl implements BannerService {
 
     private void applyRequest(Banner banner, BannerRequest request) {
         banner.setTitle(request.getTitle());
+        banner.setSubtitle(request.getSubtitle());
         banner.setImageUrl(request.getImageUrl());
         banner.setLinkType(request.getLinkType());
         banner.setLinkValue(request.getLinkValue());
         banner.setPosition(request.getPosition());
         banner.setSortOrder(request.getSortOrder() != null ? request.getSortOrder() : 0);
-        banner.setIsActive(request.getIsActive() != null ? request.getIsActive() : true);
+        banner.setIsActive(request.getActive());
         banner.setStartDate(request.getStartDate());
         banner.setEndDate(request.getEndDate());
     }
@@ -111,6 +115,7 @@ public class BannerServiceImpl implements BannerService {
         return new BannerResponse(
                 banner.getBannerId(),
                 banner.getTitle(),
+                banner.getSubtitle(),
                 banner.getImageUrl(),
                 banner.getLinkType(),
                 banner.getLinkValue(),

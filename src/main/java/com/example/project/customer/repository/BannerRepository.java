@@ -13,7 +13,11 @@ public interface BannerRepository extends JpaRepository<Banner, Integer> {
 
     List<Banner> findByIsActiveTrueOrderBySortOrderAsc();
 
+    List<Banner> findByIsActiveFalseOrderBySortOrderAsc();
+
     List<Banner> findByPositionOrderBySortOrderAsc(String position);
 
     List<Banner> findByPositionAndIsActiveTrueOrderBySortOrderAsc(String position);
+
+    List<Banner> findByPositionAndIsActiveFalseOrderBySortOrderAsc(String position);
 }

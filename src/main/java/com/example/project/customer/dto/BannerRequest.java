@@ -1,5 +1,6 @@
 package com.example.project.customer.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
 import java.time.LocalDateTime;
 
@@ -8,14 +9,24 @@ public class BannerRequest {
     @NotBlank(message = "Title must not be blank")
     private String title;
 
+    private String subtitle;
     private String imageUrl;
     private String linkType;
     private String linkValue;
     private String position;
     private Integer sortOrder;
+
+    @JsonProperty("active")
+    private Boolean active;
+
+    @JsonProperty("isActive")
     private Boolean isActive;
+
     private LocalDateTime startDate;
     private LocalDateTime endDate;
+
+    public BannerRequest() {
+    }
 
     public String getTitle() {
         return title;
@@ -23,6 +34,14 @@ public class BannerRequest {
 
     public void setTitle(String title) {
         this.title = title;
+    }
+
+    public String getSubtitle() {
+        return subtitle;
+    }
+
+    public void setSubtitle(String subtitle) {
+        this.subtitle = subtitle;
     }
 
     public String getImageUrl() {
@@ -65,12 +84,23 @@ public class BannerRequest {
         this.sortOrder = sortOrder;
     }
 
+    public Boolean getActive() {
+        if (active != null) return active;
+        return isActive != null ? isActive : true;
+    }
+
+    public void setActive(Boolean active) {
+        this.active = active;
+        this.isActive = active;
+    }
+
     public Boolean getIsActive() {
-        return isActive;
+        return getActive();
     }
 
     public void setIsActive(Boolean isActive) {
         this.isActive = isActive;
+        this.active = isActive;
     }
 
     public LocalDateTime getStartDate() {

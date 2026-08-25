@@ -1,5 +1,6 @@
 package com.example.project.customer.entity;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -22,6 +23,9 @@ public class Banner {
     @Column(name = "title", nullable = false)
     private String title;
 
+    @Column(name = "subtitle")
+    private String subtitle;
+
     @Column(name = "image_url")
     private String imageUrl;
 
@@ -35,9 +39,10 @@ public class Banner {
     private String position;
 
     @Column(name = "sort_order")
-    private Integer sortOrder;
+    private Integer sortOrder = 0;
 
     @Column(name = "is_active")
+    @JsonProperty("active")
     private Boolean isActive = true;
 
     @Column(name = "start_date")
@@ -48,6 +53,9 @@ public class Banner {
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    public Banner() {
+    }
 
     @PrePersist
     protected void onCreate() {
@@ -70,6 +78,14 @@ public class Banner {
 
     public void setTitle(String title) {
         this.title = title;
+    }
+
+    public String getSubtitle() {
+        return subtitle;
+    }
+
+    public void setSubtitle(String subtitle) {
+        this.subtitle = subtitle;
     }
 
     public String getImageUrl() {
@@ -112,12 +128,22 @@ public class Banner {
         this.sortOrder = sortOrder;
     }
 
+    @JsonProperty("active")
     public Boolean getIsActive() {
         return isActive;
     }
 
+    @JsonProperty("active")
     public void setIsActive(Boolean isActive) {
         this.isActive = isActive;
+    }
+
+    public boolean isActive() {
+        return Boolean.TRUE.equals(this.isActive);
+    }
+
+    public void setActive(boolean active) {
+        this.isActive = active;
     }
 
     public LocalDateTime getStartDate() {

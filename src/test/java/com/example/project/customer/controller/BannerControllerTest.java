@@ -78,14 +78,15 @@ class BannerControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.bannerId").value(1))
-                .andExpect(jsonPath("$.title").value("Summer Sale"))
-                .andExpect(jsonPath("$.imageUrl").value("https://example.com/summer.png"))
-                .andExpect(jsonPath("$.linkType").value("CATEGORY"))
-                .andExpect(jsonPath("$.linkValue").value("summer-deals"))
-                .andExpect(jsonPath("$.position").value("HOME_HERO"))
-                .andExpect(jsonPath("$.sortOrder").value(1))
-                .andExpect(jsonPath("$.isActive").value(true));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.bannerId").value(1))
+                .andExpect(jsonPath("$.data.title").value("Summer Sale"))
+                .andExpect(jsonPath("$.data.imageUrl").value("https://example.com/summer.png"))
+                .andExpect(jsonPath("$.data.linkType").value("CATEGORY"))
+                .andExpect(jsonPath("$.data.linkValue").value("summer-deals"))
+                .andExpect(jsonPath("$.data.position").value("HOME_HERO"))
+                .andExpect(jsonPath("$.data.sortOrder").value(1))
+                .andExpect(jsonPath("$.data.isActive").value(true));
     }
 
     @Test
@@ -98,7 +99,8 @@ class BannerControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.title").value("Title must not be blank"));
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errors[0].field").value("title"));
     }
 
     @Test
@@ -122,10 +124,11 @@ class BannerControllerTest {
 
         mockMvc.perform(get("/api/banners/1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.bannerId").value(1))
-                .andExpect(jsonPath("$.title").value("Mega Discount"))
-                .andExpect(jsonPath("$.position").value("SIDEBAR"))
-                .andExpect(jsonPath("$.sortOrder").value(2));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.bannerId").value(1))
+                .andExpect(jsonPath("$.data.title").value("Mega Discount"))
+                .andExpect(jsonPath("$.data.position").value("SIDEBAR"))
+                .andExpect(jsonPath("$.data.sortOrder").value(2));
     }
 
     @Test
@@ -135,6 +138,7 @@ class BannerControllerTest {
 
         mockMvc.perform(get("/api/banners/99"))
                 .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.message").value("Banner not found with id: 99"));
     }
 
@@ -148,9 +152,10 @@ class BannerControllerTest {
 
         mockMvc.perform(get("/api/banners"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2))
-                .andExpect(jsonPath("$[0].bannerId").value(1))
-                .andExpect(jsonPath("$[1].bannerId").value(2));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].bannerId").value(1))
+                .andExpect(jsonPath("$.data[1].bannerId").value(2));
     }
 
     @Test
@@ -164,9 +169,10 @@ class BannerControllerTest {
                         .param("active", "true")
                         .param("position", "HOME_HERO"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].title").value("Hero Banner"))
-                .andExpect(jsonPath("$[0].position").value("HOME_HERO"));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].title").value("Hero Banner"))
+                .andExpect(jsonPath("$.data[0].position").value("HOME_HERO"));
     }
 
     @Test
@@ -198,9 +204,10 @@ class BannerControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.title").value("Updated Title"))
-                .andExpect(jsonPath("$.position").value("POPUP"))
-                .andExpect(jsonPath("$.isActive").value(false));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.title").value("Updated Title"))
+                .andExpect(jsonPath("$.data.position").value("POPUP"))
+                .andExpect(jsonPath("$.data.isActive").value(false));
     }
 
     @Test
@@ -232,8 +239,9 @@ class BannerControllerTest {
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/banners/1/image")
                         .file(file))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.bannerId").value(1))
-                .andExpect(jsonPath("$.imageUrl").value("https://hinchmart-storage-191481838776-ap-south-2-an.s3.ap-south-2.amazonaws.com/banners/promo-uuid.jpg"));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.bannerId").value(1))
+                .andExpect(jsonPath("$.data.imageUrl").value("https://hinchmart-storage-191481838776-ap-south-2-an.s3.ap-south-2.amazonaws.com/banners/promo-uuid.jpg"));
     }
 
     @Test
@@ -255,6 +263,7 @@ class BannerControllerTest {
 
         mockMvc.perform(delete("/api/banners/99"))
                 .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.message").value("Banner not found with id: 99"));
     }
 }
