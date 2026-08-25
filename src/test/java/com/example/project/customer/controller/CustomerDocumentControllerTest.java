@@ -3,6 +3,7 @@ package com.example.project.customer.controller;
 import com.example.project.customer.dto.CustomerDocumentRequest;
 import com.example.project.customer.dto.CustomerDocumentResponse;
 import com.example.project.customer.dto.RejectDocumentRequest;
+import com.example.project.customer.config.SecurityConfig;
 import com.example.project.customer.entity.DocumentType;
 import com.example.project.customer.entity.VerificationStatus;
 import com.example.project.customer.exception.CustomerNotFoundException;
@@ -37,7 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(CustomerDocumentController.class)
-@Import(GlobalExceptionHandler.class)
+@Import({GlobalExceptionHandler.class, SecurityConfig.class})
 class CustomerDocumentControllerTest {
 
     @Autowired
