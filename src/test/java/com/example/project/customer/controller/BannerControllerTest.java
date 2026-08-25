@@ -2,6 +2,7 @@ package com.example.project.customer.controller;
 
 import com.example.project.customer.dto.BannerRequest;
 import com.example.project.customer.dto.BannerResponse;
+import com.example.project.customer.config.SecurityConfig;
 import com.example.project.customer.exception.BannerNotFoundException;
 import com.example.project.customer.exception.GlobalExceptionHandler;
 import com.example.project.customer.service.BannerService;
@@ -34,7 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(BannerController.class)
-@Import(GlobalExceptionHandler.class)
+@Import({GlobalExceptionHandler.class, SecurityConfig.class})
 class BannerControllerTest {
 
     @Autowired

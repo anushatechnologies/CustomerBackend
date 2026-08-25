@@ -2,6 +2,7 @@ package com.example.project.customer.controller;
 
 import com.example.project.customer.dto.ImageFolder;
 import com.example.project.customer.dto.ImageUploadResponse;
+import com.example.project.customer.config.SecurityConfig;
 import com.example.project.customer.exception.GlobalExceptionHandler;
 import com.example.project.customer.exception.InvalidImageException;
 import com.example.project.customer.service.S3ImageService;
@@ -29,7 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(ImageUploadController.class)
-@Import(GlobalExceptionHandler.class)
+@Import({GlobalExceptionHandler.class, SecurityConfig.class})
 class ImageUploadControllerTest {
 
     @Autowired
