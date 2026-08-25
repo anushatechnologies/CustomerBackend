@@ -4,8 +4,7 @@ import com.example.project.customer.dto.ImageFolder;
 import com.example.project.customer.dto.ImageUploadResponse;
 import com.example.project.customer.exception.ImageStorageException;
 import com.example.project.customer.exception.InvalidImageException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -25,10 +24,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @Service
 public class S3ImageServiceImpl implements S3ImageService {
-
-    private static final Logger log = LoggerFactory.getLogger(S3ImageServiceImpl.class);
 
     private static final List<String> ALLOWED_CONTENT_TYPES = Arrays.asList(
             "image/jpeg",

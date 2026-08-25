@@ -39,7 +39,7 @@ class ImageUploadControllerTest {
     private S3ImageService s3ImageService;
 
     @Test
-    @DisplayName("POST /api/images/upload - Should upload image to specified folder and return 201")
+    @DisplayName("POST /api/images/upload - Should upload image to specified folder and return 201 wrapped in ApiResponse")
     void uploadImage_Success() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "file",
@@ -62,11 +62,13 @@ class ImageUploadControllerTest {
                         .file(file)
                         .param("folder", "products"))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.imageKey").value("products/shoe-123.jpg"))
-                .andExpect(jsonPath("$.imageUrl").value("https://bucket.s3.ap-south-2.amazonaws.com/products/shoe-123.jpg"))
-                .andExpect(jsonPath("$.originalFileName").value("shoe.jpg"))
-                .andExpect(jsonPath("$.contentType").value("image/jpeg"))
-                .andExpect(jsonPath("$.sizeBytes").value(11));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.statusCode").value(201))
+                .andExpect(jsonPath("$.data.imageKey").value("products/shoe-123.jpg"))
+                .andExpect(jsonPath("$.data.imageUrl").value("https://bucket.s3.ap-south-2.amazonaws.com/products/shoe-123.jpg"))
+                .andExpect(jsonPath("$.data.originalFileName").value("shoe.jpg"))
+                .andExpect(jsonPath("$.data.contentType").value("image/jpeg"))
+                .andExpect(jsonPath("$.data.sizeBytes").value(11));
     }
 
     @Test
@@ -91,7 +93,8 @@ class ImageUploadControllerTest {
 
         mockMvc.perform(multipart("/api/images/products").file(file))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.imageKey").value("products/uuid.png"));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.imageKey").value("products/uuid.png"));
     }
 
     @Test
@@ -116,7 +119,8 @@ class ImageUploadControllerTest {
 
         mockMvc.perform(multipart("/api/images/categories").file(file))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.imageKey").value("categories/uuid.webp"));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.imageKey").value("categories/uuid.webp"));
     }
 
     @Test
@@ -141,7 +145,8 @@ class ImageUploadControllerTest {
 
         mockMvc.perform(multipart("/api/images/banners").file(file))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.imageKey").value("banners/uuid.jpg"));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.imageKey").value("banners/uuid.jpg"));
     }
 
     @Test
@@ -161,6 +166,7 @@ class ImageUploadControllerTest {
                         .file(file)
                         .param("folder", "products"))
                 .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.message").value("Invalid image content type: text/plain"));
     }
 
@@ -178,12 +184,14 @@ class ImageUploadControllerTest {
     }
 
     @Test
-    @DisplayName("DELETE /api/images - Should delete image and return 204 No Content")
+    @DisplayName("DELETE /api/images - Should delete image and return 200 OK with ApiResponse")
     void deleteImage_Success() throws Exception {
         doNothing().when(s3ImageService).deleteImage("products/test.png");
 
         mockMvc.perform(delete("/api/images").param("key", "products/test.png"))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Image deleted successfully"));
 
         verify(s3ImageService).deleteImage("products/test.png");
     }

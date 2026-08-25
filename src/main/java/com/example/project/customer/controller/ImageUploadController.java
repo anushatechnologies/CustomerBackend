@@ -1,8 +1,10 @@
 package com.example.project.customer.controller;
 
+import com.example.project.customer.dto.ApiResponse;
 import com.example.project.customer.dto.ImageFolder;
 import com.example.project.customer.dto.ImageUploadResponse;
 import com.example.project.customer.service.S3ImageService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -17,38 +19,39 @@ import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/images")
+@RequiredArgsConstructor
 public class ImageUploadController {
 
     private final S3ImageService s3ImageService;
 
-    public ImageUploadController(S3ImageService s3ImageService) {
-        this.s3ImageService = s3ImageService;
-    }
-
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ImageUploadResponse> uploadImage(
+    public ResponseEntity<ApiResponse<ImageUploadResponse>> uploadImage(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "folder", defaultValue = "other") String folder) {
         ImageUploadResponse response = s3ImageService.uploadImage(file, folder);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.created("Image uploaded successfully", response));
     }
 
     @PostMapping(value = "/products", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ImageUploadResponse> uploadProductImage(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<ApiResponse<ImageUploadResponse>> uploadProductImage(@RequestParam("file") MultipartFile file) {
         ImageUploadResponse response = s3ImageService.uploadImage(file, ImageFolder.PRODUCTS);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.created("Product image uploaded successfully", response));
     }
 
     @PostMapping(value = "/categories", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ImageUploadResponse> uploadCategoryImage(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<ApiResponse<ImageUploadResponse>> uploadCategoryImage(@RequestParam("file") MultipartFile file) {
         ImageUploadResponse response = s3ImageService.uploadImage(file, ImageFolder.CATEGORIES);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.created("Category image uploaded successfully", response));
     }
 
     @PostMapping(value = "/banners", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ImageUploadResponse> uploadBannerImage(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<ApiResponse<ImageUploadResponse>> uploadBannerImage(@RequestParam("file") MultipartFile file) {
         ImageUploadResponse response = s3ImageService.uploadImage(file, ImageFolder.BANNERS);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.created("Banner image uploaded successfully", response));
     }
 
     @GetMapping("/download")
@@ -62,9 +65,9 @@ public class ImageUploadController {
     }
 
     @DeleteMapping
-    public ResponseEntity<Void> deleteImage(@RequestParam("key") String key) {
+    public ResponseEntity<ApiResponse<Void>> deleteImage(@RequestParam("key") String key) {
         s3ImageService.deleteImage(key);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(ApiResponse.ok("Image deleted successfully", null));
     }
 
     private MediaType determineMediaType(String key) {

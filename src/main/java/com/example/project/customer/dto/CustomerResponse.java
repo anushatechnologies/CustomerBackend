@@ -1,32 +1,18 @@
 package com.example.project.customer.dto;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+@Getter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class CustomerResponse {
 
-    private final Integer customerId;
-    private final String name;
-    private final String email;
-    private final String phone;
-
-    public CustomerResponse(Integer customerId, String name, String email, String phone) {
-        this.customerId = customerId;
-        this.name = name;
-        this.email = email;
-        this.phone = phone;
-    }
-
-    public Integer getCustomerId() {
-        return customerId;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public String getEmail() {
-        return email;
-    }
-
-    public String getPhone() {
-        return phone;
-    }
+    private Integer customerId;
+    private String name;
+    private String email;
+    private String phone;
 }
