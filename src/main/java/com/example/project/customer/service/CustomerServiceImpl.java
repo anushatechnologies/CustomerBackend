@@ -6,20 +6,20 @@ import com.example.project.customer.entity.Customer;
 import com.example.project.customer.exception.CustomerConflictException;
 import com.example.project.customer.exception.CustomerNotFoundException;
 import com.example.project.customer.repository.CustomerRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+@Slf4j
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class CustomerServiceImpl implements CustomerService {
 
     private final CustomerRepository customerRepository;
-
-    public CustomerServiceImpl(CustomerRepository customerRepository) {
-        this.customerRepository = customerRepository;
-    }
 
     @Override
     public CustomerResponse createCustomer(CustomerRequest request) {

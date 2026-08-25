@@ -2,23 +2,27 @@ package com.example.project.customer.service;
 
 import com.example.project.customer.dto.BannerRequest;
 import com.example.project.customer.dto.BannerResponse;
+import com.example.project.customer.dto.ImageFolder;
+import com.example.project.customer.dto.ImageUploadResponse;
 import com.example.project.customer.entity.Banner;
 import com.example.project.customer.exception.BannerNotFoundException;
 import com.example.project.customer.repository.BannerRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
+@Slf4j
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class BannerServiceImpl implements BannerService {
 
     private final BannerRepository bannerRepository;
-
-    public BannerServiceImpl(BannerRepository bannerRepository) {
-        this.bannerRepository = bannerRepository;
-    }
+    private final S3ImageService s3ImageService;
 
     @Override
     public BannerResponse createBanner(BannerRequest request) {
@@ -57,8 +61,34 @@ public class BannerServiceImpl implements BannerService {
     }
 
     @Override
+    public BannerResponse uploadBannerImage(Integer id, MultipartFile file) {
+        Banner banner = findBanner(id);
+        ImageUploadResponse uploadResponse = s3ImageService.uploadImage(file, ImageFolder.BANNERS);
+
+        // If replacing an existing S3 image, safely clean up the old one
+        if (banner.getImageUrl() != null && !banner.getImageUrl().isBlank()) {
+            try {
+                s3ImageService.deleteImage(banner.getImageUrl());
+            } catch (Exception e) {
+                log.warn("Failed to delete old banner image from S3: {}", banner.getImageUrl(), e);
+            }
+        }
+
+        banner.setImageUrl(uploadResponse.getImageUrl());
+        return toResponse(bannerRepository.save(banner));
+    }
+
+    @Override
     public void deleteBanner(Integer id) {
-        bannerRepository.delete(findBanner(id));
+        Banner banner = findBanner(id);
+        if (banner.getImageUrl() != null && !banner.getImageUrl().isBlank()) {
+            try {
+                s3ImageService.deleteImage(banner.getImageUrl());
+            } catch (Exception e) {
+                log.warn("Failed to delete banner image from S3 during entity delete: {}", banner.getImageUrl(), e);
+            }
+        }
+        bannerRepository.delete(banner);
     }
 
     private Banner findBanner(Integer id) {
