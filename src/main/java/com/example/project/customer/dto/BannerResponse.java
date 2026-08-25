@@ -1,26 +1,38 @@
 package com.example.project.customer.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Getter;
+import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
-@Getter
+@Data
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class BannerResponse {
 
     private Integer bannerId;
     private String title;
+    private String subtitle;
     private String imageUrl;
     private String linkType;
     private String linkValue;
     private String position;
     private Integer sortOrder;
-    private Boolean isActive;
+
+    @JsonProperty("active")
+    private Boolean active;
+
+    @JsonProperty("isActive")
+    public Boolean getIsActive() {
+        return active;
+    }
+
     private LocalDateTime startDate;
     private LocalDateTime endDate;
     private LocalDateTime createdAt;

@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -39,12 +40,16 @@ public class CategoryController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<CategoryResponse>>> getAll() {
-        return ResponseEntity.ok(ApiResponse.ok("Categories retrieved successfully", service.getAll()));
+    public ResponseEntity<ApiResponse<List<CategoryResponse>>> getAll(
+            @RequestParam(required = false) Boolean active,
+            @RequestParam(required = false, defaultValue = "false") Boolean includeSubcategories) {
+        List<CategoryResponse> list = service.getAll(active, includeSubcategories);
+        return ResponseEntity.ok(ApiResponse.ok("Categories retrieved successfully", list));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<ApiResponse<CategoryResponse>> update(@PathVariable Integer id,
+    public ResponseEntity<ApiResponse<CategoryResponse>> update(
+            @PathVariable Integer id,
             @Valid @RequestBody CategoryRequest request) {
         return ResponseEntity.ok(ApiResponse.ok("Category updated successfully", service.update(id, request)));
     }

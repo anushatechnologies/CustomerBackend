@@ -1,5 +1,8 @@
 package com.example.project.customer.entity;
 
+import com.fasterxml.jackson.annotation.JsonGetter;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -32,6 +35,9 @@ public class Banner {
     @Column(name = "title", nullable = false)
     private String title;
 
+    @Column(name = "subtitle")
+    private String subtitle;
+
     @Column(name = "image_url")
     private String imageUrl;
 
@@ -50,7 +56,7 @@ public class Banner {
 
     @Column(name = "is_active")
     @Builder.Default
-    private Boolean isActive = true;
+    private Boolean active = true;
 
     @Column(name = "start_date")
     private LocalDateTime startDate;
@@ -61,10 +67,33 @@ public class Banner {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @JsonProperty("active")
+    public Boolean getActive() {
+        return active;
+    }
+
+    @JsonProperty("active")
+    public void setActive(Boolean active) {
+        this.active = active;
+    }
+
+    @JsonProperty("isActive")
+    public Boolean getIsActive() {
+        return active;
+    }
+
+    @JsonProperty("isActive")
+    public void setIsActive(Boolean active) {
+        this.active = active;
+    }
+
     @PrePersist
     protected void onCreate() {
         if (this.createdAt == null) {
             this.createdAt = LocalDateTime.now();
+        }
+        if (this.active == null) {
+            this.active = true;
         }
     }
 }

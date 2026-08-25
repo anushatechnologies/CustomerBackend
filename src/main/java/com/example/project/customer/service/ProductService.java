@@ -1,13 +1,29 @@
 package com.example.project.customer.service;
 
+import com.example.project.customer.dto.ApiResponse;
 import com.example.project.customer.dto.ProductRequest;
 import com.example.project.customer.dto.ProductResponse;
+import com.example.project.customer.dto.SearchSuggestionResponse;
+
+import java.math.BigDecimal;
 import java.util.List;
 
 public interface ProductService {
     ProductResponse create(ProductRequest request);
     ProductResponse getById(Integer id);
-    List<ProductResponse> getAll();
+    ApiResponse<List<ProductResponse>> getAll(
+            Integer categoryId,
+            Integer subcategoryId,
+            String search,
+            BigDecimal minPrice,
+            BigDecimal maxPrice,
+            String brand,
+            Boolean is24HourDelivery,
+            String sort,
+            int page,
+            int limit
+    );
     ProductResponse update(Integer id, ProductRequest request);
     void delete(Integer id);
+    SearchSuggestionResponse getSearchSuggestions(String query);
 }

@@ -1,6 +1,7 @@
 package com.example.project.customer.exception;
 
 import com.example.project.customer.dto.ApiResponse;
+import com.example.project.customer.dto.ErrorDetail;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -9,8 +10,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 
 @Slf4j
 @RestControllerAdvice
@@ -47,13 +48,26 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiResponse<Map<String, String>>> handleValidation(MethodArgumentNotValidException exception) {
-        Map<String, String> errors = new LinkedHashMap<>();
-        exception.getBindingResult().getFieldErrors()
-                .forEach(error -> errors.putIfAbsent(error.getField(), error.getDefaultMessage()));
+    public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException exception) {
+        List<ErrorDetail> errors = new ArrayList<>();
+        exception.getBindingResult().getFieldErrors().forEach(error ->
+                errors.add(new ErrorDetail(error.getField(), error.getDefaultMessage()))
+        );
         log.warn("Validation failed: {}", errors);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Validation failed", errors));
+                .body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Invalid request parameter", errors));
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException exception) {
+        log.warn("Bad argument: {}", exception.getMessage());
+        return response(HttpStatus.BAD_REQUEST, exception.getMessage());
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIllegalState(IllegalStateException exception) {
+        log.warn("Invalid state: {}", exception.getMessage());
+        return response(HttpStatus.BAD_REQUEST, exception.getMessage());
     }
 
     @ExceptionHandler(InvalidImageException.class)
@@ -72,6 +86,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleMaxSizeExceeded(MaxUploadSizeExceededException exception) {
         log.warn("Upload size exceeded: {}", exception.getMessage());
         return response(HttpStatus.BAD_REQUEST, "File upload size exceeded maximum limit of 10MB");
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiResponse<Void>> handleGeneralException(Exception exception) {
+        log.error("Unhandled exception occurred: {}", exception.getMessage(), exception);
+        return response(HttpStatus.INTERNAL_SERVER_ERROR, "An internal server error occurred: " + exception.getMessage());
     }
 
     private ResponseEntity<ApiResponse<Void>> response(HttpStatus status, String message) {

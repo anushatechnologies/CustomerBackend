@@ -15,8 +15,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @RestController
@@ -39,8 +41,21 @@ public class ProductController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<ProductResponse>>> getAll() {
-        return ResponseEntity.ok(ApiResponse.ok("Products retrieved successfully", service.getAll()));
+    public ResponseEntity<ApiResponse<List<ProductResponse>>> getAll(
+            @RequestParam(required = false) Integer categoryId,
+            @RequestParam(required = false) Integer subcategoryId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) BigDecimal minPrice,
+            @RequestParam(required = false) BigDecimal maxPrice,
+            @RequestParam(required = false) String brand,
+            @RequestParam(required = false) Boolean is24HourDelivery,
+            @RequestParam(required = false, defaultValue = "newest") String sort,
+            @RequestParam(required = false, defaultValue = "1") int page,
+            @RequestParam(required = false, defaultValue = "20") int limit) {
+        ApiResponse<List<ProductResponse>> response = service.getAll(
+                categoryId, subcategoryId, search, minPrice, maxPrice, brand, is24HourDelivery, sort, page, limit
+        );
+        return ResponseEntity.ok(response);
     }
 
     @PutMapping("/{id}")
