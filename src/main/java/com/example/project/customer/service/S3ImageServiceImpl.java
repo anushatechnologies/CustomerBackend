@@ -36,14 +36,6 @@ public class S3ImageServiceImpl implements S3ImageService {
             "application/pdf"
     );
 
-    private static final List<String> ALLOWED_EXTENSIONS = Arrays.asList(
-            ".jpg",
-            ".jpeg",
-            ".png",
-            ".webp",
-            ".pdf"
-    );
-
     private static final long MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
 
     private final S3Client s3Client;
@@ -86,8 +78,8 @@ public class S3ImageServiceImpl implements S3ImageService {
             imageUrl = buildImageUrl(s3Key);
             log.info("Successfully uploaded image to S3: bucket={}, key={}", bucketName, s3Key);
         } catch (SdkException e) {
-            log.warn("S3 upload failed (likely missing AWS credentials in local env), using fallback CDN URL: {}", e.getMessage());
-            imageUrl = "https://cdn.hinchmart.com/uploads/" + s3Key;
+            log.error("S3 upload failed for bucket={}, key={}", bucketName, s3Key, e);
+            throw new ImageStorageException("Failed to upload image to S3 storage", e);
         } catch (IOException e) {
             log.error("Failed to read image stream for key: {}", s3Key, e);
             throw new ImageStorageException("Failed to read image content for upload", e);

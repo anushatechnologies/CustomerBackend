@@ -95,6 +95,22 @@ class S3ImageServiceTest {
     }
 
     @Test
+    @DisplayName("uploadImage - Should throw ImageStorageException when S3 rejects the upload")
+    void uploadImage_S3Failure_ThrowsStorageException() {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "sample.jpg",
+                "image/jpeg",
+                "test image content".getBytes()
+        );
+
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenThrow(S3Exception.builder().statusCode(403).message("Access denied").build());
+
+        assertThrows(ImageStorageException.class, () -> s3ImageService.uploadImage(file, ImageFolder.PRODUCTS));
+    }
+
+    @Test
     @DisplayName("downloadImage - Should successfully return bytes")
     void downloadImage_Success() {
         byte[] expectedBytes = "image binary data".getBytes();
