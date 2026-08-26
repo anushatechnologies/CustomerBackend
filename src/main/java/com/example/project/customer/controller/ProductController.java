@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -52,5 +53,15 @@ public class ProductController {
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Integer id) {
         service.delete(id);
         return ResponseEntity.ok(ApiResponse.ok("Product deleted successfully", null));
+    }
+
+    @PatchMapping("/{id}/activate")
+    public ResponseEntity<ApiResponse<ProductResponse>> activate(@PathVariable Integer id) {
+        return ResponseEntity.ok(ApiResponse.ok("Product activated successfully", service.activate(id)));
+    }
+
+    @PatchMapping("/{id}/deactivate")
+    public ResponseEntity<ApiResponse<ProductResponse>> deactivate(@PathVariable Integer id) {
+        return ResponseEntity.ok(ApiResponse.ok("Product deactivated successfully", service.deactivate(id)));
     }
 }

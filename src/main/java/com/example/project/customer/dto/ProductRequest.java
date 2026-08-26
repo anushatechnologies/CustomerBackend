@@ -11,5 +11,5 @@ import java.math.BigDecimal;
 public record ProductRequest(@NotNull @Positive Integer subcategoryId, @NotBlank String title,
                              String description, @NotNull @DecimalMin("0.00") BigDecimal price,
                              @NotNull @PositiveOrZero Integer stockQty, @NotBlank String unit,
-                             String imageUrl, @NotNull Boolean active) {
+                             String imageUrl, Boolean active) {
 }
