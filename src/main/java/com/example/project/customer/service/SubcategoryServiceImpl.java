@@ -2,10 +2,12 @@ package com.example.project.customer.service;
 
 import com.example.project.customer.dto.SubcategoryRequest;
 import com.example.project.customer.dto.SubcategoryResponse;
+import com.example.project.customer.entity.Category;
 import com.example.project.customer.entity.Subcategory;
 import com.example.project.customer.exception.ResourceConflictException;
 import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.repository.CategoryRepository;
+import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.repository.SubcategoryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,54 +24,119 @@ public class SubcategoryServiceImpl implements SubcategoryService {
 
     private final SubcategoryRepository repository;
     private final CategoryRepository categoryRepository;
+    private final ProductRepository productRepository;
 
+    @Override
     public SubcategoryResponse create(SubcategoryRequest request) {
-        if (repository.existsBySlugIgnoreCase(request.slug())) throw conflict(request.slug());
-        return response(repository.save(apply(new Subcategory(), request)));
+        Category category = categoryRepository.findById(request.getCategoryId())
+                .orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + request.getCategoryId()));
+
+        String slug = generateSlug(request.getName(), request.getSlug());
+        if (repository.existsBySlugIgnoreCase(slug)) {
+            throw new ResourceConflictException("Subcategory already exists with slug: " + slug);
+        }
+
+        Subcategory subcategory = Subcategory.builder()
+                .category(category)
+                .name(request.getName())
+                .slug(slug)
+                .imageUrl(request.getImageUrl())
+                .active(request.getActive() != null ? request.getActive() : true)
+                .sortOrder(request.getSortOrder() != null ? request.getSortOrder() : 0)
+                .productCount(0)
+                .build();
+
+        return mapToResponse(repository.save(subcategory));
     }
 
+    @Override
     @Transactional(readOnly = true)
     public SubcategoryResponse getById(Integer id) {
-        return response(find(id));
+        Subcategory subcategory = findSubcategory(id);
+        return mapToResponse(subcategory);
     }
 
+    @Override
     @Transactional(readOnly = true)
-    public List<SubcategoryResponse> getAll() {
-        return repository.findAll().stream().map(this::response).toList();
+    public List<SubcategoryResponse> getAll(Integer categoryId, Boolean active) {
+        List<Subcategory> list;
+
+        // Correctly apply categoryId and active filters (Fixing Bug 1)
+        if (categoryId != null) {
+            if (Boolean.TRUE.equals(active)) {
+                list = repository.findByCategory_CategoryIdAndActiveOrderBySortOrderAsc(categoryId, true);
+            } else {
+                list = repository.findByCategory_CategoryIdOrderBySortOrderAsc(categoryId);
+            }
+        } else if (Boolean.TRUE.equals(active)) {
+            list = repository.findByActiveTrueOrderBySortOrderAsc();
+        } else {
+            list = repository.findAllByOrderBySortOrderAsc();
+        }
+
+        return list.stream().map(this::mapToResponse).toList();
     }
 
+    @Override
     public SubcategoryResponse update(Integer id, SubcategoryRequest request) {
-        Subcategory subcategory = find(id);
-        if (repository.existsBySlugIgnoreCaseAndSubcategoryIdNot(request.slug(), id)) throw conflict(request.slug());
-        return response(repository.save(apply(subcategory, request)));
+        Subcategory subcategory = findSubcategory(id);
+
+        if (request.getCategoryId() != null && !request.getCategoryId().equals(subcategory.getCategory().getCategoryId())) {
+            Category category = categoryRepository.findById(request.getCategoryId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + request.getCategoryId()));
+            subcategory.setCategory(category);
+        }
+
+        String slug = generateSlug(request.getName(), request.getSlug());
+        if (repository.existsBySlugIgnoreCaseAndSubcategoryIdNot(slug, id)) {
+            throw new ResourceConflictException("Subcategory already exists with slug: " + slug);
+        }
+
+        subcategory.setName(request.getName());
+        subcategory.setSlug(slug);
+        if (request.getImageUrl() != null) {
+            subcategory.setImageUrl(request.getImageUrl());
+        }
+        if (request.getActive() != null) {
+            subcategory.setActive(request.getActive());
+        }
+        if (request.getSortOrder() != null) {
+            subcategory.setSortOrder(request.getSortOrder());
+        }
+
+        return mapToResponse(repository.save(subcategory));
     }
 
+    @Override
     public void delete(Integer id) {
-        repository.delete(find(id));
+        Subcategory subcategory = findSubcategory(id);
+        repository.delete(subcategory);
     }
 
-    private Subcategory find(Integer id) {
+    private Subcategory findSubcategory(Integer id) {
         return repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Subcategory not found with id: " + id));
     }
 
-    private ResourceConflictException conflict(String slug) {
-        return new ResourceConflictException("Subcategory already exists with slug: " + slug);
+    private String generateSlug(String name, String providedSlug) {
+        if (providedSlug != null && !providedSlug.isBlank()) {
+            return providedSlug.trim().toLowerCase().replaceAll("[^a-z0-9-]+", "-");
+        }
+        return name.trim().toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
     }
 
-    private Subcategory apply(Subcategory item, SubcategoryRequest request) {
-        item.setCategory(categoryRepository.findById(request.categoryId())
-                .orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + request.categoryId())));
-        item.setName(request.name());
-        item.setSlug(request.slug());
-        item.setImageUrl(request.imageUrl());
-        item.setActive(request.active());
-        item.setSortOrder(request.sortOrder());
-        return item;
-    }
-
-    private SubcategoryResponse response(Subcategory s) {
-        return new SubcategoryResponse(s.getSubcategoryId(), s.getCategory().getCategoryId(), s.getName(),
-                s.getSlug(), s.getImageUrl(), s.isActive(), s.getSortOrder(), s.getCreatedAt());
+    private SubcategoryResponse mapToResponse(Subcategory s) {
+        int count = productRepository.countBySubcategory_SubcategoryId(s.getSubcategoryId());
+        return SubcategoryResponse.builder()
+                .subcategoryId(s.getSubcategoryId())
+                .categoryId(s.getCategory().getCategoryId())
+                .name(s.getName())
+                .slug(s.getSlug())
+                .imageUrl(s.getImageUrl())
+                .active(s.isActive())
+                .sortOrder(s.getSortOrder())
+                .productCount(count)
+                .createdAt(s.getCreatedAt())
+                .build();
     }
 }

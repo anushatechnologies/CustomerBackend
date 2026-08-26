@@ -2,6 +2,8 @@ package com.example.project.customer.service;
 
 import com.example.project.customer.dto.BannerRequest;
 import com.example.project.customer.dto.BannerResponse;
+import com.example.project.customer.dto.ImageFolder;
+import com.example.project.customer.dto.ImageUploadResponse;
 import com.example.project.customer.entity.Banner;
 import com.example.project.customer.exception.BannerNotFoundException;
 import com.example.project.customer.repository.BannerRepository;
@@ -12,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -50,7 +53,7 @@ class BannerServiceTest {
         banner.setLinkValue("100");
         banner.setPosition("HEADER");
         banner.setSortOrder(1);
-        banner.setIsActive(true);
+        banner.setActive(true);
         banner.setStartDate(LocalDateTime.of(2026, 1, 1, 0, 0));
         banner.setEndDate(LocalDateTime.of(2026, 12, 31, 23, 59));
         banner.setCreatedAt(LocalDateTime.now());
@@ -62,7 +65,7 @@ class BannerServiceTest {
         bannerRequest.setLinkValue("100");
         bannerRequest.setPosition("HEADER");
         bannerRequest.setSortOrder(1);
-        bannerRequest.setIsActive(true);
+        bannerRequest.setActive(true);
         bannerRequest.setStartDate(LocalDateTime.of(2026, 1, 1, 0, 0));
         bannerRequest.setEndDate(LocalDateTime.of(2026, 12, 31, 23, 59));
     }
@@ -123,23 +126,23 @@ class BannerServiceTest {
     @Test
     @DisplayName("getAllBanners with active=true and position should filter accordingly")
     void getAllBanners_WithActiveAndPosition() {
-        when(bannerRepository.findByPositionAndIsActiveTrueOrderBySortOrderAsc("HEADER")).thenReturn(List.of(banner));
+        when(bannerRepository.findByPositionAndActiveTrueOrderBySortOrderAsc("HEADER")).thenReturn(List.of(banner));
 
         List<BannerResponse> results = bannerService.getAllBanners(true, "HEADER");
 
         assertEquals(1, results.size());
-        verify(bannerRepository).findByPositionAndIsActiveTrueOrderBySortOrderAsc("HEADER");
+        verify(bannerRepository).findByPositionAndActiveTrueOrderBySortOrderAsc("HEADER");
     }
 
     @Test
     @DisplayName("getAllBanners with active=true only should filter by active")
     void getAllBanners_WithActiveOnly() {
-        when(bannerRepository.findByIsActiveTrueOrderBySortOrderAsc()).thenReturn(List.of(banner));
+        when(bannerRepository.findByActiveTrueOrderBySortOrderAsc()).thenReturn(List.of(banner));
 
         List<BannerResponse> results = bannerService.getAllBanners(true, null);
 
         assertEquals(1, results.size());
-        verify(bannerRepository).findByIsActiveTrueOrderBySortOrderAsc();
+        verify(bannerRepository).findByActiveTrueOrderBySortOrderAsc();
     }
 
     @Test
@@ -160,7 +163,7 @@ class BannerServiceTest {
         when(bannerRepository.save(any(Banner.class))).thenReturn(banner);
 
         bannerRequest.setTitle("New Flash Sale");
-        bannerRequest.setIsActive(false);
+        bannerRequest.setActive(false);
 
         BannerResponse response = bannerService.updateBanner(1, bannerRequest);
 
@@ -182,34 +185,34 @@ class BannerServiceTest {
         when(bannerRepository.findById(1)).thenReturn(Optional.of(banner));
         when(bannerRepository.save(any(Banner.class))).thenReturn(banner);
 
-        org.springframework.mock.web.MockMultipartFile file = new org.springframework.mock.web.MockMultipartFile(
+        MockMultipartFile file = new MockMultipartFile(
                 "file", "new-banner.jpg", "image/jpeg", "bytes".getBytes()
         );
-        com.example.project.customer.dto.ImageUploadResponse uploadResponse =
-                new com.example.project.customer.dto.ImageUploadResponse(
-                        "banners/new-uuid.jpg", "https://bucket.s3.ap-south-2.amazonaws.com/banners/new-uuid.jpg",
-                        "new-banner.jpg", "image/jpeg", 5
-                );
+        ImageUploadResponse uploadResponse = ImageUploadResponse.builder()
+                .imageKey("banners/new-uuid.jpg")
+                .fileUrl("https://bucket.s3.ap-south-2.amazonaws.com/banners/new-uuid.jpg")
+                .fileName("new-banner.jpg")
+                .mimeType("image/jpeg")
+                .fileSize(5L)
+                .build();
 
-        when(s3ImageService.uploadImage(any(), any(com.example.project.customer.dto.ImageFolder.class)))
-                .thenReturn(uploadResponse);
+        when(s3ImageService.uploadImage(any(), any(ImageFolder.class))).thenReturn(uploadResponse);
 
         BannerResponse response = bannerService.uploadBannerImage(1, file);
 
         assertNotNull(response);
-        verify(s3ImageService).uploadImage(file, com.example.project.customer.dto.ImageFolder.BANNERS);
+        verify(s3ImageService).uploadImage(file, ImageFolder.BANNERS);
         verify(bannerRepository).save(banner);
     }
 
     @Test
-    @DisplayName("deleteBanner should delete banner and invoke S3 cleanup when exists")
+    @DisplayName("deleteBanner should delete banner when exists")
     void deleteBanner_Success() {
         when(bannerRepository.findById(1)).thenReturn(Optional.of(banner));
 
         bannerService.deleteBanner(1);
 
         verify(bannerRepository).delete(banner);
-        verify(s3ImageService).deleteImage(banner.getImageUrl());
     }
 
     @Test

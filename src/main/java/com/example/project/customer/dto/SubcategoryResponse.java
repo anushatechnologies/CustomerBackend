@@ -1,7 +1,30 @@
 package com.example.project.customer.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.time.LocalDateTime;
 
-public record SubcategoryResponse(Integer subcategoryId, Integer categoryId, String name, String slug,
-                                  String imageUrl, boolean active, Integer sortOrder, LocalDateTime createdAt) {
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class SubcategoryResponse {
+    private Integer subcategoryId;
+    private Integer categoryId;
+    private String name;
+    private String slug;
+    private String imageUrl;
+
+    @JsonProperty("active")
+    private boolean active;
+
+    private Integer sortOrder;
+    private Integer productCount;
+    private LocalDateTime createdAt;
 }

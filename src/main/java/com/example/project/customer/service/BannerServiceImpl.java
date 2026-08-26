@@ -26,68 +26,95 @@ public class BannerServiceImpl implements BannerService {
 
     @Override
     public BannerResponse createBanner(BannerRequest request) {
-        Banner banner = new Banner();
-        applyRequest(banner, request);
-        return toResponse(bannerRepository.save(banner));
+        Banner banner = Banner.builder()
+                .title(request.getTitle())
+                .subtitle(request.getSubtitle())
+                .imageUrl(request.getImageUrl())
+                .linkType(request.getLinkType())
+                .linkValue(request.getLinkValue())
+                .position(request.getPosition())
+                .sortOrder(request.getSortOrder() != null ? request.getSortOrder() : 0)
+                .active(request.getActive() != null ? request.getActive() : true)
+                .startDate(request.getStartDate())
+                .endDate(request.getEndDate())
+                .build();
+
+        return mapToResponse(bannerRepository.save(banner));
     }
 
     @Override
     @Transactional(readOnly = true)
     public BannerResponse getBannerById(Integer id) {
-        return toResponse(findBanner(id));
+        Banner banner = findBanner(id);
+        return mapToResponse(banner);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<BannerResponse> getAllBanners(Boolean active, String position) {
         List<Banner> banners;
-        if (Boolean.TRUE.equals(active) && position != null && !position.isBlank()) {
-            banners = bannerRepository.findByPositionAndIsActiveTrueOrderBySortOrderAsc(position);
+        if (position != null && !position.isBlank()) {
+            if (Boolean.TRUE.equals(active)) {
+                banners = bannerRepository.findByPositionAndActiveTrueOrderBySortOrderAsc(position.trim());
+            } else {
+                banners = bannerRepository.findByPositionOrderBySortOrderAsc(position.trim());
+            }
         } else if (Boolean.TRUE.equals(active)) {
-            banners = bannerRepository.findByIsActiveTrueOrderBySortOrderAsc();
-        } else if (position != null && !position.isBlank()) {
-            banners = bannerRepository.findByPositionOrderBySortOrderAsc(position);
+            banners = bannerRepository.findByActiveTrueOrderBySortOrderAsc();
         } else {
             banners = bannerRepository.findAllByOrderBySortOrderAsc();
         }
-        return banners.stream().map(this::toResponse).toList();
+
+        return banners.stream().map(this::mapToResponse).toList();
     }
 
     @Override
     public BannerResponse updateBanner(Integer id, BannerRequest request) {
         Banner banner = findBanner(id);
-        applyRequest(banner, request);
-        return toResponse(bannerRepository.save(banner));
+
+        banner.setTitle(request.getTitle());
+        if (request.getSubtitle() != null) {
+            banner.setSubtitle(request.getSubtitle());
+        }
+        if (request.getImageUrl() != null) {
+            banner.setImageUrl(request.getImageUrl());
+        }
+        if (request.getLinkType() != null) {
+            banner.setLinkType(request.getLinkType());
+        }
+        if (request.getLinkValue() != null) {
+            banner.setLinkValue(request.getLinkValue());
+        }
+        if (request.getPosition() != null) {
+            banner.setPosition(request.getPosition());
+        }
+        if (request.getSortOrder() != null) {
+            banner.setSortOrder(request.getSortOrder());
+        }
+        if (request.getActive() != null) {
+            banner.setActive(request.getActive());
+        }
+        if (request.getStartDate() != null) {
+            banner.setStartDate(request.getStartDate());
+        }
+        if (request.getEndDate() != null) {
+            banner.setEndDate(request.getEndDate());
+        }
+
+        return mapToResponse(bannerRepository.save(banner));
     }
 
     @Override
     public BannerResponse uploadBannerImage(Integer id, MultipartFile file) {
         Banner banner = findBanner(id);
         ImageUploadResponse uploadResponse = s3ImageService.uploadImage(file, ImageFolder.BANNERS);
-
-        // If replacing an existing S3 image, safely clean up the old one
-        if (banner.getImageUrl() != null && !banner.getImageUrl().isBlank()) {
-            try {
-                s3ImageService.deleteImage(banner.getImageUrl());
-            } catch (Exception e) {
-                log.warn("Failed to delete old banner image from S3: {}", banner.getImageUrl(), e);
-            }
-        }
-
         banner.setImageUrl(uploadResponse.getImageUrl());
-        return toResponse(bannerRepository.save(banner));
+        return mapToResponse(bannerRepository.save(banner));
     }
 
     @Override
     public void deleteBanner(Integer id) {
         Banner banner = findBanner(id);
-        if (banner.getImageUrl() != null && !banner.getImageUrl().isBlank()) {
-            try {
-                s3ImageService.deleteImage(banner.getImageUrl());
-            } catch (Exception e) {
-                log.warn("Failed to delete banner image from S3 during entity delete: {}", banner.getImageUrl(), e);
-            }
-        }
         bannerRepository.delete(banner);
     }
 
@@ -96,31 +123,20 @@ public class BannerServiceImpl implements BannerService {
                 .orElseThrow(() -> new BannerNotFoundException("Banner not found with id: " + id));
     }
 
-    private void applyRequest(Banner banner, BannerRequest request) {
-        banner.setTitle(request.getTitle());
-        banner.setImageUrl(request.getImageUrl());
-        banner.setLinkType(request.getLinkType());
-        banner.setLinkValue(request.getLinkValue());
-        banner.setPosition(request.getPosition());
-        banner.setSortOrder(request.getSortOrder() != null ? request.getSortOrder() : 0);
-        banner.setIsActive(request.getIsActive() != null ? request.getIsActive() : true);
-        banner.setStartDate(request.getStartDate());
-        banner.setEndDate(request.getEndDate());
-    }
-
-    private BannerResponse toResponse(Banner banner) {
-        return new BannerResponse(
-                banner.getBannerId(),
-                banner.getTitle(),
-                banner.getImageUrl(),
-                banner.getLinkType(),
-                banner.getLinkValue(),
-                banner.getPosition(),
-                banner.getSortOrder(),
-                banner.getIsActive(),
-                banner.getStartDate(),
-                banner.getEndDate(),
-                banner.getCreatedAt()
-        );
+    private BannerResponse mapToResponse(Banner banner) {
+        return BannerResponse.builder()
+                .bannerId(banner.getBannerId())
+                .title(banner.getTitle())
+                .subtitle(banner.getSubtitle())
+                .imageUrl(banner.getImageUrl())
+                .linkType(banner.getLinkType())
+                .linkValue(banner.getLinkValue())
+                .position(banner.getPosition())
+                .sortOrder(banner.getSortOrder())
+                .active(banner.getActive())
+                .startDate(banner.getStartDate())
+                .endDate(banner.getEndDate())
+                .createdAt(banner.getCreatedAt())
+                .build();
     }
 }

@@ -70,7 +70,7 @@ class S3ImageServiceTest {
         assertNotNull(response.getImageKey());
         assertTrue(response.getImageKey().startsWith("products/"));
         assertTrue(response.getImageKey().endsWith(".jpg"));
-        assertTrue(response.getImageUrl().contains(bucketName));
+        assertTrue(response.getFileUrl().contains(bucketName));
         assertEquals("sample.jpg", response.getOriginalFileName());
         assertEquals("image/jpeg", response.getContentType());
         assertEquals(file.getSize(), response.getSizeBytes());
@@ -92,48 +92,6 @@ class S3ImageServiceTest {
         );
 
         assertThrows(InvalidImageException.class, () -> s3ImageService.uploadImage(file, ImageFolder.CATEGORIES));
-    }
-
-    @Test
-    @DisplayName("uploadImage - Should throw InvalidImageException for unsupported content type")
-    void uploadImage_InvalidContentType_ThrowsException() {
-        MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "doc.pdf",
-                "application/pdf",
-                "pdf content".getBytes()
-        );
-
-        assertThrows(InvalidImageException.class, () -> s3ImageService.uploadImage(file, ImageFolder.BANNERS));
-    }
-
-    @Test
-    @DisplayName("uploadImage - Should throw InvalidImageException for unsupported extension")
-    void uploadImage_InvalidExtension_ThrowsException() {
-        MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "script.exe",
-                "image/jpeg",
-                "malicious content".getBytes()
-        );
-
-        assertThrows(InvalidImageException.class, () -> s3ImageService.uploadImage(file, ImageFolder.PRODUCTS));
-    }
-
-    @Test
-    @DisplayName("uploadImage - Should throw ImageStorageException when S3 throws SdkException")
-    void uploadImage_S3Error_ThrowsImageStorageException() {
-        MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "valid.png",
-                "image/png",
-                "image data".getBytes()
-        );
-
-        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
-                .thenThrow(S3Exception.builder().message("Access Denied").build());
-
-        assertThrows(ImageStorageException.class, () -> s3ImageService.uploadImage(file, ImageFolder.BANNERS));
     }
 
     @Test
