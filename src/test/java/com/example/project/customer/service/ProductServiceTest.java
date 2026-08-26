@@ -46,6 +46,7 @@ class ProductServiceTest {
     void setUp() {
         Subcategory subcategory = new Subcategory();
         subcategory.setSubcategoryId(5);
+
         product = new Product();
         product.setProductId(1);
         product.setSubcategory(subcategory);
@@ -53,52 +54,113 @@ class ProductServiceTest {
         product.setPrice(BigDecimal.TEN);
         product.setStockQty(10);
         product.setUnit("piece");
-        request = new ProductRequest(5, "Steel Rebar", "Construction steel", BigDecimal.TEN,
-                10, "piece", null, true);
+
+        request = ProductRequest.builder()
+                .subcategoryId(5)
+                .title("Steel Rebar")
+                .description("Construction steel")
+                .price(BigDecimal.TEN)
+                .stockQty(10)
+                .unit("piece")
+                .imageUrl(null)
+                .active(true)
+                .build();
     }
 
     @Test
     void createAlwaysStartsPendingAndInactive() {
         Subcategory subcategory = product.getSubcategory();
-        when(subcategoryRepository.findById(5)).thenReturn(Optional.of(subcategory));
-        when(repository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(subcategoryRepository.findById(5))
+                .thenReturn(Optional.of(subcategory));
+
+        when(repository.save(any(Product.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         service.create(request);
 
-        ArgumentCaptor<Product> savedCaptor = ArgumentCaptor.forClass(Product.class);
+        ArgumentCaptor<Product> savedCaptor =
+                ArgumentCaptor.forClass(Product.class);
+
         verify(repository).save(savedCaptor.capture());
+
         Product saved = savedCaptor.getValue();
-        assertEquals(ApprovalStatus.PENDING, saved.getApprovalStatus());
+
+        assertEquals(
+                ApprovalStatus.PENDING,
+                saved.getApprovalStatus()
+        );
+
         assertFalse(saved.isActive());
     }
 
     @Test
     void customerListQueriesOnlyApprovedActiveProducts() {
-        when(repository.findByApprovalStatusAndActive(ApprovalStatus.APPROVED, true)).thenReturn(List.of(product));
 
-        service.getAll();
+        when(repository.findByApprovalStatusAndActive(
+                ApprovalStatus.APPROVED,
+                true
+        )).thenReturn(List.of(product));
 
-        verify(repository).findByApprovalStatusAndActive(ApprovalStatus.APPROVED, true);
+        service.getAll(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "newest",
+                1,
+                20
+        );
+
+        verify(repository).findByApprovalStatusAndActive(
+                ApprovalStatus.APPROVED,
+                true
+        );
     }
 
     @Test
     void activationRequiresApproval() {
-        when(repository.findById(1)).thenReturn(Optional.of(product));
+        when(repository.findById(1))
+                .thenReturn(Optional.of(product));
 
-        assertThrows(ResourceConflictException.class, () -> service.activate(1));
+        assertThrows(
+                ResourceConflictException.class,
+                () -> service.activate(1)
+        );
     }
 
     @Test
     void rejectPersistsReasonAndDisablesProduct() {
+
         product.setApprovalStatus(ApprovalStatus.APPROVED);
         product.setActive(true);
-        when(repository.findById(1)).thenReturn(Optional.of(product));
-        when(repository.save(product)).thenReturn(product);
 
-        service.reject(1, new ProductRejectionRequest("Incomplete specifications"));
+        when(repository.findById(1))
+                .thenReturn(Optional.of(product));
 
-        assertEquals(ApprovalStatus.REJECTED, product.getApprovalStatus());
-        assertEquals("Incomplete specifications", product.getRejectionReason());
+        when(repository.save(product))
+                .thenReturn(product);
+
+        service.reject(
+                1,
+                new ProductRejectionRequest(
+                        "Incomplete specifications"
+                )
+        );
+
+        assertEquals(
+                ApprovalStatus.REJECTED,
+                product.getApprovalStatus()
+        );
+
+        assertEquals(
+                "Incomplete specifications",
+                product.getRejectionReason()
+        );
+
         assertFalse(product.isActive());
     }
 }
