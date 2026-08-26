@@ -16,6 +16,8 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.EnumType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -116,15 +118,22 @@ public class Product {
     @Convert(converter = StringMapConverter.class)
     @Builder.Default
     private Map<String, String> specifications = new LinkedHashMap<>();
+@Enumerated(EnumType.STRING)
+@Column(name = "approval_status", nullable = false)
+@Builder.Default
+private ApprovalStatus approvalStatus = ApprovalStatus.PENDING;
 
-    @Column(name = "bulk_pricing_tiers", columnDefinition = "TEXT")
-    @Convert(converter = BulkPricingTiersConverter.class)
-    @Builder.Default
-    private List<BulkPricingTier> bulkPricingTiers = new ArrayList<>();
+@Column(name = "rejection_reason")
+private String rejectionReason;
 
-    @Column(name = "vendor_info", columnDefinition = "TEXT")
-    @Convert(converter = VendorInfoConverter.class)
-    private VendorInfo vendor;
+@Column(name = "bulk_pricing_tiers", columnDefinition = "TEXT")
+@Convert(converter = BulkPricingTiersConverter.class)
+@Builder.Default
+private List<BulkPricingTier> bulkPricingTiers = new ArrayList<>();
+
+@Column(name = "vendor_info", columnDefinition = "TEXT")
+@Convert(converter = VendorInfoConverter.class)
+private VendorInfo vendor;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

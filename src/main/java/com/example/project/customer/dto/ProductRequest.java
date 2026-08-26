@@ -6,6 +6,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -24,6 +26,7 @@ import java.util.Map;
 public class ProductRequest {
 
     @NotNull(message = "Subcategory ID is required")
+    @Positive(message = "Subcategory ID must be positive")
     private Integer subcategoryId;
 
     private Integer categoryId;
@@ -46,9 +49,10 @@ public class ProductRequest {
     private BigDecimal mrp;
 
     @NotNull(message = "Stock quantity is required")
+    @PositiveOrZero(message = "Stock quantity cannot be negative")
     private Integer stockQty;
 
-    @NotBlank(message = "Unit of measurement is required (e.g. MT, kg, pcs)")
+    @NotBlank(message = "Unit of measurement is required")
     private String unit;
 
     @Builder.Default
