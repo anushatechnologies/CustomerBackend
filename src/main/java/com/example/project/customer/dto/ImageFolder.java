@@ -3,6 +3,7 @@ package com.example.project.customer.dto;
 public enum ImageFolder {
     PRODUCTS("products"),
     CATEGORIES("categories"),
+    SUBCATEGORIES("subcategories"),
     BANNERS("banners"),
     DOCUMENTS("documents"),
     ATTACHMENTS("attachments"),

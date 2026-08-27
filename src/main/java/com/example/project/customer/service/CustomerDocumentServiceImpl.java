@@ -21,11 +21,14 @@ public class CustomerDocumentServiceImpl implements CustomerDocumentService {
 
     private final CustomerDocumentRepository documentRepository;
     private final CustomerRepository customerRepository;
+    private final S3ImageService s3ImageService;
 
     public CustomerDocumentServiceImpl(CustomerDocumentRepository documentRepository,
-                                       CustomerRepository customerRepository) {
+                                       CustomerRepository customerRepository,
+                                       S3ImageService s3ImageService) {
         this.documentRepository = documentRepository;
         this.customerRepository = customerRepository;
+        this.s3ImageService = s3ImageService;
     }
 
     @Override
@@ -43,6 +46,8 @@ public class CustomerDocumentServiceImpl implements CustomerDocumentService {
                     return newDoc;
                 });
 
+        String oldFileUrl = document.getFileUrl();
+
         document.setTitle(request.title());
         document.setDocumentNumber(request.documentNumber());
         document.setFileName(request.fileName());
@@ -54,7 +59,13 @@ public class CustomerDocumentServiceImpl implements CustomerDocumentService {
         document.setVerifiedAt(null);
         document.setUploadedAt(LocalDateTime.now());
 
-        return toResponse(documentRepository.save(document));
+        CustomerDocument saved = documentRepository.save(document);
+
+        if (oldFileUrl != null && !oldFileUrl.isBlank() && !oldFileUrl.equals(request.fileUrl())) {
+            s3ImageService.deleteImage(oldFileUrl);
+        }
+
+        return toResponse(saved);
     }
 
     @Override
@@ -100,7 +111,13 @@ public class CustomerDocumentServiceImpl implements CustomerDocumentService {
 
     @Override
     public void deleteDocument(Integer documentId) {
-        documentRepository.delete(findDocument(documentId));
+        CustomerDocument doc = findDocument(documentId);
+        String fileUrl = doc.getFileUrl();
+        documentRepository.delete(doc);
+
+        if (fileUrl != null && !fileUrl.isBlank()) {
+            s3ImageService.deleteImage(fileUrl);
+        }
     }
 
     private CustomerDocument findDocument(Integer documentId) {

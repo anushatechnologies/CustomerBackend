@@ -175,4 +175,40 @@ class ProductServiceTest {
 
         assertFalse(product.isActive());
     }
+
+    @Test
+    void deleteCleansUpMainAndGalleryS3Images() {
+        product.setImageUrl("https://s3/products/main.jpg");
+        product.setImages(List.of("https://s3/products/main.jpg", "https://s3/products/g1.jpg", "https://s3/products/g2.jpg"));
+
+        when(repository.findById(1)).thenReturn(Optional.of(product));
+
+        service.delete(1);
+
+        verify(repository).delete(product);
+        verify(s3ImageService).deleteImage("https://s3/products/main.jpg");
+        verify(s3ImageService).deleteImage("https://s3/products/g1.jpg");
+        verify(s3ImageService).deleteImage("https://s3/products/g2.jpg");
+    }
+
+    @Test
+    void updateCleansUpRemovedS3Images() {
+        product.setImageUrl("https://s3/products/old-main.jpg");
+        product.setImages(List.of("https://s3/products/g1.jpg", "https://s3/products/g2-removed.jpg"));
+        product.setApprovalStatus(ApprovalStatus.APPROVED);
+
+        request.setImageUrl("https://s3/products/new-main.jpg");
+        request.setImages(List.of("https://s3/products/g1.jpg", "https://s3/products/g3-new.jpg"));
+
+        when(repository.findById(1)).thenReturn(Optional.of(product));
+        when(subcategoryRepository.findById(5)).thenReturn(Optional.of(product.getSubcategory()));
+        when(repository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.update(1, request);
+
+        // old-main.jpg was replaced and not in new gallery, so it should be deleted
+        verify(s3ImageService).deleteImage("https://s3/products/old-main.jpg");
+        // g2-removed.jpg was in old gallery but not in new gallery, so it should be deleted
+        verify(s3ImageService).deleteImage("https://s3/products/g2-removed.jpg");
+    }
 }

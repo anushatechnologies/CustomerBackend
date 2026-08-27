@@ -253,6 +253,8 @@ public class ProductServiceImpl implements ProductService {
     ) {
 
         Product product = findProduct(id);
+        String oldMainImage = product.getImageUrl();
+        List<String> oldGalleryImages = product.getImages() != null ? new ArrayList<>(product.getImages()) : List.of();
 
         Subcategory subcategory =
                 subcategoryRepository.findById(
@@ -277,9 +279,24 @@ public class ProductServiceImpl implements ProductService {
             product.setActive(false);
         }
 
-        return mapToResponse(
-                repository.save(product)
-        );
+        Product saved = repository.save(product);
+
+        // Clean up old main image if replaced and no longer in use
+        String newMainImage = saved.getImageUrl();
+        List<String> newGalleryImages = saved.getImages() != null ? saved.getImages() : List.of();
+
+        if (oldMainImage != null && !oldMainImage.isBlank() && !oldMainImage.equals(newMainImage) && !newGalleryImages.contains(oldMainImage)) {
+            s3ImageService.deleteImage(oldMainImage);
+        }
+
+        // Clean up old gallery images that are removed and not used as main image
+        for (String oldImg : oldGalleryImages) {
+            if (oldImg != null && !oldImg.isBlank() && !newGalleryImages.contains(oldImg) && !oldImg.equals(newMainImage)) {
+                s3ImageService.deleteImage(oldImg);
+            }
+        }
+
+        return mapToResponse(saved);
     }
 
     @Override

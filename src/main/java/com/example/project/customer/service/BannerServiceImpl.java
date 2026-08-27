@@ -71,6 +71,7 @@ public class BannerServiceImpl implements BannerService {
     @Override
     public BannerResponse updateBanner(Integer id, BannerRequest request) {
         Banner banner = findBanner(id);
+        String oldImageUrl = banner.getImageUrl();
 
         banner.setTitle(request.getTitle());
         if (request.getSubtitle() != null) {
@@ -101,7 +102,13 @@ public class BannerServiceImpl implements BannerService {
             banner.setEndDate(request.getEndDate());
         }
 
-        return mapToResponse(bannerRepository.save(banner));
+        Banner saved = bannerRepository.save(banner);
+
+        if (request.getImageUrl() != null && oldImageUrl != null && !oldImageUrl.isBlank() && !oldImageUrl.equals(request.getImageUrl())) {
+            s3ImageService.deleteImage(oldImageUrl);
+        }
+
+        return mapToResponse(saved);
     }
 
     @Override

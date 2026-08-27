@@ -96,6 +96,45 @@ public class S3ImageServiceImpl implements S3ImageService {
     }
 
     @Override
+    public List<ImageUploadResponse> uploadImages(List<MultipartFile> files, ImageFolder folder) {
+        ImageFolder targetFolder = folder != null ? folder : ImageFolder.OTHER;
+        return uploadImages(files, targetFolder.getFolderName());
+    }
+
+    @Override
+    public List<ImageUploadResponse> uploadImages(List<MultipartFile> files, String folderName) {
+        if (files == null || files.isEmpty()) {
+            return List.of();
+        }
+
+        List<ImageUploadResponse> uploadedResponses = new java.util.ArrayList<>();
+        try {
+            for (MultipartFile file : files) {
+                ImageUploadResponse response = uploadImage(file, folderName);
+                uploadedResponses.add(response);
+            }
+            return uploadedResponses;
+        } catch (Exception e) {
+            log.error("Batch upload failed in folder {}. Rolling back {} uploaded files", folderName, uploadedResponses.size(), e);
+            for (ImageUploadResponse uploaded : uploadedResponses) {
+                deleteImage(uploaded.getImageKey());
+            }
+            throw e;
+        }
+    }
+
+    @Override
+    public ImageUploadResponse uploadFile(MultipartFile file, ImageFolder folder) {
+        ImageFolder targetFolder = folder != null ? folder : ImageFolder.DOCUMENTS;
+        return uploadImage(file, targetFolder.getFolderName());
+    }
+
+    @Override
+    public ImageUploadResponse uploadFile(MultipartFile file, String folderName) {
+        return uploadImage(file, folderName != null ? folderName : ImageFolder.DOCUMENTS.getFolderName());
+    }
+
+    @Override
     public byte[] downloadImage(String imageKey) {
         if (imageKey == null || imageKey.isBlank()) {
             throw new InvalidImageException("Image key must not be blank");
@@ -139,6 +178,18 @@ public class S3ImageServiceImpl implements S3ImageService {
             log.info("[S3_DELETE_SUCCESS] bucket={}, key={}", bucketName, key);
         } catch (SdkException e) {
             log.warn("[S3_DELETE_FAILED] bucket={}, key={}, error={}", bucketName, key, e.getMessage());
+        }
+    }
+
+    @Override
+    public void deleteImages(List<String> imageKeysOrUrls) {
+        if (imageKeysOrUrls == null || imageKeysOrUrls.isEmpty()) {
+            return;
+        }
+        for (String item : imageKeysOrUrls) {
+            if (item != null && !item.isBlank()) {
+                deleteImage(item);
+            }
         }
     }
 

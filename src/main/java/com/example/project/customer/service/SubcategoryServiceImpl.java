@@ -25,6 +25,7 @@ public class SubcategoryServiceImpl implements SubcategoryService {
     private final SubcategoryRepository repository;
     private final CategoryRepository categoryRepository;
     private final ProductRepository productRepository;
+    private final S3ImageService s3ImageService;
 
     @Override
     public SubcategoryResponse create(SubcategoryRequest request) {
@@ -80,6 +81,7 @@ public class SubcategoryServiceImpl implements SubcategoryService {
     @Override
     public SubcategoryResponse update(Integer id, SubcategoryRequest request) {
         Subcategory subcategory = findSubcategory(id);
+        String oldImageUrl = subcategory.getImageUrl();
 
         if (request.getCategoryId() != null && !request.getCategoryId().equals(subcategory.getCategory().getCategoryId())) {
             Category category = categoryRepository.findById(request.getCategoryId())
@@ -104,13 +106,24 @@ public class SubcategoryServiceImpl implements SubcategoryService {
             subcategory.setSortOrder(request.getSortOrder());
         }
 
-        return mapToResponse(repository.save(subcategory));
+        Subcategory saved = repository.save(subcategory);
+
+        if (request.getImageUrl() != null && oldImageUrl != null && !oldImageUrl.isBlank() && !oldImageUrl.equals(request.getImageUrl())) {
+            s3ImageService.deleteImage(oldImageUrl);
+        }
+
+        return mapToResponse(saved);
     }
 
     @Override
     public void delete(Integer id) {
         Subcategory subcategory = findSubcategory(id);
+        String imageUrl = subcategory.getImageUrl();
         repository.delete(subcategory);
+
+        if (imageUrl != null && !imageUrl.isBlank()) {
+            s3ImageService.deleteImage(imageUrl);
+        }
     }
 
     private Subcategory findSubcategory(Integer id) {

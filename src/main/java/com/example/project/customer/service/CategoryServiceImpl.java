@@ -26,6 +26,7 @@ public class CategoryServiceImpl implements CategoryService {
     private final CategoryRepository repository;
     private final SubcategoryRepository subcategoryRepository;
     private final ProductRepository productRepository;
+    private final S3ImageService s3ImageService;
 
     @Override
     public CategoryResponse create(CategoryRequest request) {
@@ -72,6 +73,7 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     public CategoryResponse update(Integer id, CategoryRequest request) {
         Category category = findCategory(id);
+        String oldImageUrl = category.getImageUrl();
         String slug = generateSlug(request.getName(), request.getSlug());
         if (repository.existsBySlugIgnoreCaseAndCategoryIdNot(slug, id)) {
             throw new ResourceConflictException("Category already exists with slug: " + slug);
@@ -89,13 +91,24 @@ public class CategoryServiceImpl implements CategoryService {
             category.setSortOrder(request.getSortOrder());
         }
 
-        return mapToResponse(repository.save(category), false);
+        Category saved = repository.save(category);
+
+        if (request.getImageUrl() != null && oldImageUrl != null && !oldImageUrl.isBlank() && !oldImageUrl.equals(request.getImageUrl())) {
+            s3ImageService.deleteImage(oldImageUrl);
+        }
+
+        return mapToResponse(saved, false);
     }
 
     @Override
     public void delete(Integer id) {
         Category category = findCategory(id);
+        String imageUrl = category.getImageUrl();
         repository.delete(category);
+
+        if (imageUrl != null && !imageUrl.isBlank()) {
+            s3ImageService.deleteImage(imageUrl);
+        }
     }
 
     private Category findCategory(Integer id) {

@@ -196,4 +196,71 @@ class ImageUploadControllerTest {
 
         verify(s3ImageService).deleteImage("products/test.png");
     }
+
+    @Test
+    @DisplayName("POST /api/images/subcategories - Should upload image to subcategories folder")
+    void uploadSubcategoryImage_Success() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "subcat.webp", "image/webp", "bytes".getBytes()
+        );
+
+        ImageUploadResponse response = ImageUploadResponse.builder()
+                .imageKey("subcategories/uuid.webp")
+                .fileUrl("https://bucket.s3.ap-south-2.amazonaws.com/subcategories/uuid.webp")
+                .fileName("subcat.webp")
+                .mimeType("image/webp")
+                .fileSize(10L)
+                .build();
+
+        when(s3ImageService.uploadImage(any(), eq(ImageFolder.SUBCATEGORIES))).thenReturn(response);
+
+        mockMvc.perform(multipart("/api/images/subcategories").file(file))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.imageKey").value("subcategories/uuid.webp"));
+    }
+
+    @Test
+    @DisplayName("POST /api/images/documents - Should upload document to documents folder")
+    void uploadDocument_Success() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "doc.pdf", "application/pdf", "pdf bytes".getBytes()
+        );
+
+        ImageUploadResponse response = ImageUploadResponse.builder()
+                .imageKey("documents/uuid.pdf")
+                .fileUrl("https://bucket.s3.ap-south-2.amazonaws.com/documents/uuid.pdf")
+                .fileName("doc.pdf")
+                .mimeType("application/pdf")
+                .fileSize(20L)
+                .build();
+
+        when(s3ImageService.uploadFile(any(), eq(ImageFolder.DOCUMENTS))).thenReturn(response);
+
+        mockMvc.perform(multipart("/api/images/documents").file(file))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.imageKey").value("documents/uuid.pdf"));
+    }
+
+    @Test
+    @DisplayName("POST /api/images/multiple - Should upload multiple images")
+    void uploadMultipleImages_Success() throws Exception {
+        MockMultipartFile file1 = new MockMultipartFile(
+                "files", "img1.jpg", "image/jpeg", "bytes1".getBytes()
+        );
+        MockMultipartFile file2 = new MockMultipartFile(
+                "files", "img2.jpg", "image/jpeg", "bytes2".getBytes()
+        );
+
+        ImageUploadResponse r1 = ImageUploadResponse.builder().imageKey("products/img1.jpg").build();
+        ImageUploadResponse r2 = ImageUploadResponse.builder().imageKey("products/img2.jpg").build();
+
+        when(s3ImageService.uploadImages(any(), eq("products"))).thenReturn(java.util.List.of(r1, r2));
+
+        mockMvc.perform(multipart("/api/images/multiple").file(file1).file(file2).param("folder", "products"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.length()").value(2));
+    }
 }

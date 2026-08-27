@@ -206,13 +206,28 @@ class BannerServiceTest {
     }
 
     @Test
-    @DisplayName("deleteBanner should delete banner when exists")
+    @DisplayName("updateBanner should delete old S3 image when replaced")
+    void updateBanner_ReplacesOldImage() {
+        when(bannerRepository.findById(1)).thenReturn(Optional.of(banner));
+        when(bannerRepository.save(any(Banner.class))).thenReturn(banner);
+
+        bannerRequest.setImageUrl("https://example.com/new-replaced-banner.jpg");
+
+        bannerService.updateBanner(1, bannerRequest);
+
+        verify(bannerRepository).save(banner);
+        verify(s3ImageService).deleteImage("https://example.com/banner.jpg");
+    }
+
+    @Test
+    @DisplayName("deleteBanner should delete banner and S3 image when exists")
     void deleteBanner_Success() {
         when(bannerRepository.findById(1)).thenReturn(Optional.of(banner));
 
         bannerService.deleteBanner(1);
 
         verify(bannerRepository).delete(banner);
+        verify(s3ImageService).deleteImage("https://example.com/banner.jpg");
     }
 
     @Test

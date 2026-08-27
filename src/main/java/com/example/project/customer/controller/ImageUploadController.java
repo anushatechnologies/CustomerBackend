@@ -47,11 +47,34 @@ public class ImageUploadController {
                 .body(ApiResponse.created("Category image uploaded successfully", response));
     }
 
+    @PostMapping(value = "/subcategories", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<ImageUploadResponse>> uploadSubcategoryImage(@RequestParam("file") MultipartFile file) {
+        ImageUploadResponse response = s3ImageService.uploadImage(file, ImageFolder.SUBCATEGORIES);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.created("Subcategory image uploaded successfully", response));
+    }
+
     @PostMapping(value = "/banners", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<ImageUploadResponse>> uploadBannerImage(@RequestParam("file") MultipartFile file) {
         ImageUploadResponse response = s3ImageService.uploadImage(file, ImageFolder.BANNERS);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.created("Banner image uploaded successfully", response));
+    }
+
+    @PostMapping(value = "/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<ImageUploadResponse>> uploadDocument(@RequestParam("file") MultipartFile file) {
+        ImageUploadResponse response = s3ImageService.uploadFile(file, ImageFolder.DOCUMENTS);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.created("Document uploaded successfully", response));
+    }
+
+    @PostMapping(value = "/multiple", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<java.util.List<ImageUploadResponse>>> uploadMultipleImages(
+            @RequestParam("files") java.util.List<MultipartFile> files,
+            @RequestParam(value = "folder", defaultValue = "products") String folder) {
+        java.util.List<ImageUploadResponse> responses = s3ImageService.uploadImages(files, folder);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.created("Images uploaded successfully", responses));
     }
 
     @GetMapping("/download")

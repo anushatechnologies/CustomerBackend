@@ -38,6 +38,9 @@ class CustomerDocumentServiceTest {
     @Mock
     private CustomerRepository customerRepository;
 
+    @Mock
+    private S3ImageService s3ImageService;
+
     @InjectMocks
     private CustomerDocumentServiceImpl documentService;
 
@@ -151,16 +154,47 @@ class CustomerDocumentServiceTest {
     }
 
     @Test
-    @DisplayName("deleteDocument - Should delete existing document")
+    @DisplayName("deleteDocument - Should delete existing document and clean up S3 file")
     void deleteDocument_Success() {
         CustomerDocument doc = new CustomerDocument();
         doc.setDocumentId(1);
         doc.setCustomer(customer);
+        doc.setFileUrl("https://storage/documents/file.pdf");
 
         when(documentRepository.findById(1)).thenReturn(Optional.of(doc));
 
         documentService.deleteDocument(1);
 
         verify(documentRepository).delete(doc);
+        verify(s3ImageService).deleteImage("https://storage/documents/file.pdf");
+    }
+
+    @Test
+    @DisplayName("submitDocument - Should delete old S3 file when replacing existing document")
+    void submitDocument_ReplacesOldS3File() {
+        CustomerDocument existingDoc = new CustomerDocument();
+        existingDoc.setDocumentId(10);
+        existingDoc.setCustomer(customer);
+        existingDoc.setDocumentType(DocumentType.GST_CERTIFICATE);
+        existingDoc.setFileUrl("https://storage/documents/old-gst.pdf");
+
+        CustomerDocumentRequest request = new CustomerDocumentRequest(
+                DocumentType.GST_CERTIFICATE,
+                "New GST",
+                "27AABCV1234E1Z5",
+                "new-gst.pdf",
+                "https://storage/documents/new-gst.pdf",
+                "2.0 MB",
+                null
+        );
+
+        when(customerRepository.findById(1)).thenReturn(Optional.of(customer));
+        when(documentRepository.findByCustomer_CustomerIdAndDocumentType(1, DocumentType.GST_CERTIFICATE))
+                .thenReturn(Optional.of(existingDoc));
+        when(documentRepository.save(any(CustomerDocument.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        documentService.submitDocument(1, request);
+
+        verify(s3ImageService).deleteImage("https://storage/documents/old-gst.pdf");
     }
 }

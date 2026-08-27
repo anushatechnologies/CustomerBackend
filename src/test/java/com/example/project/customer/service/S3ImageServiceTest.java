@@ -164,4 +164,58 @@ class S3ImageServiceTest {
         assertEquals("products/123.jpg", s3ImageService.extractKeyFromUrl("products/123.jpg"));
         assertEquals("banners/xyz.png", s3ImageService.extractKeyFromUrl("https://hinchmart-storage-191481838776-ap-south-2-an.s3.ap-south-2.amazonaws.com/banners/xyz.png"));
     }
+
+    @Test
+    @DisplayName("uploadImages - Should upload multiple images successfully")
+    void uploadImages_BatchSuccess() {
+        MockMultipartFile file1 = new MockMultipartFile("files", "img1.png", "image/png", "content1".getBytes());
+        MockMultipartFile file2 = new MockMultipartFile("files", "img2.jpg", "image/jpeg", "content2".getBytes());
+
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(PutObjectResponse.builder().build());
+
+        java.util.List<ImageUploadResponse> responses = s3ImageService.uploadImages(java.util.List.of(file1, file2), ImageFolder.PRODUCTS);
+
+        assertEquals(2, responses.size());
+        verify(s3Client, org.mockito.Mockito.times(2)).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+    }
+
+    @Test
+    @DisplayName("uploadImages - Should rollback and delete uploaded files when a subsequent upload fails")
+    void uploadImages_BatchFailureRollsBack() {
+        MockMultipartFile file1 = new MockMultipartFile("files", "img1.png", "image/png", "content1".getBytes());
+        MockMultipartFile file2 = new MockMultipartFile("files", "empty.jpg", "image/jpeg", new byte[0]); // will fail validation
+
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(PutObjectResponse.builder().build());
+
+        assertThrows(InvalidImageException.class, () ->
+                s3ImageService.uploadImages(java.util.List.of(file1, file2), ImageFolder.PRODUCTS));
+
+        // file1 was uploaded, so it should have been deleted during rollback
+        verify(s3Client).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    @DisplayName("uploadFile - Should upload document/pdf successfully")
+    void uploadFile_Success() {
+        MockMultipartFile file = new MockMultipartFile("file", "doc.pdf", "application/pdf", "pdf content".getBytes());
+
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(PutObjectResponse.builder().build());
+
+        ImageUploadResponse response = s3ImageService.uploadFile(file, ImageFolder.DOCUMENTS);
+
+        assertNotNull(response);
+        assertTrue(response.getImageKey().startsWith("documents/"));
+        assertTrue(response.getImageKey().endsWith(".pdf"));
+    }
+
+    @Test
+    @DisplayName("deleteImages - Should delete list of keys/urls")
+    void deleteImages_BatchSuccess() {
+        s3ImageService.deleteImages(java.util.List.of("products/p1.jpg", "products/p2.jpg"));
+
+        verify(s3Client, org.mockito.Mockito.times(2)).deleteObject(any(DeleteObjectRequest.class));
+    }
 }
