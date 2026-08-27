@@ -107,15 +107,28 @@ public class BannerServiceImpl implements BannerService {
     @Override
     public BannerResponse uploadBannerImage(Integer id, MultipartFile file) {
         Banner banner = findBanner(id);
+        String oldImageUrl = banner.getImageUrl();
+
         ImageUploadResponse uploadResponse = s3ImageService.uploadImage(file, ImageFolder.BANNERS);
         banner.setImageUrl(uploadResponse.getImageUrl());
-        return mapToResponse(bannerRepository.save(banner));
+        Banner saved = bannerRepository.save(banner);
+
+        if (oldImageUrl != null && !oldImageUrl.isBlank() && !oldImageUrl.equals(uploadResponse.getImageUrl())) {
+            s3ImageService.deleteImage(oldImageUrl);
+        }
+
+        return mapToResponse(saved);
     }
 
     @Override
     public void deleteBanner(Integer id) {
         Banner banner = findBanner(id);
+        String imageUrl = banner.getImageUrl();
         bannerRepository.delete(banner);
+
+        if (imageUrl != null && !imageUrl.isBlank()) {
+            s3ImageService.deleteImage(imageUrl);
+        }
     }
 
     private Banner findBanner(Integer id) {

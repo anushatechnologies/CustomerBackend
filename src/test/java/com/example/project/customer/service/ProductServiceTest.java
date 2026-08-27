@@ -41,6 +41,9 @@ class ProductServiceTest {
     @Mock
     private SubcategoryRepository subcategoryRepository;
 
+    @Mock
+    private S3ImageService s3ImageService;
+
     @InjectMocks
     private ProductServiceImpl service;
 
