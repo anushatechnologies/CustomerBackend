@@ -21,3 +21,5 @@ services:
       FORMAT_SQL: ${FORMAT_SQL:-false}
       AWS_REGION: ${AWS_REGION:-ap-south-2}
       AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME:-hinchmart-storage-191481838776-ap-south-2-an}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}

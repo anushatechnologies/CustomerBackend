@@ -66,6 +66,7 @@ public class S3ImageServiceImpl implements S3ImageService {
         String uniqueFileName = UUID.randomUUID().toString() + extension;
         String s3Key = cleanFolder + "/" + uniqueFileName;
 
+        log.info("[S3_UPLOAD_START] bucket={}, key={}, size={}, contentType={}", bucketName, s3Key, file.getSize(), file.getContentType());
         String imageUrl;
         try {
             PutObjectRequest putObjectRequest = PutObjectRequest.builder()
@@ -76,12 +77,12 @@ public class S3ImageServiceImpl implements S3ImageService {
 
             s3Client.putObject(putObjectRequest, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
             imageUrl = buildImageUrl(s3Key);
-            log.info("Successfully uploaded image to S3: bucket={}, key={}", bucketName, s3Key);
+            log.info("[S3_UPLOAD_SUCCESS] bucket={}, key={}, url={}", bucketName, s3Key, imageUrl);
         } catch (SdkException e) {
-            log.error("S3 upload failed for bucket={}, key={}", bucketName, s3Key, e);
+            log.error("[S3_UPLOAD_FAILED] bucket={}, key={}, error={}", bucketName, s3Key, e.getMessage(), e);
             throw new ImageStorageException("Failed to upload image to S3 storage", e);
         } catch (IOException e) {
-            log.error("Failed to read image stream for key: {}", s3Key, e);
+            log.error("[S3_UPLOAD_READ_FAILED] key={}, error={}", s3Key, e.getMessage(), e);
             throw new ImageStorageException("Failed to read image content for upload", e);
         }
 
@@ -101,6 +102,7 @@ public class S3ImageServiceImpl implements S3ImageService {
         }
 
         String key = extractKeyFromUrl(imageKey);
+        log.info("[S3_DOWNLOAD_START] bucket={}, key={}", bucketName, key);
         try {
             GetObjectRequest getObjectRequest = GetObjectRequest.builder()
                     .bucket(bucketName)
@@ -108,12 +110,13 @@ public class S3ImageServiceImpl implements S3ImageService {
                     .build();
 
             ResponseBytes<GetObjectResponse> objectBytes = s3Client.getObjectAsBytes(getObjectRequest);
+            log.info("[S3_DOWNLOAD_SUCCESS] bucket={}, key={}, bytesReceived={}", bucketName, key, objectBytes.asByteArray().length);
             return objectBytes.asByteArray();
         } catch (NoSuchKeyException e) {
-            log.warn("Image not found in S3 for key: {}", key);
+            log.warn("[S3_DOWNLOAD_NOT_FOUND] bucket={}, key={}", bucketName, key);
             throw new InvalidImageException("Image not found with key: " + key);
         } catch (SdkException e) {
-            log.error("AWS S3 download error for key: {}", key, e);
+            log.error("[S3_DOWNLOAD_FAILED] bucket={}, key={}, error={}", bucketName, key, e.getMessage(), e);
             throw new ImageStorageException("Failed to download image from S3 storage", e);
         }
     }
@@ -125,6 +128,7 @@ public class S3ImageServiceImpl implements S3ImageService {
         }
 
         String key = extractKeyFromUrl(imageKeyOrUrl);
+        log.info("[S3_DELETE_START] bucket={}, key={}", bucketName, key);
         try {
             DeleteObjectRequest deleteObjectRequest = DeleteObjectRequest.builder()
                     .bucket(bucketName)
@@ -132,9 +136,9 @@ public class S3ImageServiceImpl implements S3ImageService {
                     .build();
 
             s3Client.deleteObject(deleteObjectRequest);
-            log.info("Successfully deleted image from S3: bucket={}, key={}", bucketName, key);
+            log.info("[S3_DELETE_SUCCESS] bucket={}, key={}", bucketName, key);
         } catch (SdkException e) {
-            log.warn("AWS S3 delete error for key: {}", key, e);
+            log.warn("[S3_DELETE_FAILED] bucket={}, key={}, error={}", bucketName, key, e.getMessage());
         }
     }
 

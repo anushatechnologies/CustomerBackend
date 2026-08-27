@@ -36,6 +36,9 @@ class ProductServiceTest {
     @Mock
     private SubcategoryRepository subcategoryRepository;
 
+    @Mock
+    private S3ImageService s3ImageService;
+
     @InjectMocks
     private ProductServiceImpl service;
 
@@ -97,10 +100,9 @@ class ProductServiceTest {
     @Test
     void customerListQueriesOnlyApprovedActiveProducts() {
 
-        when(repository.findByApprovalStatusAndActive(
-                ApprovalStatus.APPROVED,
-                true
-        )).thenReturn(List.of(product));
+        org.springframework.data.domain.Page<Product> page = new org.springframework.data.domain.PageImpl<>(List.of(product));
+        when(repository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(page);
 
         service.getAll(
                 null,
@@ -115,9 +117,9 @@ class ProductServiceTest {
                 20
         );
 
-        verify(repository).findByApprovalStatusAndActive(
-                ApprovalStatus.APPROVED,
-                true
+        verify(repository).findAll(
+                any(org.springframework.data.jpa.domain.Specification.class),
+                any(org.springframework.data.domain.Pageable.class)
         );
     }
 

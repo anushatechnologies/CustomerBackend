@@ -4,6 +4,8 @@ public enum ImageFolder {
     PRODUCTS("products"),
     CATEGORIES("categories"),
     BANNERS("banners"),
+    DOCUMENTS("documents"),
+    ATTACHMENTS("attachments"),
     OTHER("other");
 
     private final String folderName;

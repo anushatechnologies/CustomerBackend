@@ -40,6 +40,7 @@ public class ProductServiceImpl implements ProductService {
     private final ProductRepository repository;
     private final SubcategoryRepository subcategoryRepository;
     private final CategoryRepository categoryRepository;
+    private final S3ImageService s3ImageService;
 
     @Override
     public ProductResponse create(ProductRequest request) {
@@ -285,8 +286,19 @@ public class ProductServiceImpl implements ProductService {
     public void delete(Integer id) {
 
         Product product = findProduct(id);
+        String mainImage = product.getImageUrl();
+        List<String> galleryImages = product.getImages() != null ? new ArrayList<>(product.getImages()) : List.of();
 
         repository.delete(product);
+
+        if (mainImage != null && !mainImage.isBlank()) {
+            s3ImageService.deleteImage(mainImage);
+        }
+        for (String galleryImg : galleryImages) {
+            if (galleryImg != null && !galleryImg.isBlank() && !galleryImg.equals(mainImage)) {
+                s3ImageService.deleteImage(galleryImg);
+            }
+        }
     }
 
     // =========================================================
