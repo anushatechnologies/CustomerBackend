@@ -88,6 +88,18 @@ public class GlobalExceptionHandler {
         return response(HttpStatus.BAD_REQUEST, "File upload size exceeded maximum limit of 10MB");
     }
 
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResourceFound(org.springframework.web.servlet.resource.NoResourceFoundException exception) {
+        log.debug("Static resource not found: {}", exception.getMessage());
+        return response(HttpStatus.NOT_FOUND, "Resource not found: " + exception.getResourcePath());
+    }
+
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotAllowed(org.springframework.web.HttpRequestMethodNotSupportedException exception) {
+        log.warn("Method not supported: {}", exception.getMessage());
+        return response(HttpStatus.METHOD_NOT_ALLOWED, exception.getMessage());
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGeneralException(Exception exception) {
         log.error("Unhandled exception occurred: {}", exception.getMessage(), exception);

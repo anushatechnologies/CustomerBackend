@@ -19,9 +19,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
@@ -99,12 +104,14 @@ class ProductServiceTest {
 
     @Test
     void customerListQueriesOnlyApprovedActiveProducts() {
+        product.setApprovalStatus(ApprovalStatus.APPROVED);
+        product.setActive(true);
+        Page<Product> page = new PageImpl<>(List.of(product));
 
-        org.springframework.data.domain.Page<Product> page = new org.springframework.data.domain.PageImpl<>(List.of(product));
-        when(repository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(org.springframework.data.domain.Pageable.class)))
+        when(repository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(page);
 
-        service.getAll(
+        var response = service.getAll(
                 null,
                 null,
                 null,
@@ -118,9 +125,12 @@ class ProductServiceTest {
         );
 
         verify(repository).findAll(
-                any(org.springframework.data.jpa.domain.Specification.class),
-                any(org.springframework.data.domain.Pageable.class)
+                any(Specification.class),
+                any(Pageable.class)
         );
+        assertNotNull(response);
+        assertEquals(1, response.getData().size());
+        assertEquals("Steel Rebar", response.getData().get(0).getTitle());
     }
 
     @Test
