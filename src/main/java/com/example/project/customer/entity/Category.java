@@ -41,7 +41,7 @@ public class Category {
     @Column(nullable = false, unique = true)
     private String slug;
 
-    @Column(name = "image_url")
+    @Column(name = "image_url", columnDefinition = "TEXT")
     private String imageUrl;
 
     @Column(name = "is_active")

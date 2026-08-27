@@ -108,7 +108,7 @@ class CustomerDocumentControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.title").value("Title must not be blank"));
+                .andExpect(jsonPath("$.errors[0].message").value("Title must not be blank"));
     }
 
     @Test
