@@ -19,7 +19,9 @@ public class SecurityConfig {
     private static final List<String> ALLOWED_ORIGINS = List.of(
             "http://localhost:5173",
             "http://localhost:5174",
-            "http://localhost:5175"
+            "http://localhost:5175",
+            "https://hinchmart.com",
+            "https://www.hinchmart.com"
     );
 
     @Bean
