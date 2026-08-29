@@ -47,9 +47,15 @@ public class DataInitializer implements CommandLineRunner {
     private final RfqRepository rfqRepository;
     private final QuotationRepository quotationRepository;
     private final RfqQuestionRepository rfqQuestionRepository;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     @Override
     public void run(String... args) {
+        try {
+            jdbcTemplate.execute("ALTER TABLE seller_documents MODIFY COLUMN document_type VARCHAR(50) NOT NULL");
+            jdbcTemplate.execute("ALTER TABLE seller_documents MODIFY COLUMN title VARCHAR(150) NULL DEFAULT ''");
+        } catch (Exception ignored) {
+        }
         try {
             initUserProfile();
             initAddresses();
