@@ -187,7 +187,7 @@ public class SellerDiscountServiceImpl implements SellerDiscountService {
     public List<SellerDiscountResponse> getApplicableForCustomer() {
         LocalDate today = LocalDate.now();
 
-        return repository.findByStatusAndActiveTrueOrderByCreatedAtDesc(DiscountStatus.APPROVED, true)
+        return repository.findByStatusAndActiveTrueOrderByCreatedAtDesc(DiscountStatus.APPROVED)
                 .stream()
                 .filter(d -> !today.isBefore(d.getStartDate()) && !today.isAfter(d.getEndDate()))
                 .map(this::mapToResponse)

@@ -17,7 +17,7 @@ public interface SellerDiscountRepository extends JpaRepository<SellerDiscount, 
 
     List<SellerDiscount> findByStatusOrderByCreatedAtAsc(DiscountStatus status);
 
-    List<SellerDiscount> findByStatusAndActiveTrueOrderByCreatedAtDesc(DiscountStatus status, boolean active);
+    List<SellerDiscount> findByStatusAndActiveTrueOrderByCreatedAtDesc(DiscountStatus status);
 
     boolean existsByCodeIgnoreCaseAndSellerIdNot(String code, Integer sellerId);
 }
