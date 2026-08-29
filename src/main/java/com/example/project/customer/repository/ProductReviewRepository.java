@@ -31,9 +31,3 @@ public interface ProductReviewRepository extends JpaRepository<ProductReview, Lo
     @Query("SELECT COALESCE(AVG(r.rating), 0) FROM ProductReview r WHERE r.productId = :productId AND r.status = com.example.project.customer.entity.ReviewStatus.APPROVED")
     Double averageRatingByProduct(@Param("productId") Long productId);
 }
-
-
-public interface ProductReviewRepository extends JpaRepository<ProductReview, Long> {
-    List<ProductReview> findByProductId(Long productId);
-    boolean existsByOrderItemId(Long orderItemId);
-}

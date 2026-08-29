@@ -67,8 +67,3 @@ public class ProductReview {
     private Set<ReviewImage> images = new HashSet<>();
 }
 
-enum ReviewStatus {
-    PENDING,
-    APPROVED,
-    REJECTED
-}
