@@ -81,7 +81,7 @@ class SubcategoryServiceTest {
         when(categoryRepository.findById(1)).thenReturn(Optional.of(category));
         when(repository.existsBySlugIgnoreCase("tmt-bars")).thenReturn(false);
         when(repository.save(any(Subcategory.class))).thenReturn(subcategory);
-        when(productRepository.countBySubcategory_SubcategoryId(10)).thenReturn(5);
+        when(productRepository.countByBrand_Subcategory_SubcategoryId(10)).thenReturn(5);
 
         SubcategoryResponse response = subcategoryService.create(request);
 

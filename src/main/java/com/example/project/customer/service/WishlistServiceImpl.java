@@ -63,14 +63,20 @@ public class WishlistServiceImpl implements WishlistService {
         Integer catId = (p.getSubcategory() != null && p.getSubcategory().getCategory() != null)
                 ? p.getSubcategory().getCategory().getCategoryId() : null;
 
+        Integer brandId = p.getBrand() != null ? p.getBrand().getBrandId() : null;
+        String brandName = p.getBrand() != null ? p.getBrand().getName() : null;
+
         ProductResponse pr = ProductResponse.builder()
                 .productId(p.getProductId())
+                .brandId(brandId)
+                .brand(brandName)
+                .brandName(brandName)
                 .subcategoryId(p.getSubcategory() != null ? p.getSubcategory().getSubcategoryId() : null)
+                .subcategoryName(p.getSubcategory() != null ? p.getSubcategory().getName() : null)
                 .categoryId(catId)
                 .title(p.getTitle())
                 .slug(p.getSlug())
                 .sku(p.getSku())
-                .brand(p.getBrand())
                 .description(p.getDescription())
                 .imageUrl(p.getImageUrl())
                 .images(p.getImages())

@@ -4,6 +4,7 @@ public enum ImageFolder {
     PRODUCTS("products"),
     CATEGORIES("categories"),
     SUBCATEGORIES("subcategories"),
+    BRANDS("brands"),
     BANNERS("banners"),
     DOCUMENTS("documents"),
     ATTACHMENTS("attachments"),

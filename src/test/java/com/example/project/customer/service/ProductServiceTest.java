@@ -3,9 +3,11 @@ package com.example.project.customer.service;
 import com.example.project.customer.dto.ProductRequest;
 import com.example.project.customer.dto.ProductRejectionRequest;
 import com.example.project.customer.entity.ApprovalStatus;
+import com.example.project.customer.entity.Brand;
 import com.example.project.customer.entity.Product;
 import com.example.project.customer.entity.Subcategory;
 import com.example.project.customer.exception.ResourceConflictException;
+import com.example.project.customer.repository.BrandRepository;
 import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.repository.SubcategoryRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +41,9 @@ class ProductServiceTest {
     private ProductRepository repository;
 
     @Mock
+    private BrandRepository brandRepository;
+
+    @Mock
     private SubcategoryRepository subcategoryRepository;
 
     @Mock
@@ -47,6 +52,7 @@ class ProductServiceTest {
     @InjectMocks
     private ProductServiceImpl service;
 
+    private Brand brand;
     private Product product;
     private ProductRequest request;
 
@@ -55,15 +61,22 @@ class ProductServiceTest {
         Subcategory subcategory = new Subcategory();
         subcategory.setSubcategoryId(5);
 
+        brand = Brand.builder()
+                .brandId(50)
+                .name("Tata Tiscon")
+                .subcategory(subcategory)
+                .build();
+
         product = new Product();
         product.setProductId(1);
-        product.setSubcategory(subcategory);
+        product.setBrand(brand);
         product.setTitle("Steel Rebar");
         product.setPrice(BigDecimal.TEN);
         product.setStockQty(10);
         product.setUnit("piece");
 
         request = ProductRequest.builder()
+                .brandId(50)
                 .subcategoryId(5)
                 .title("Steel Rebar")
                 .description("Construction steel")
@@ -77,10 +90,8 @@ class ProductServiceTest {
 
     @Test
     void createAlwaysStartsPendingAndInactive() {
-        Subcategory subcategory = product.getSubcategory();
-
-        when(subcategoryRepository.findById(5))
-                .thenReturn(Optional.of(subcategory));
+        when(brandRepository.findById(50))
+                .thenReturn(Optional.of(brand));
 
         when(repository.save(any(Product.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -112,6 +123,7 @@ class ProductServiceTest {
                 .thenReturn(page);
 
         var response = service.getAll(
+                null,
                 null,
                 null,
                 null,
@@ -201,7 +213,7 @@ class ProductServiceTest {
         request.setImages(List.of("https://s3/products/g1.jpg", "https://s3/products/g3-new.jpg"));
 
         when(repository.findById(1)).thenReturn(Optional.of(product));
-        when(subcategoryRepository.findById(5)).thenReturn(Optional.of(product.getSubcategory()));
+        when(brandRepository.findById(50)).thenReturn(Optional.of(brand));
         when(repository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
 
         service.update(1, request);

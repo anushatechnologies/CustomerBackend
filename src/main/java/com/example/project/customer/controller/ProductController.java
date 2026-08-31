@@ -60,6 +60,7 @@ public class ProductController {
     public ResponseEntity<ApiResponse<List<ProductResponse>>> getAll(
             @RequestParam(required = false) Integer categoryId,
             @RequestParam(required = false) Integer subcategoryId,
+            @RequestParam(required = false) Integer brandId,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) BigDecimal minPrice,
             @RequestParam(required = false) BigDecimal maxPrice,
@@ -82,6 +83,7 @@ public class ProductController {
                 service.getAll(
                         categoryId,
                         subcategoryId,
+                        brandId,
                         search,
                         minPrice,
                         maxPrice,

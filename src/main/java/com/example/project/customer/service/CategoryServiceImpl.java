@@ -124,14 +124,14 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     private CategoryResponse mapToResponse(Category category, boolean includeSubcategories) {
-        int count = productRepository.countBySubcategory_Category_CategoryId(category.getCategoryId());
+        int count = productRepository.countByBrand_Subcategory_Category_CategoryId(category.getCategoryId());
 
         List<SubcategoryResponse> subs = null;
         if (includeSubcategories) {
             List<Subcategory> subcategories = subcategoryRepository.findByCategory_CategoryIdOrderBySortOrderAsc(category.getCategoryId());
             subs = subcategories.stream()
                     .map(s -> {
-                        int sCount = productRepository.countBySubcategory_SubcategoryId(s.getSubcategoryId());
+                        int sCount = productRepository.countByBrand_Subcategory_SubcategoryId(s.getSubcategoryId());
                         return SubcategoryResponse.builder()
                                 .subcategoryId(s.getSubcategoryId())
                                 .categoryId(category.getCategoryId())
