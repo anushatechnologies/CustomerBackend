@@ -31,6 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(ImageUploadController.class)
 @Import({GlobalExceptionHandler.class, SecurityConfig.class})
+@SuppressWarnings("null")
 class ImageUploadControllerTest {
 
     @Autowired

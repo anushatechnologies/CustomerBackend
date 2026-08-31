@@ -19,6 +19,7 @@ import java.util.Optional;
 @Service
 @Transactional
 @RequiredArgsConstructor
+@SuppressWarnings("null")
 public class WishlistServiceImpl implements WishlistService {
 
     private final WishlistRepository wishlistRepository;

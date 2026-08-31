@@ -3,6 +3,7 @@ package com.example.project.customer.service;
 import com.example.project.customer.dto.BankDetailsRequest;
 import com.example.project.customer.dto.BusinessTaxRequest;
 import com.example.project.customer.dto.PersonalKycRequest;
+import com.example.project.customer.dto.SellerDocumentVaultResponse;
 import com.example.project.customer.dto.SellerOnboardingSummaryResponse;
 import com.example.project.customer.entity.DocumentType;
 import com.example.project.customer.entity.OnboardingStatus;
@@ -26,6 +27,7 @@ import java.util.Set;
 
 @Service
 @Transactional
+@SuppressWarnings("null")
 public class SellerOnboardingServiceImpl implements SellerOnboardingService {
 
     private final SellerRepository sellerRepository;
@@ -167,6 +169,49 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
     }
 
     @Override
+    @Transactional
+    public SellerDocument uploadDocument(Integer sellerId, DocumentType documentType, MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("File is required and cannot be empty");
+        }
+        if (documentType == null) {
+            throw new IllegalArgumentException("Document type is required (e.g. GST, AADHAAR, PAN, CHEQUE, OTHER)");
+        }
+
+        Seller seller = findSeller(sellerId);
+        String title = documentType.name().replace("_", " ");
+        String fileUrl = handleFileUpload(sellerId, documentType, file, title);
+
+        // Update corresponding direct shortcut URLs on the Seller profile
+        if (documentType == DocumentType.PAN || documentType == DocumentType.PAN_CARD || documentType == DocumentType.COMPANY_PAN) {
+            seller.setPanCardUrl(fileUrl);
+        } else if (documentType == DocumentType.AADHAAR || documentType == DocumentType.AADHAAR_CARD) {
+            seller.setAadhaarCardUrl(fileUrl);
+        } else if (documentType == DocumentType.GST || documentType == DocumentType.GST_CERTIFICATE) {
+            seller.setGstCertificateUrl(fileUrl);
+        }
+        sellerRepository.save(seller);
+
+        return documentRepository.findBySellerIdAndDocumentType(sellerId, documentType)
+                .orElseThrow(() -> new ResourceNotFoundException("Failed to locate saved document for seller " + sellerId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SellerDocument> getDocumentsBySellerId(Integer sellerId) {
+        findSeller(sellerId);
+        return documentRepository.findBySellerId(sellerId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SellerDocument getDocumentBySellerIdAndType(Integer sellerId, DocumentType documentType) {
+        findSeller(sellerId);
+        return documentRepository.findBySellerIdAndDocumentType(sellerId, documentType)
+                .orElseThrow(() -> new ResourceNotFoundException("Document of type '" + documentType + "' not found for seller " + sellerId));
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public SellerOnboardingSummaryResponse getSummary(Integer sellerId) {
         Seller seller = findSeller(sellerId);
@@ -247,6 +292,140 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public SellerDocumentVaultResponse getDocumentVault(Integer sellerId) {
+        findSeller(sellerId);
+        List<SellerDocument> uploadedDocs = documentRepository.findBySellerId(sellerId);
+
+        // Required Document Specs based on Compliance UI
+        List<DocSpec> requiredSpecs = List.of(
+                new DocSpec(DocumentType.PAN, "PAN Card", "Statutory Permanent Account Number card for identity verification"),
+                new DocSpec(DocumentType.AADHAAR, "Aadhaar Card", "12-digit Unique Identification document for primary authorized signatory"),
+                new DocSpec(DocumentType.GST, "GSTIN Registration Certificate", "Statutory GSTIN certificate with legal trading identity for B2B invoicing")
+        );
+
+        int submittedCount = 0;
+        int verifiedCount = 0;
+        List<SellerDocumentVaultResponse.DocumentVaultItem> vaultItems = new java.util.ArrayList<>();
+
+        for (DocSpec spec : requiredSpecs) {
+            SellerDocument matchingDoc = uploadedDocs.stream()
+                    .filter(d -> isMatchingType(d.getDocumentType(), spec.type))
+                    .findFirst()
+                    .orElse(null);
+
+            if (matchingDoc != null) {
+                submittedCount++;
+                VerificationStatus status = matchingDoc.getVerificationStatus() != null ? matchingDoc.getVerificationStatus() : VerificationStatus.PENDING;
+                if (status == VerificationStatus.VERIFIED) {
+                    verifiedCount++;
+                }
+
+                vaultItems.add(new SellerDocumentVaultResponse.DocumentVaultItem(
+                        matchingDoc.getId(),
+                        spec.type.name(),
+                        spec.title,
+                        spec.description,
+                        status.getDisplayName(), // "Pending", "Verified", "Rejected"
+                        status.name(),           // "PENDING", "VERIFIED", "REJECTED"
+                        true,
+                        matchingDoc.getFileName(),
+                        matchingDoc.getFileUrl(),
+                        matchingDoc.getFileSize(),
+                        formatFileSize(matchingDoc.getFileSize()),
+                        matchingDoc.getFileType(),
+                        matchingDoc.getUploadedAt() != null ? matchingDoc.getUploadedAt().toString() : null,
+                        matchingDoc.getRemarks()
+                ));
+            } else {
+                vaultItems.add(new SellerDocumentVaultResponse.DocumentVaultItem(
+                        null,
+                        spec.type.name(),
+                        spec.title,
+                        spec.description,
+                        VerificationStatus.NOT_UPLOADED.getDisplayName(), // "Not Uploaded"
+                        VerificationStatus.NOT_UPLOADED.name(),           // "NOT_UPLOADED"
+                        false,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null
+                ));
+            }
+        }
+
+        int totalRequired = requiredSpecs.size();
+        String progressText = submittedCount + " of " + totalRequired + " submitted";
+        boolean isAllSubmitted = submittedCount == totalRequired;
+        boolean isAllVerified = isAllSubmitted && verifiedCount == totalRequired;
+        boolean hasRejected = vaultItems.stream().anyMatch(d -> VerificationStatus.REJECTED.name().equalsIgnoreCase(d.statusCode()));
+
+        String overallStatus;
+        if (hasRejected) {
+            overallStatus = VerificationStatus.REJECTED.getDisplayName(); // "Rejected"
+        } else if (isAllVerified) {
+            overallStatus = VerificationStatus.VERIFIED.getDisplayName(); // "Verified"
+        } else if (submittedCount > 0) {
+            overallStatus = VerificationStatus.PENDING.getDisplayName();  // "Pending"
+        } else {
+            overallStatus = VerificationStatus.NOT_UPLOADED.getDisplayName(); // "Not Uploaded"
+        }
+
+        return new SellerDocumentVaultResponse(
+                sellerId,
+                overallStatus,
+                totalRequired,
+                submittedCount,
+                verifiedCount,
+                progressText,
+                isAllSubmitted,
+                isAllVerified,
+                vaultItems
+        );
+    }
+
+    private static class DocSpec {
+        final DocumentType type;
+        final String title;
+        final String description;
+
+        DocSpec(DocumentType type, String title, String description) {
+            this.type = type;
+            this.title = title;
+            this.description = description;
+        }
+    }
+
+    private boolean isMatchingType(DocumentType docType, DocumentType target) {
+        if (docType == null || target == null) return false;
+        if (target == DocumentType.PAN) {
+            return docType == DocumentType.PAN || docType == DocumentType.PAN_CARD || docType == DocumentType.COMPANY_PAN;
+        }
+        if (target == DocumentType.AADHAAR) {
+            return docType == DocumentType.AADHAAR || docType == DocumentType.AADHAAR_CARD;
+        }
+        if (target == DocumentType.GST) {
+            return docType == DocumentType.GST || docType == DocumentType.GST_CERTIFICATE;
+        }
+        return docType == target;
+    }
+
+    private String formatFileSize(Long bytes) {
+        if (bytes == null || bytes <= 0) return null;
+        if (bytes < 1024) return bytes + " B";
+        double kb = bytes / 1024.0;
+        if (kb < 1024) {
+            return String.format(java.util.Locale.US, "%.1f KB", kb);
+        }
+        double mb = kb / 1024.0;
+        return String.format(java.util.Locale.US, "%.1f MB", mb);
+    }
+
+    @Override
+    @Transactional
     public Seller finalSubmit(Integer sellerId) {
         Seller seller = findSeller(sellerId);
 
@@ -276,6 +455,60 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
 
         seller.setOnboardingStatus(OnboardingStatus.PENDING_REVIEW);
         return sellerRepository.save(seller);
+    }
+
+    @Override
+    @Transactional
+    public Seller verifySellerByAdmin(Integer sellerId, boolean approved, String remarks) {
+        Seller seller = findSeller(sellerId);
+        List<SellerDocument> documents = documentRepository.findBySellerId(sellerId);
+
+        if (approved) {
+            seller.setOnboardingStatus(OnboardingStatus.VERIFIED);
+            seller.setVerificationStatus(VerificationStatus.VERIFIED);
+            for (SellerDocument doc : documents) {
+                doc.setVerificationStatus(VerificationStatus.VERIFIED);
+            }
+        } else {
+            seller.setOnboardingStatus(OnboardingStatus.REJECTED);
+            seller.setVerificationStatus(VerificationStatus.REJECTED);
+            for (SellerDocument doc : documents) {
+                doc.setVerificationStatus(VerificationStatus.REJECTED);
+            }
+        }
+
+        documentRepository.saveAll(documents);
+        return sellerRepository.save(seller);
+    }
+
+    @Override
+    @Transactional
+    public SellerDocument verifyDocumentByAdmin(Integer sellerId, DocumentType documentType, VerificationStatus status, String remarks) {
+        Seller seller = findSeller(sellerId);
+        SellerDocument doc = documentRepository.findBySellerIdAndDocumentType(sellerId, documentType)
+                .orElseThrow(() -> new ResourceNotFoundException("Document of type '" + documentType + "' not found for seller " + sellerId));
+
+        doc.setVerificationStatus(status != null ? status : VerificationStatus.VERIFIED);
+        if (remarks != null && !remarks.isBlank()) {
+            doc.setRemarks(remarks);
+        }
+        SellerDocument saved = documentRepository.save(doc);
+
+        List<SellerDocument> allDocs = documentRepository.findBySellerId(sellerId);
+        boolean allVerified = allDocs.size() >= 3 && allDocs.stream().allMatch(d -> d.getVerificationStatus() == VerificationStatus.VERIFIED);
+        boolean anyRejected = allDocs.stream().anyMatch(d -> d.getVerificationStatus() == VerificationStatus.REJECTED);
+        if (anyRejected) {
+            seller.setVerificationStatus(VerificationStatus.REJECTED);
+            seller.setOnboardingStatus(OnboardingStatus.REJECTED);
+        } else if (allVerified) {
+            seller.setVerificationStatus(VerificationStatus.VERIFIED);
+            seller.setOnboardingStatus(OnboardingStatus.VERIFIED);
+        } else {
+            seller.setVerificationStatus(VerificationStatus.PENDING);
+        }
+        sellerRepository.save(seller);
+
+        return saved;
     }
 
     private <T> void validateRequest(T request) {
@@ -331,9 +564,17 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
         doc.setFileName(file.getOriginalFilename() != null ? file.getOriginalFilename() : docType.name().toLowerCase() + ".pdf");
         doc.setFileUrl(fileUrl);
         doc.setFileType(file.getContentType() != null ? file.getContentType() : "application/octet-stream");
+        doc.setFileSize(file.getSize());
         doc.setVerificationStatus(VerificationStatus.PENDING);
 
         documentRepository.save(doc);
+
+        Seller seller = sellerRepository.findById(sellerId).orElse(null);
+        if (seller != null) {
+            seller.setVerificationStatus(VerificationStatus.PENDING);
+            sellerRepository.save(seller);
+        }
+
         return fileUrl;
     }
 }

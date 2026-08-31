@@ -39,6 +39,7 @@ import java.util.List;
 @Service
 @Transactional
 @RequiredArgsConstructor
+@SuppressWarnings("null")
 public class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepository;

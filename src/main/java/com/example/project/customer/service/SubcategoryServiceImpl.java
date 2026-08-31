@@ -20,6 +20,7 @@ import java.util.List;
 @Service
 @Transactional
 @RequiredArgsConstructor
+@SuppressWarnings("null")
 public class SubcategoryServiceImpl implements SubcategoryService {
 
     private final SubcategoryRepository repository;

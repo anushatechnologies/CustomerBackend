@@ -5,5 +5,8 @@ public enum OnboardingStatus {
     STEP_2,
     STEP_3,
     COMPLETED,
-    PENDING_REVIEW
+    PENDING_REVIEW,
+    VERIFIED,
+    REJECTED,
+    ACTIVE
 }

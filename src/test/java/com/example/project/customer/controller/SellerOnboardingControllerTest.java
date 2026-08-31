@@ -34,6 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(SellerOnboardingController.class)
 @Import({GlobalExceptionHandler.class, SecurityConfig.class})
+@SuppressWarnings("null")
 class SellerOnboardingControllerTest {
 
     @Autowired
