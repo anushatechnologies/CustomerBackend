@@ -4,14 +4,21 @@ import com.example.project.customer.entity.Seller;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface SellerRepository extends JpaRepository<Seller, Integer> {
 
-    Optional<Seller> findByEmailIgnoreCase(String email);
+    Optional<Seller> findFirstByEmailIgnoreCase(String email);
 
-    Optional<Seller> findByPanNumber(String panNumber);
+    List<Seller> findAllByPhone(String phone);
 
-    Optional<Seller> findByGstin(String gstin);
+    List<Seller> findAllByPanNumber(String panNumber);
+
+    List<Seller> findAllByAadhaarNumber(String aadhaarNumber);
+
+    List<Seller> findAllByGstin(String gstin);
+
+    List<Seller> findAllByAccountNumber(String accountNumber);
 }

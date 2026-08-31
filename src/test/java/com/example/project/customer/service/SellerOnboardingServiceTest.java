@@ -70,7 +70,7 @@ class SellerOnboardingServiceTest {
     @DisplayName("savePersonalKyc - Success creating new seller")
     void savePersonalKyc_NewSeller_Success() {
         PersonalKycRequest req = new PersonalKycRequest("Rajesh Sharma", "rajesh@company.com", "+917661966947", "ABCDE1234F", "123456789012");
-        when(sellerRepository.findByEmailIgnoreCase("rajesh@company.com")).thenReturn(Optional.empty());
+        when(sellerRepository.findFirstByEmailIgnoreCase("rajesh@company.com")).thenReturn(Optional.empty());
         when(sellerRepository.save(any(Seller.class))).thenAnswer(i -> {
             Seller s = i.getArgument(0);
             s.setSellerId(1);
@@ -93,7 +93,7 @@ class SellerOnboardingServiceTest {
         PersonalKycRequest req = new PersonalKycRequest("Rajesh Sharma", "rajesh@company.com", "+917661966947", "ABCDE1234F", "123456789012");
         MockMultipartFile file = new MockMultipartFile("panCardFile", "pan.png", "image/png", "dummy".getBytes());
 
-        when(sellerRepository.findByEmailIgnoreCase("rajesh@company.com")).thenReturn(Optional.of(seller));
+        when(sellerRepository.findFirstByEmailIgnoreCase("rajesh@company.com")).thenReturn(Optional.of(seller));
         when(sellerRepository.save(any(Seller.class))).thenReturn(seller);
         when(documentRepository.findBySellerIdAndDocumentType(1, DocumentType.PAN)).thenReturn(Optional.empty());
         when(s3ImageService.uploadImage(any(), any(String.class))).thenReturn(ImageUploadResponse.builder().fileUrl("https://s3.aws.com/pan.png").build());
@@ -255,5 +255,78 @@ class SellerOnboardingServiceTest {
         assertThatThrownBy(() -> onboardingService.finalSubmit(1))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Cannot submit for verification: All mandatory personal, business, and bank details must be completed.");
+    }
+
+    @Test
+    @DisplayName("savePersonalKyc - Throws ResourceConflictException when Mobile Number is already registered")
+    void savePersonalKyc_DuplicatePhone_ThrowsConflict() {
+        PersonalKycRequest req = new PersonalKycRequest("Rajesh Sharma", "new@company.com", "+917661966947", "ABCDE1234F", "123456789012");
+        Seller otherSeller = Seller.builder().sellerId(2).phone("+917661966947").build();
+
+        when(sellerRepository.findFirstByEmailIgnoreCase("new@company.com")).thenReturn(Optional.empty());
+        when(sellerRepository.findAllByPhone("+917661966947")).thenReturn(List.of(otherSeller));
+
+        assertThatThrownBy(() -> onboardingService.savePersonalKyc(req))
+                .isInstanceOf(ResourceConflictException.class)
+                .hasMessageContaining("Mobile number '+917661966947' is already registered");
+    }
+
+    @Test
+    @DisplayName("savePersonalKyc - Throws ResourceConflictException when PAN is already registered")
+    void savePersonalKyc_DuplicatePan_ThrowsConflict() {
+        PersonalKycRequest req = new PersonalKycRequest("Rajesh Sharma", "new@company.com", "+917661966947", "ABCDE1234F", "123456789012");
+        Seller otherSeller = Seller.builder().sellerId(2).panNumber("ABCDE1234F").build();
+
+        when(sellerRepository.findFirstByEmailIgnoreCase("new@company.com")).thenReturn(Optional.empty());
+        when(sellerRepository.findAllByPhone("+917661966947")).thenReturn(List.of());
+        when(sellerRepository.findAllByPanNumber("ABCDE1234F")).thenReturn(List.of(otherSeller));
+
+        assertThatThrownBy(() -> onboardingService.savePersonalKyc(req))
+                .isInstanceOf(ResourceConflictException.class)
+                .hasMessageContaining("PAN number 'ABCDE1234F' is already registered");
+    }
+
+    @Test
+    @DisplayName("savePersonalKyc - Throws ResourceConflictException when Aadhaar is already registered")
+    void savePersonalKyc_DuplicateAadhaar_ThrowsConflict() {
+        PersonalKycRequest req = new PersonalKycRequest("Rajesh Sharma", "new@company.com", "+917661966947", "ABCDE1234F", "123456789012");
+        Seller otherSeller = Seller.builder().sellerId(2).aadhaarNumber("123456789012").build();
+
+        when(sellerRepository.findFirstByEmailIgnoreCase("new@company.com")).thenReturn(Optional.empty());
+        when(sellerRepository.findAllByPhone("+917661966947")).thenReturn(List.of());
+        when(sellerRepository.findAllByPanNumber("ABCDE1234F")).thenReturn(List.of());
+        when(sellerRepository.findAllByAadhaarNumber("123456789012")).thenReturn(List.of(otherSeller));
+
+        assertThatThrownBy(() -> onboardingService.savePersonalKyc(req))
+                .isInstanceOf(ResourceConflictException.class)
+                .hasMessageContaining("Aadhaar number '123456789012' is already registered");
+    }
+
+    @Test
+    @DisplayName("saveBusinessTax - Throws ResourceConflictException when GSTIN is already registered")
+    void saveBusinessTax_DuplicateGstin_ThrowsConflict() {
+        BusinessTaxRequest req = new BusinessTaxRequest("Rajesh Trading Co", BusinessType.WHOLESALER, "29ABCDE1234F1Z5", "123 MG Road", "Karnataka", "Bangalore", "560001");
+        Seller otherSeller = Seller.builder().sellerId(2).gstin("29ABCDE1234F1Z5").build();
+
+        when(sellerRepository.findById(1)).thenReturn(Optional.of(seller));
+        when(sellerRepository.findAllByGstin("29ABCDE1234F1Z5")).thenReturn(List.of(otherSeller));
+
+        assertThatThrownBy(() -> onboardingService.saveBusinessTax(1, req))
+                .isInstanceOf(ResourceConflictException.class)
+                .hasMessageContaining("GSTIN '29ABCDE1234F1Z5' is already registered");
+    }
+
+    @Test
+    @DisplayName("saveBankDetails - Throws ResourceConflictException when Account Number is already registered")
+    void saveBankDetails_DuplicateAccountNumber_ThrowsConflict() {
+        BankDetailsRequest req = new BankDetailsRequest("HDFC Bank", "Rajesh Sharma", "50100234567890", "50100234567890", "HDFC0000123", "CURRENT");
+        Seller otherSeller = Seller.builder().sellerId(2).accountNumber("50100234567890").build();
+
+        when(sellerRepository.findById(1)).thenReturn(Optional.of(seller));
+        when(sellerRepository.findAllByAccountNumber("50100234567890")).thenReturn(List.of(otherSeller));
+
+        assertThatThrownBy(() -> onboardingService.saveBankDetails(1, req))
+                .isInstanceOf(ResourceConflictException.class)
+                .hasMessageContaining("Bank account number '50100234567890' is already registered");
     }
 }
