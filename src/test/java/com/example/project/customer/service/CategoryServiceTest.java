@@ -70,7 +70,7 @@ class CategoryServiceTest {
 
         when(repository.existsBySlugIgnoreCase("steel-rebars")).thenReturn(false);
         when(repository.save(any(Category.class))).thenReturn(category);
-        when(productRepository.countBySubcategory_Category_CategoryId(1)).thenReturn(0);
+        when(productRepository.countByBrand_Subcategory_Category_CategoryId(1)).thenReturn(0);
 
         CategoryResponse response = categoryService.create(request);
 
@@ -83,7 +83,7 @@ class CategoryServiceTest {
     @DisplayName("getById - should return category when found")
     void getById_Success() {
         when(repository.findById(1)).thenReturn(Optional.of(category));
-        when(productRepository.countBySubcategory_Category_CategoryId(1)).thenReturn(10);
+        when(productRepository.countByBrand_Subcategory_Category_CategoryId(1)).thenReturn(10);
 
         CategoryResponse response = categoryService.getById(1);
 

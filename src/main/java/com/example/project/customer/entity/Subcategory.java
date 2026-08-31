@@ -59,6 +59,10 @@ public class Subcategory {
     @Builder.Default
     private Integer productCount = 0;
 
+    @jakarta.persistence.OneToMany(mappedBy = "subcategory", fetch = FetchType.LAZY, cascade = jakarta.persistence.CascadeType.ALL)
+    @Builder.Default
+    private java.util.List<Brand> brands = new java.util.ArrayList<>();
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

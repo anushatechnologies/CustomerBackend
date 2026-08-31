@@ -6,6 +6,7 @@ import com.example.project.customer.dto.ProductRejectionRequest;
 import com.example.project.customer.dto.ProductRequest;
 import com.example.project.customer.dto.ProductResponse;
 import com.example.project.customer.dto.SearchSuggestionResponse;
+import com.example.project.customer.dto.StockQuantityUpdateRequest;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -19,6 +20,7 @@ public interface ProductService {
     ApiResponse<List<ProductResponse>> getAll(
             Integer categoryId,
             Integer subcategoryId,
+            Integer brandId,
             String search,
             BigDecimal minPrice,
             BigDecimal maxPrice,
@@ -29,7 +31,24 @@ public interface ProductService {
             int limit
     );
 
+    default ApiResponse<List<ProductResponse>> getAll(
+            Integer categoryId,
+            Integer subcategoryId,
+            String search,
+            BigDecimal minPrice,
+            BigDecimal maxPrice,
+            String brand,
+            Boolean is24HourDelivery,
+            String sort,
+            int page,
+            int limit
+    ) {
+        return getAll(categoryId, subcategoryId, null, search, minPrice, maxPrice, brand, is24HourDelivery, sort, page, limit);
+    }
+
     ProductResponse update(Integer id, ProductRequest request);
+
+    ProductResponse updateStockQuantity(Integer id, StockQuantityUpdateRequest request);
 
     void delete(Integer id);
 

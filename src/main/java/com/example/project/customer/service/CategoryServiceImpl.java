@@ -31,13 +31,22 @@ public class CategoryServiceImpl implements CategoryService {
 
     @Override
     public CategoryResponse create(CategoryRequest request) {
-        String slug = generateSlug(request.getName(), request.getSlug());
+        String cleanName = request.getName() != null ? request.getName().trim() : "";
+        if (cleanName.isEmpty()) {
+            throw new IllegalArgumentException("Category name cannot be empty");
+        }
+
+        if (repository.existsByNameIgnoreCase(cleanName)) {
+            throw new ResourceConflictException("Category already exists with name: '" + cleanName + "'");
+        }
+
+        String slug = generateSlug(cleanName, request.getSlug());
         if (repository.existsBySlugIgnoreCase(slug)) {
-            throw new ResourceConflictException("Category already exists with slug: " + slug);
+            throw new ResourceConflictException("Category already exists with slug: '" + slug + "'");
         }
 
         Category category = Category.builder()
-                .name(request.getName())
+                .name(cleanName)
                 .slug(slug)
                 .imageUrl(request.getImageUrl())
                 .active(request.getActive() != null ? request.getActive() : true)
@@ -75,12 +84,22 @@ public class CategoryServiceImpl implements CategoryService {
     public CategoryResponse update(Integer id, CategoryRequest request) {
         Category category = findCategory(id);
         String oldImageUrl = category.getImageUrl();
-        String slug = generateSlug(request.getName(), request.getSlug());
-        if (repository.existsBySlugIgnoreCaseAndCategoryIdNot(slug, id)) {
-            throw new ResourceConflictException("Category already exists with slug: " + slug);
+
+        String cleanName = request.getName() != null ? request.getName().trim() : "";
+        if (cleanName.isEmpty()) {
+            throw new IllegalArgumentException("Category name cannot be empty");
         }
 
-        category.setName(request.getName());
+        if (repository.existsByNameIgnoreCaseAndCategoryIdNot(cleanName, id)) {
+            throw new ResourceConflictException("Category already exists with name: '" + cleanName + "'");
+        }
+
+        String slug = generateSlug(cleanName, request.getSlug());
+        if (repository.existsBySlugIgnoreCaseAndCategoryIdNot(slug, id)) {
+            throw new ResourceConflictException("Category already exists with slug: '" + slug + "'");
+        }
+
+        category.setName(cleanName);
         category.setSlug(slug);
         if (request.getImageUrl() != null) {
             category.setImageUrl(request.getImageUrl());
@@ -125,14 +144,14 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     private CategoryResponse mapToResponse(Category category, boolean includeSubcategories) {
-        int count = productRepository.countBySubcategory_Category_CategoryId(category.getCategoryId());
+        int count = productRepository.countByBrand_Subcategory_Category_CategoryId(category.getCategoryId());
 
         List<SubcategoryResponse> subs = null;
         if (includeSubcategories) {
             List<Subcategory> subcategories = subcategoryRepository.findByCategory_CategoryIdOrderBySortOrderAsc(category.getCategoryId());
             subs = subcategories.stream()
                     .map(s -> {
-                        int sCount = productRepository.countBySubcategory_SubcategoryId(s.getSubcategoryId());
+                        int sCount = productRepository.countByBrand_Subcategory_SubcategoryId(s.getSubcategoryId());
                         return SubcategoryResponse.builder()
                                 .subcategoryId(s.getSubcategoryId())
                                 .categoryId(category.getCategoryId())

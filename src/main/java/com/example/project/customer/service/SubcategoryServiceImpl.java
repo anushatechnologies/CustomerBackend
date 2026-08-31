@@ -33,14 +33,23 @@ public class SubcategoryServiceImpl implements SubcategoryService {
         Category category = categoryRepository.findById(request.getCategoryId())
                 .orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + request.getCategoryId()));
 
-        String slug = generateSlug(request.getName(), request.getSlug());
+        String cleanName = request.getName() != null ? request.getName().trim() : "";
+        if (cleanName.isEmpty()) {
+            throw new IllegalArgumentException("Subcategory name cannot be empty");
+        }
+
+        if (repository.existsByNameIgnoreCaseAndCategory_CategoryId(cleanName, category.getCategoryId())) {
+            throw new ResourceConflictException("Subcategory already exists with name: '" + cleanName + "' in category: '" + category.getName() + "'");
+        }
+
+        String slug = generateSlug(cleanName, request.getSlug());
         if (repository.existsBySlugIgnoreCase(slug)) {
-            throw new ResourceConflictException("Subcategory already exists with slug: " + slug);
+            throw new ResourceConflictException("Subcategory already exists with slug: '" + slug + "'");
         }
 
         Subcategory subcategory = Subcategory.builder()
                 .category(category)
-                .name(request.getName())
+                .name(cleanName)
                 .slug(slug)
                 .imageUrl(request.getImageUrl())
                 .active(request.getActive() != null ? request.getActive() : true)
@@ -90,12 +99,21 @@ public class SubcategoryServiceImpl implements SubcategoryService {
             subcategory.setCategory(category);
         }
 
-        String slug = generateSlug(request.getName(), request.getSlug());
-        if (repository.existsBySlugIgnoreCaseAndSubcategoryIdNot(slug, id)) {
-            throw new ResourceConflictException("Subcategory already exists with slug: " + slug);
+        String cleanName = request.getName() != null ? request.getName().trim() : "";
+        if (cleanName.isEmpty()) {
+            throw new IllegalArgumentException("Subcategory name cannot be empty");
         }
 
-        subcategory.setName(request.getName());
+        if (repository.existsByNameIgnoreCaseAndCategory_CategoryIdAndSubcategoryIdNot(cleanName, subcategory.getCategory().getCategoryId(), id)) {
+            throw new ResourceConflictException("Subcategory already exists with name: '" + cleanName + "' in category: '" + subcategory.getCategory().getName() + "'");
+        }
+
+        String slug = generateSlug(cleanName, request.getSlug());
+        if (repository.existsBySlugIgnoreCaseAndSubcategoryIdNot(slug, id)) {
+            throw new ResourceConflictException("Subcategory already exists with slug: '" + slug + "'");
+        }
+
+        subcategory.setName(cleanName);
         subcategory.setSlug(slug);
         if (request.getImageUrl() != null) {
             subcategory.setImageUrl(request.getImageUrl());
@@ -140,7 +158,7 @@ public class SubcategoryServiceImpl implements SubcategoryService {
     }
 
     private SubcategoryResponse mapToResponse(Subcategory s) {
-        int count = productRepository.countBySubcategory_SubcategoryId(s.getSubcategoryId());
+        int count = productRepository.countByBrand_Subcategory_SubcategoryId(s.getSubcategoryId());
         return SubcategoryResponse.builder()
                 .subcategoryId(s.getSubcategoryId())
                 .categoryId(s.getCategory().getCategoryId())

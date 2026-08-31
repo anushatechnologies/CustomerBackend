@@ -76,9 +76,13 @@ public class CartServiceImpl implements CartService {
     @Override
     public void clearCart(Integer userId) {
         Cart cart = getOrCreateCart(userId);
-        cartItemRepository.deleteByCart_CartId(cart.getCartId());
+
+        // The cart and its items are managed in this transaction. Removing the
+        // children from the association lets orphanRemoval delete them safely;
+        // deleting them through the repository first leaves stale deleted items
+        // in the Cart entity and causes ObjectDeletedException on merge.
+        cart.getItems().clear();
         cart.setAppliedCoupon(null);
-        cartRepository.save(cart);
     }
 
     @Override

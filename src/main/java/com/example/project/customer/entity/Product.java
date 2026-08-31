@@ -45,9 +45,10 @@ public class Product {
     @Column(name = "product_id")
     private Integer productId;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "subcategory_id", nullable = false)
-    private Subcategory subcategory;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "brand_id")
+    @org.hibernate.annotations.NotFound(action = org.hibernate.annotations.NotFoundAction.IGNORE)
+    private Brand brand;
 
     @Column(nullable = false)
     private String title;
@@ -57,9 +58,6 @@ public class Product {
 
     @Column(name = "sku")
     private String sku;
-
-    @Column(name = "brand")
-    private String brand;
 
     @Column(columnDefinition = "TEXT")
     private String description;
@@ -94,14 +92,14 @@ public class Product {
     @JsonProperty("active")
     private Boolean active = true;
 
-    @Column(name = "is_24hour_delivery")
+    @Column(name = "is_24_hour_delivery")
     @Builder.Default
     @JsonProperty("is24HourDelivery")
     private Boolean is24HourDelivery = false;
 
     @Column(name = "rating")
     @Builder.Default
-    private Double rating = 4.5;
+    private Double rating = 0.0;
 
     @Column(name = "review_count")
     @Builder.Default
@@ -181,5 +179,17 @@ private VendorInfo vendor;
         if (this.is24HourDelivery == null) {
             this.is24HourDelivery = false;
         }
+    }
+
+    public Subcategory getSubcategory() {
+        return brand != null ? brand.getSubcategory() : null;
+    }
+
+    public Category getCategory() {
+        return (brand != null && brand.getSubcategory() != null) ? brand.getSubcategory().getCategory() : null;
+    }
+
+    public String getBrandName() {
+        return brand != null ? brand.getName() : null;
     }
 }

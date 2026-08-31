@@ -14,12 +14,15 @@ import com.example.project.customer.dto.PaginationMeta;
 import com.example.project.customer.entity.Address;
 import com.example.project.customer.entity.Order;
 import com.example.project.customer.entity.OrderItem;
+import com.example.project.customer.entity.Product;
 import com.example.project.customer.entity.TrackingCheckpoint;
 import com.example.project.customer.entity.UserProfile;
+import com.example.project.customer.exception.ResourceConflictException;
 import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.repository.AddressRepository;
 import com.example.project.customer.repository.OrderItemRepository;
 import com.example.project.customer.repository.OrderRepository;
+import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.repository.UserProfileRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,6 +47,7 @@ public class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
+    private final ProductRepository productRepository;
     private final AddressRepository addressRepository;
     private final UserProfileRepository userProfileRepository;
     private final CartService cartService;
@@ -110,6 +114,8 @@ public class OrderServiceImpl implements OrderService {
 
         List<OrderItem> orderItems = new ArrayList<>();
         for (CartItemResponse ci : cart.getItems()) {
+            decrementStock(ci);
+
             OrderItem oi = OrderItem.builder()
                     .order(savedOrder)
                     .productId(ci.getProductId())
@@ -144,6 +150,31 @@ public class OrderServiceImpl implements OrderService {
         cartService.clearCart(uid);
 
         return mapToOrderResponse(savedOrder);
+    }
+
+    /**
+     * Uses a database lock so simultaneous checkouts cannot oversell a product.
+     * Cancellation deliberately does not restore stock: stock changes only when
+     * the order is placed.
+     */
+    private void decrementStock(CartItemResponse cartItem) {
+        if (cartItem.getQuantity() == null || cartItem.getQuantity() <= 0) {
+            throw new IllegalStateException("Order item quantity must be greater than zero");
+        }
+
+        Product product = productRepository.findByIdForStockUpdate(cartItem.getProductId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Product not found with id: " + cartItem.getProductId()));
+
+        int availableStock = product.getStockQty() != null ? product.getStockQty() : 0;
+        if (availableStock < cartItem.getQuantity()) {
+            throw new ResourceConflictException(
+                    "Insufficient stock for product id " + cartItem.getProductId()
+                            + ". Available: " + availableStock);
+        }
+
+        product.setStockQty(availableStock - cartItem.getQuantity());
+        productRepository.save(product);
     }
 
     @Override
@@ -233,6 +264,10 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public OrderResponse updateOrderStatus(Integer id, String status, String location, String description) {
+        if ("CANCELLED".equalsIgnoreCase(status)) {
+            return cancelOrder(id, location, description);
+        }
+
         Order order = findOrder(id);
         order.setOrderStatus(status);
 
@@ -247,6 +282,47 @@ public class OrderServiceImpl implements OrderService {
 
         order.getCheckpoints().add(checkpoint);
         return mapToOrderResponse(orderRepository.save(order));
+    }
+
+    @Override
+    public OrderResponse cancelOrder(Integer id, String location, String description) {
+        Order order = findOrder(id);
+
+        // A repeated request must be idempotent: do not restore the same stock twice.
+        if ("CANCELLED".equalsIgnoreCase(order.getOrderStatus())) {
+            return mapToOrderResponse(order);
+        }
+
+        for (OrderItem item : order.getItems()) {
+            restoreStock(item);
+        }
+
+        order.setOrderStatus("CANCELLED");
+        TrackingCheckpoint checkpoint = TrackingCheckpoint.builder()
+                .order(order)
+                .status("CANCELLED")
+                .title("Order Cancelled")
+                .location(location != null ? location : "HinchMart Hyderabad Central Ops")
+                .description(description != null ? description : "Order cancelled and product stock restored")
+                .timestamp(LocalDateTime.now())
+                .build();
+        order.getCheckpoints().add(checkpoint);
+
+        return mapToOrderResponse(orderRepository.save(order));
+    }
+
+    private void restoreStock(OrderItem orderItem) {
+        if (orderItem.getQuantity() == null || orderItem.getQuantity() <= 0) {
+            throw new IllegalStateException("Order item quantity must be greater than zero");
+        }
+
+        Product product = productRepository.findByIdForStockUpdate(orderItem.getProductId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Product not found with id: " + orderItem.getProductId()));
+
+        int availableStock = product.getStockQty() != null ? product.getStockQty() : 0;
+        product.setStockQty(availableStock + orderItem.getQuantity());
+        productRepository.save(product);
     }
 
     private Order findOrder(Integer id) {
