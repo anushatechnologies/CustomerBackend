@@ -21,7 +21,13 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 @RestController
-@RequestMapping({"/api/sellers/onboarding", "/api/seller/onboarding"})
+@RequestMapping({
+        "/api/sellers/onboarding",
+        "/api/seller/onboarding",
+        "/v1/api/sellers/onboarding",
+        "/api/v1/sellers/onboarding",
+        "/v1/api/seller/onboarding"
+})
 public class SellerOnboardingController {
 
     private final SellerOnboardingService onboardingService;

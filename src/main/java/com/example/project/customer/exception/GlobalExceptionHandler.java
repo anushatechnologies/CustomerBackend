@@ -47,6 +47,12 @@ public class GlobalExceptionHandler {
         return response(HttpStatus.CONFLICT, exception.getMessage());
     }
 
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(org.springframework.dao.DataIntegrityViolationException exception) {
+        log.warn("Data integrity violation (duplicate entry): {}", exception.getMessage());
+        return response(HttpStatus.CONFLICT, "A record with these unique details (Email, Aadhaar, PAN, GSTIN, or Bank Account) already exists.");
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException exception) {
         List<ErrorDetail> errors = new ArrayList<>();

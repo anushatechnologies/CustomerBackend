@@ -9,3 +9,4 @@ public enum BusinessType {
     CONTRACTOR_FABRICATOR,
     OTHER
 }
+

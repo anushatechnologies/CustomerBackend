@@ -37,13 +37,13 @@ public class Seller {
     @Column(name = "email", nullable = false, unique = true)
     private String email;
 
-    @Column(name = "phone", nullable = false)
+    @Column(name = "phone", nullable = false, unique = true)
     private String phone;
 
-    @Column(name = "pan_number")
+    @Column(name = "pan_number", unique = true)
     private String panNumber;
 
-    @Column(name = "aadhaar_number")
+    @Column(name = "aadhaar_number", unique = true)
     private String aadhaarNumber;
 
     @Column(name = "pan_card_url", length = 2000)
@@ -57,7 +57,7 @@ public class Seller {
     @Column(name = "business_type")
     private BusinessType businessType;
 
-    @Column(name = "gstin")
+    @Column(name = "gstin", unique = true)
     private String gstin;
 
     @Column(name = "gst_certificate_url", length = 2000)
@@ -82,7 +82,7 @@ public class Seller {
     @Column(name = "account_holder_name")
     private String accountHolderName;
 
-    @Column(name = "account_number")
+    @Column(name = "account_number", unique = true)
     private String accountNumber;
 
     @Column(name = "ifsc_code")

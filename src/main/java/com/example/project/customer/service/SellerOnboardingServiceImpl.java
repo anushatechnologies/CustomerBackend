@@ -52,16 +52,42 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
     public Seller savePersonalKyc(PersonalKycRequest request, MultipartFile panCardFile) {
         validateRequest(request);
 
-        Seller seller = sellerRepository.findByEmailIgnoreCase(request.email().trim())
+        String email = request.email().trim().toLowerCase();
+        String phone = request.phone().trim();
+        String pan = request.panNumber().trim().toUpperCase();
+        String aadhaar = request.aadhaarNumber().trim();
+
+        Seller seller = sellerRepository.findFirstByEmailIgnoreCase(email)
                 .orElseGet(() -> Seller.builder()
-                        .email(request.email().trim().toLowerCase())
+                        .email(email)
                         .build());
 
+        // Uniqueness check for Mobile/Phone Number
+        for (Seller existing : sellerRepository.findAllByPhone(phone)) {
+            if (seller.getSellerId() == null || !seller.getSellerId().equals(existing.getSellerId())) {
+                throw new ResourceConflictException("Mobile number '" + phone + "' is already registered with another seller");
+            }
+        }
+
+        // Uniqueness check for PAN
+        for (Seller existing : sellerRepository.findAllByPanNumber(pan)) {
+            if (seller.getSellerId() == null || !seller.getSellerId().equals(existing.getSellerId())) {
+                throw new ResourceConflictException("PAN number '" + pan + "' is already registered with another seller");
+            }
+        }
+
+        // Uniqueness check for Aadhaar
+        for (Seller existing : sellerRepository.findAllByAadhaarNumber(aadhaar)) {
+            if (seller.getSellerId() == null || !seller.getSellerId().equals(existing.getSellerId())) {
+                throw new ResourceConflictException("Aadhaar number '" + aadhaar + "' is already registered with another seller");
+            }
+        }
+
         seller.setName(request.name().trim());
-        seller.setEmail(request.email().trim().toLowerCase());
-        seller.setPhone(request.phone().trim());
-        seller.setPanNumber(request.panNumber().trim().toUpperCase());
-        seller.setAadhaarNumber(request.aadhaarNumber().trim());
+        seller.setEmail(email);
+        seller.setPhone(phone);
+        seller.setPanNumber(pan);
+        seller.setAadhaarNumber(aadhaar);
 
         if (seller.getOnboardingStatus() == null) {
             seller.setOnboardingStatus(OnboardingStatus.STEP_1);
@@ -83,10 +109,18 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
         validateRequest(request);
 
         Seller seller = findSeller(sellerId);
+        String gstin = request.gstin().trim().toUpperCase();
+
+        // Uniqueness check for GSTIN
+        for (Seller existing : sellerRepository.findAllByGstin(gstin)) {
+            if (!sellerId.equals(existing.getSellerId())) {
+                throw new ResourceConflictException("GSTIN '" + gstin + "' is already registered with another seller");
+            }
+        }
 
         seller.setCompanyName(request.companyName().trim());
         seller.setBusinessType(request.businessType());
-        seller.setGstin(request.gstin().trim().toUpperCase());
+        seller.setGstin(gstin);
         seller.setBusinessAddress(request.businessAddress().trim());
         seller.setState(request.state().trim());
         seller.setCity(request.city().trim());
@@ -104,14 +138,22 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
         validateRequest(request);
 
         Seller seller = findSeller(sellerId);
+        String accountNumber = request.accountNumber().trim();
 
-        if (!request.accountNumber().trim().equals(request.confirmAccountNumber().trim())) {
+        if (!accountNumber.equals(request.confirmAccountNumber().trim())) {
             throw new ResourceConflictException("Account number and Confirm Account Number do not match");
+        }
+
+        // Uniqueness check for Account Number
+        for (Seller existing : sellerRepository.findAllByAccountNumber(accountNumber)) {
+            if (!sellerId.equals(existing.getSellerId())) {
+                throw new ResourceConflictException("Bank account number '" + accountNumber + "' is already registered with another seller");
+            }
         }
 
         seller.setBankName(request.bankName().trim());
         seller.setAccountHolderName(request.accountHolderName().trim());
-        seller.setAccountNumber(request.accountNumber().trim());
+        seller.setAccountNumber(accountNumber);
         seller.setIfscCode(request.ifscCode().trim().toUpperCase());
         seller.setAccountType(request.accountType().trim().toUpperCase());
 
