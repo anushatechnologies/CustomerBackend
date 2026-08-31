@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -73,5 +74,20 @@ public class OrderController {
         String description = body.get("description");
         OrderResponse updated = orderService.updateOrderStatus(id, status, location, description);
         return ResponseEntity.ok(ApiResponse.ok("Order status updated successfully", updated));
+    }
+
+    @PatchMapping("/{id}/cancel")
+    public ResponseEntity<ApiResponse<OrderResponse>> cancelOrder(
+            @PathVariable Integer id,
+            @RequestBody(required = false) Map<String, String> body) {
+
+        Map<String, String> request = body != null ? body : Map.of();
+        OrderResponse cancelled = orderService.cancelOrder(
+                id,
+                request.get("location"),
+                request.get("description")
+        );
+
+        return ResponseEntity.ok(ApiResponse.ok("Order cancelled successfully", cancelled));
     }
 }

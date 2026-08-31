@@ -3,6 +3,7 @@ package com.example.project.customer.controller;
 import com.example.project.customer.dto.ApiResponse;
 import com.example.project.customer.dto.ProductRequest;
 import com.example.project.customer.dto.ProductResponse;
+import com.example.project.customer.dto.StockQuantityUpdateRequest;
 import com.example.project.customer.service.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -106,6 +107,19 @@ public class ProductController {
                 ApiResponse.ok(
                         "Product updated successfully",
                         service.update(id, request)
+                )
+        );
+    }
+
+    @PatchMapping("/{id}/stock")
+    public ResponseEntity<ApiResponse<ProductResponse>> updateStockQuantity(
+            @PathVariable Integer id,
+            @Valid @RequestBody StockQuantityUpdateRequest request) {
+
+        return ResponseEntity.ok(
+                ApiResponse.ok(
+                        "Product stock quantity updated successfully",
+                        service.updateStockQuantity(id, request)
                 )
         );
     }

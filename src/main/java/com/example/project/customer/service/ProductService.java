@@ -6,6 +6,7 @@ import com.example.project.customer.dto.ProductRejectionRequest;
 import com.example.project.customer.dto.ProductRequest;
 import com.example.project.customer.dto.ProductResponse;
 import com.example.project.customer.dto.SearchSuggestionResponse;
+import com.example.project.customer.dto.StockQuantityUpdateRequest;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -46,6 +47,8 @@ public interface ProductService {
     }
 
     ProductResponse update(Integer id, ProductRequest request);
+
+    ProductResponse updateStockQuantity(Integer id, StockQuantityUpdateRequest request);
 
     void delete(Integer id);
 

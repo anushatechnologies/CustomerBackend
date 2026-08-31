@@ -2,6 +2,7 @@ package com.example.project.customer.service;
 
 import com.example.project.customer.dto.ProductRequest;
 import com.example.project.customer.dto.ProductRejectionRequest;
+import com.example.project.customer.dto.StockQuantityUpdateRequest;
 import com.example.project.customer.entity.ApprovalStatus;
 import com.example.project.customer.entity.Brand;
 import com.example.project.customer.entity.Product;
@@ -154,6 +155,21 @@ class ProductServiceTest {
                 ResourceConflictException.class,
                 () -> service.activate(1)
         );
+    }
+
+    @Test
+    void updateStockQuantityAddsRequestedQuantityToCurrentStock() {
+        StockQuantityUpdateRequest stockRequest = new StockQuantityUpdateRequest();
+        stockRequest.setStockQty(25);
+
+        when(repository.findByIdForStockUpdate(1)).thenReturn(Optional.of(product));
+        when(repository.save(product)).thenReturn(product);
+
+        var response = service.updateStockQuantity(1, stockRequest);
+
+        assertEquals(35, product.getStockQty());
+        assertEquals(35, response.getStockQty());
+        verify(repository).save(product);
     }
 
     @Test
