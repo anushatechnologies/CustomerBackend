@@ -678,13 +678,13 @@ public class ProductServiceImpl implements ProductService {
         product.setRating(
                 req.getRating() != null
                         ? req.getRating()
-                        : 4.5
+                        : (product.getRating() != null ? product.getRating() : 0.0)
         );
 
         product.setReviewCount(
                 req.getReviewCount() != null
                         ? req.getReviewCount()
-                        : 0
+                        : (product.getReviewCount() != null ? product.getReviewCount() : 0)
         );
 
         product.setGstRate(

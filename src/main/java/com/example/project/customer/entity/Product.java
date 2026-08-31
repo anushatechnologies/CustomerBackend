@@ -101,7 +101,7 @@ public class Product {
 
     @Column(name = "rating")
     @Builder.Default
-    private Double rating = 4.5;
+    private Double rating = 0.0;
 
     @Column(name = "review_count")
     @Builder.Default

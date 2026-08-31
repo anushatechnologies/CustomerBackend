@@ -23,17 +23,21 @@ public class ProductReview {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "product_id", nullable = false)
-    private Long productId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "product_id", nullable = false)
+    private Product product;
 
-    @Column(name = "customer_id", nullable = false)
-    private Long customerId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "customer_id", nullable = false)
+    private Customer customer;
 
-    @Column(name = "order_id", nullable = false)
-    private Long orderId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "order_id", nullable = false)
+    private Order order;
 
-    @Column(name = "order_item_id", nullable = false, unique = true)
-    private Long orderItemId;
+    @OneToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "order_item_id", nullable = false, unique = true)
+    private OrderItem orderItem;
 
     @Column(nullable = false)
     @Min(1)
@@ -49,9 +53,11 @@ public class ProductReview {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    @Builder.Default
     private ReviewStatus status = ReviewStatus.APPROVED;
 
     @Column(name = "helpful_count", nullable = false)
+    @Builder.Default
     private int helpfulCount = 0;
 
     @CreationTimestamp

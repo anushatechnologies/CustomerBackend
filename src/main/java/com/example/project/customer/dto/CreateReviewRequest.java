@@ -17,7 +17,7 @@ import java.util.List;
 public class CreateReviewRequest {
 
     @NotNull(message = "Order item ID is required")
-    private Long orderItemId;
+    private Integer orderItemId;
 
     @NotNull(message = "Rating is required")
     @Min(value = 1, message = "Rating must be at least 1")

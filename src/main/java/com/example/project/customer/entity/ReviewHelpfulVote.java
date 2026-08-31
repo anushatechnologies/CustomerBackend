@@ -21,6 +21,7 @@ public class ReviewHelpfulVote {
     @JoinColumn(name = "review_id", nullable = false)
     private ProductReview review;
 
-    @Column(name = "customer_id", nullable = false)
-    private Long customerId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "customer_id", nullable = false)
+    private Customer customer;
 }

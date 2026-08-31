@@ -4,17 +4,27 @@ import com.example.project.customer.entity.Address;
 import com.example.project.customer.entity.Banner;
 import com.example.project.customer.entity.BulkPricingTier;
 import com.example.project.customer.entity.Category;
+import com.example.project.customer.entity.Customer;
+import com.example.project.customer.entity.Order;
+import com.example.project.customer.entity.OrderItem;
 import com.example.project.customer.entity.Product;
+import com.example.project.customer.entity.ProductReview;
 import com.example.project.customer.entity.Quotation;
+import com.example.project.customer.entity.ReviewStatus;
 import com.example.project.customer.entity.Rfq;
 import com.example.project.customer.entity.RfqQuestion;
 import com.example.project.customer.entity.Subcategory;
+import com.example.project.customer.entity.TrackingCheckpoint;
 import com.example.project.customer.entity.UserProfile;
 import com.example.project.customer.entity.VendorInfo;
 import com.example.project.customer.repository.AddressRepository;
 import com.example.project.customer.repository.BannerRepository;
 import com.example.project.customer.repository.CategoryRepository;
+import com.example.project.customer.repository.CustomerRepository;
+import com.example.project.customer.repository.OrderItemRepository;
+import com.example.project.customer.repository.OrderRepository;
 import com.example.project.customer.repository.ProductRepository;
+import com.example.project.customer.repository.ProductReviewRepository;
 import com.example.project.customer.repository.QuotationRepository;
 import com.example.project.customer.repository.RfqQuestionRepository;
 import com.example.project.customer.repository.RfqRepository;
@@ -47,6 +57,10 @@ public class DataInitializer implements CommandLineRunner {
     private final RfqRepository rfqRepository;
     private final QuotationRepository quotationRepository;
     private final RfqQuestionRepository rfqQuestionRepository;
+    private final CustomerRepository customerRepository;
+    private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
+    private final ProductReviewRepository productReviewRepository;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     @Override
@@ -63,7 +77,7 @@ public class DataInitializer implements CommandLineRunner {
             initSampleRfq();
             log.info("HINCH MART database successfully initialized with rich B2B catalog and seed data.");
         } catch (Exception e) {
-            log.warn("Data initialization skipped or already present: {}", e.getMessage());
+            log.warn("Data initialization skipped or already present: {}", e.getMessage(), e);
         }
     }
 
@@ -87,6 +101,21 @@ public class DataInitializer implements CommandLineRunner {
                     .build();
             userProfileRepository.save(user);
         }
+        if (customerRepository.count() == 0) {
+            Customer customer1 = Customer.builder()
+                    .customerId(101)
+                    .name("Rajesh Sharma")
+                    .email("rajesh@apexbldrs.com")
+                    .phone("9876543210")
+                    .build();
+            Customer customer2 = Customer.builder()
+                    .customerId(102)
+                    .name("Ananya Reddy")
+                    .email("ananya@infrahyderabad.in")
+                    .phone("9849012345")
+                    .build();
+            customerRepository.saveAll(List.of(customer1, customer2));
+        }
     }
 
     private void initAddresses() {
@@ -99,30 +128,57 @@ public class DataInitializer implements CommandLineRunner {
                     .city("Hyderabad")
                     .state("Telangana")
                     .pincode("500032")
-                    .landmark("Near Wave Rock")
+                    .landmark("Opp. WaveRock SEZ")
                     .isDefault(true)
                     .hasHeavyVehicleAccess(true)
                     .build();
 
             Address site2 = Address.builder()
-                    .siteName("Highway Expressway Yard #4")
-                    .recipientName("Supervisor Anand Rao")
-                    .phone("9849556677")
-                    .addressLine1("Survey 112, ORR Service Road")
+                    .siteName("Highway Expansion Yard - Outer Ring Road")
+                    .recipientName("Store Mgr. Anil Kumar")
+                    .phone("9849223344")
+                    .addressLine1("Survey 108, Exit 11 ORR, Pedda Amberpet")
                     .city("Hyderabad")
                     .state("Telangana")
-                    .pincode("500075")
-                    .landmark("Exit 11 Toll Plaza")
+                    .pincode("501505")
+                    .landmark("Near Toll Plaza Gate 3")
                     .isDefault(false)
                     .hasHeavyVehicleAccess(true)
                     .build();
 
-            addressRepository.saveAll(List.of(site1, site2));
+            Address site3 = Address.builder()
+                    .siteName("Gachibowli Metro Depot Project")
+                    .recipientName("Procurement Officer Ramesh")
+                    .phone("9849334455")
+                    .addressLine1("Metro Pillar 140, Old Mumbai Highway")
+                    .city("Hyderabad")
+                    .state("Telangana")
+                    .pincode("500081")
+                    .landmark("Behind Bio-Diversity Park")
+                    .isDefault(false)
+                    .hasHeavyVehicleAccess(true)
+                    .build();
+
+            Address site4 = Address.builder()
+                    .siteName("Commercial Warehouse 4")
+                    .recipientName("Logistics Lead Suresh")
+                    .phone("9849445566")
+                    .addressLine1("Shed 12, IDA Nacharam Industrial Area")
+                    .city("Hyderabad")
+                    .state("Telangana")
+                    .pincode("500076")
+                    .landmark("Road No. 5")
+                    .isDefault(false)
+                    .hasHeavyVehicleAccess(true)
+                    .build();
+
+            addressRepository.saveAll(List.of(site1, site2, site3, site4));
         }
     }
 
     private void initCatalogAndBanners() {
         if (categoryRepository.count() == 0) {
+            // Categories
             Category civil = categoryRepository.save(Category.builder()
                     .name("Civil & Structural")
                     .slug("civil-structural")
@@ -132,16 +188,16 @@ public class DataInitializer implements CommandLineRunner {
                     .build());
 
             Category electrical = categoryRepository.save(Category.builder()
-                    .name("Electrical & Cables")
-                    .slug("electrical-cables")
+                    .name("Electrical & Power")
+                    .slug("electrical-power")
                     .imageUrl("https://cdn.hinchmart.com/categories/electrical.jpg")
                     .active(true)
                     .sortOrder(2)
                     .build());
 
             Category plumbing = categoryRepository.save(Category.builder()
-                    .name("Plumbing & Sanitary")
-                    .slug("plumbing-sanitary")
+                    .name("Plumbing & Drainage")
+                    .slug("plumbing-drainage")
                     .imageUrl("https://cdn.hinchmart.com/categories/plumbing.jpg")
                     .active(true)
                     .sortOrder(3)
@@ -192,7 +248,7 @@ public class DataInitializer implements CommandLineRunner {
                     .sortOrder(1)
                     .build());
 
-            // Products
+            // Products (initialized with 0.0 rating and 0 review count)
             List<BulkPricingTier> tmtTiers = List.of(
                     BulkPricingTier.builder().tierId(1).minQty(5).maxQty(19).price(BigDecimal.valueOf(54200.0)).discountPercentage(8.1).build(),
                     BulkPricingTier.builder().tierId(2).minQty(20).maxQty(49).price(BigDecimal.valueOf(52800.0)).discountPercentage(10.5).build(),
@@ -226,8 +282,8 @@ public class DataInitializer implements CommandLineRunner {
                     .stockQty(500)
                     .active(true)
                     .is24HourDelivery(true)
-                    .rating(4.8)
-                    .reviewCount(42)
+                    .rating(0.0)
+                    .reviewCount(0)
                     .gstRate(BigDecimal.valueOf(18.0))
                     .hsnCode("7214")
                     .specifications(tmtSpecs)
@@ -267,8 +323,8 @@ public class DataInitializer implements CommandLineRunner {
                     .stockQty(2500)
                     .active(true)
                     .is24HourDelivery(true)
-                    .rating(4.9)
-                    .reviewCount(128)
+                    .rating(0.0)
+                    .reviewCount(0)
                     .gstRate(BigDecimal.valueOf(28.0))
                     .hsnCode("2523")
                     .specifications(cementSpecs)
@@ -302,8 +358,8 @@ public class DataInitializer implements CommandLineRunner {
                     .stockQty(5000)
                     .active(true)
                     .is24HourDelivery(true)
-                    .rating(4.7)
-                    .reviewCount(31)
+                    .rating(0.0)
+                    .reviewCount(0)
                     .gstRate(BigDecimal.valueOf(18.0))
                     .hsnCode("8544")
                     .bulkPricingTiers(cableTiers)
@@ -324,13 +380,18 @@ public class DataInitializer implements CommandLineRunner {
                     .stockQty(800)
                     .active(true)
                     .is24HourDelivery(true)
-                    .rating(4.8)
-                    .reviewCount(19)
+                    .rating(0.0)
+                    .reviewCount(0)
                     .gstRate(BigDecimal.valueOf(18.0))
                     .hsnCode("3917")
                     .build();
 
-            productRepository.saveAll(List.of(p1, p2, p3, p4));
+            Product savedP1 = productRepository.save(p1);
+            Product savedP2 = productRepository.save(p2);
+            Product savedP3 = productRepository.save(p3);
+            Product savedP4 = productRepository.save(p4);
+
+            initSampleReviewsAndOrders(savedP1, savedP2, savedP3, savedP4);
         }
 
         if (bannerRepository.count() == 0) {
@@ -358,6 +419,116 @@ public class DataInitializer implements CommandLineRunner {
 
             bannerRepository.saveAll(List.of(b1, b2));
         }
+    }
+
+    private void initSampleReviewsAndOrders(Product p1, Product p2, Product p3, Product p4) {
+        Customer c1 = customerRepository.findById(101).orElse(null);
+        Customer c2 = customerRepository.findById(102).orElse(null);
+        if (c1 == null) return;
+
+        // Create a delivered order for verified purchase
+        Order deliveredOrder = Order.builder()
+                .orderNumber("ORD-20260815-101")
+                .userId(c1.getCustomerId())
+                .deliveryLocation("Plot 42, Financial District, Hyderabad")
+                .subtotal(BigDecimal.valueOf(542000.0))
+                .discount(BigDecimal.ZERO)
+                .taxableAmount(BigDecimal.valueOf(542000.0))
+                .cgst(BigDecimal.valueOf(48780.0))
+                .sgst(BigDecimal.valueOf(48780.0))
+                .igst(BigDecimal.ZERO)
+                .totalGst(BigDecimal.valueOf(97560.0))
+                .freightCharge(BigDecimal.valueOf(4500.0))
+                .craneUnloadingCharge(BigDecimal.ZERO)
+                .totalAmount(BigDecimal.valueOf(644060.0))
+                .paymentMethod("RAZORPAY")
+                .paymentStatus("PAID")
+                .orderStatus("DELIVERED")
+                .carrierName("VRL Logistics Heavy Freight Fleet")
+                .vehicleNumber("TS 09 UB 4412")
+                .driverName("Ramesh Yadav")
+                .trackingNumber("VRL-HYD-DEL-01")
+                .estimatedDelivery(LocalDateTime.now().minusDays(5))
+                .build();
+
+        Order savedOrder = orderRepository.save(deliveredOrder);
+
+        OrderItem item1 = OrderItem.builder()
+                .order(savedOrder)
+                .productId(p1.getProductId())
+                .title(p1.getTitle())
+                .imageUrl(p1.getImageUrl())
+                .quantity(10)
+                .unit("MT")
+                .unitPrice(p1.getPrice())
+                .originalPrice(p1.getPrice())
+                .appliedTier("10 MT Tier")
+                .gstRate(BigDecimal.valueOf(18.0))
+                .lineTotal(BigDecimal.valueOf(542000.0))
+                .lineGst(BigDecimal.valueOf(97560.0))
+                .build();
+
+        OrderItem item2 = OrderItem.builder()
+                .order(savedOrder)
+                .productId(p2.getProductId())
+                .title(p2.getTitle())
+                .imageUrl(p2.getImageUrl())
+                .quantity(200)
+                .unit("Bags")
+                .unitPrice(p2.getPrice())
+                .originalPrice(p2.getPrice())
+                .appliedTier("200 Bags Tier")
+                .gstRate(BigDecimal.valueOf(28.0))
+                .lineTotal(BigDecimal.valueOf(76000.0))
+                .lineGst(BigDecimal.valueOf(21280.0))
+                .build();
+
+        OrderItem savedItem1 = orderItemRepository.save(item1);
+        OrderItem savedItem2 = orderItemRepository.save(item2);
+
+        // Seed genuine product reviews with authentic ratings
+        ProductReview review1 = ProductReview.builder()
+                .product(p1)
+                .customer(c1)
+                .order(savedOrder)
+                .orderItem(savedItem1)
+                .rating(5)
+                .title("Excellent Batch Quality and Prompt Delivery")
+                .comment("Received test certificate conforming to Fe 550D standards. Bend test passed at our project site with zero issues.")
+                .status(ReviewStatus.APPROVED)
+                .helpfulCount(4)
+                .build();
+
+        ProductReview review2 = ProductReview.builder()
+                .product(p2)
+                .customer(c1)
+                .order(savedOrder)
+                .orderItem(savedItem2)
+                .rating(5)
+                .title("Genuine Fresh Stock UltraTech PPC")
+                .comment("Fresh manufacturing batch within 2 weeks of packing. Setting time and strength are spot on.")
+                .status(ReviewStatus.APPROVED)
+                .helpfulCount(2)
+                .build();
+
+        productReviewRepository.saveAll(List.of(review1, review2));
+
+        // Dynamically compute and store product ratings and review counts
+        recalculateAndSaveProductRating(p1.getProductId());
+        recalculateAndSaveProductRating(p2.getProductId());
+        recalculateAndSaveProductRating(p3.getProductId());
+        recalculateAndSaveProductRating(p4.getProductId());
+    }
+
+    private void recalculateAndSaveProductRating(Integer productId) {
+        productRepository.findById(productId).ifPresent(p -> {
+            Double avg = productReviewRepository.averageRatingByProductAndStatus(productId, ReviewStatus.APPROVED);
+            long count = productReviewRepository.countByProductAndStatus(productId, ReviewStatus.APPROVED);
+            double rounded = avg != null ? Math.round(avg * 10.0) / 10.0 : 0.0;
+            p.setRating(rounded);
+            p.setReviewCount((int) count);
+            productRepository.save(p);
+        });
     }
 
     private void initSampleRfq() {
