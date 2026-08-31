@@ -16,4 +16,5 @@ public interface OrderService {
     OrderTrackingResponse getOrderTracking(Integer id);
     InvoiceResponse getOrderInvoice(Integer id);
     OrderResponse updateOrderStatus(Integer id, String status, String location, String description);
+    OrderResponse cancelOrder(Integer id, String location, String description);
 }

@@ -7,6 +7,7 @@ import com.example.project.customer.dto.ProductRejectionRequest;
 import com.example.project.customer.dto.ProductRequest;
 import com.example.project.customer.dto.ProductResponse;
 import com.example.project.customer.dto.SearchSuggestionResponse;
+import com.example.project.customer.dto.StockQuantityUpdateRequest;
 import com.example.project.customer.entity.ApprovalStatus;
 import com.example.project.customer.entity.Category;
 import com.example.project.customer.entity.Product;
@@ -297,6 +298,21 @@ public class ProductServiceImpl implements ProductService {
         }
 
         return mapToResponse(saved);
+    }
+
+    @Override
+    public ProductResponse updateStockQuantity(Integer id, StockQuantityUpdateRequest request) {
+
+        Product product = repository.findByIdForStockUpdate(id)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Product not found with id: " + id));
+
+        int currentStock = product.getStockQty() != null ? product.getStockQty() : 0;
+        int incomingStock = request.getStockQty() != null ? request.getStockQty() : 0;
+
+        product.setStockQty(currentStock + incomingStock);
+
+        return mapToResponse(repository.save(product));
     }
 
     @Override
