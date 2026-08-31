@@ -27,6 +27,11 @@ public class CategoryController {
 
     private final CategoryService service;
 
+    @GetMapping("/test")
+    public ResponseEntity<String> test() {
+        return ResponseEntity.ok("CategoryController is working!");
+    }
+
     @PostMapping
     public ResponseEntity<ApiResponse<CategoryResponse>> create(@Valid @RequestBody CategoryRequest request) {
         CategoryResponse created = service.create(request);

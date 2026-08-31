@@ -7,7 +7,6 @@ import com.example.project.customer.entity.CustomerDocument;
 import com.example.project.customer.entity.DocumentType;
 import com.example.project.customer.entity.VerificationStatus;
 import com.example.project.customer.exception.CustomerNotFoundException;
-import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.repository.CustomerDocumentRepository;
 import com.example.project.customer.repository.CustomerRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,9 +17,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;

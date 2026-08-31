@@ -104,9 +104,8 @@ public class CartServiceImpl implements CartService {
         CartResponse updated = calculateCartResponse(cart);
 
         return CouponResponse.builder()
-                .couponCode(code)
-                .discountAmount(discount)
-                .newGrandTotal(updated.getGrandTotal())
+                .code(code)
+                .discountValue(discount)
                 .build();
     }
 
