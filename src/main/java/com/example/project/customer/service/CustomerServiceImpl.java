@@ -17,6 +17,7 @@ import java.util.List;
 @Service
 @Transactional
 @RequiredArgsConstructor
+@SuppressWarnings("null")
 public class CustomerServiceImpl implements CustomerService {
 
     private final CustomerRepository customerRepository;

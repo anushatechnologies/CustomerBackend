@@ -40,6 +40,7 @@ import java.util.Map;
 @Service
 @Transactional
 @RequiredArgsConstructor
+@SuppressWarnings("null")
 public class RfqServiceImpl implements RfqService {
 
     private final RfqRepository rfqRepository;

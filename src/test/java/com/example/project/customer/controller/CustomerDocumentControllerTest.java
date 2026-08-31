@@ -6,9 +6,7 @@ import com.example.project.customer.dto.RejectDocumentRequest;
 import com.example.project.customer.config.SecurityConfig;
 import com.example.project.customer.entity.DocumentType;
 import com.example.project.customer.entity.VerificationStatus;
-import com.example.project.customer.exception.CustomerNotFoundException;
 import com.example.project.customer.exception.GlobalExceptionHandler;
-import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.service.CustomerDocumentService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
@@ -27,7 +25,6 @@ import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -39,6 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(CustomerDocumentController.class)
 @Import({GlobalExceptionHandler.class, SecurityConfig.class})
+@SuppressWarnings("null")
 class CustomerDocumentControllerTest {
 
     @Autowired

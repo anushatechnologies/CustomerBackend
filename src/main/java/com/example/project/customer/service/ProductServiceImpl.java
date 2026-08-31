@@ -37,6 +37,7 @@ import java.util.List;
 @Service
 @Transactional
 @RequiredArgsConstructor
+@SuppressWarnings("null")
 public class ProductServiceImpl implements ProductService {
 
     private final ProductRepository repository;

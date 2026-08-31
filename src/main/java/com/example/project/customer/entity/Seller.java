@@ -49,6 +49,9 @@ public class Seller {
     @Column(name = "pan_card_url", length = 2000)
     private String panCardUrl;
 
+    @Column(name = "aadhaar_card_url", length = 2000)
+    private String aadhaarCardUrl;
+
     // Step 2: Business & Tax Details
     @Column(name = "company_name")
     private String companyName;
@@ -96,6 +99,11 @@ public class Seller {
     @Column(name = "onboarding_status", nullable = false)
     @Builder.Default
     private OnboardingStatus onboardingStatus = OnboardingStatus.STEP_1;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "verification_status")
+    @Builder.Default
+    private VerificationStatus verificationStatus = VerificationStatus.PENDING;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

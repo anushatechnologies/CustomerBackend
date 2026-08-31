@@ -27,6 +27,7 @@ import java.util.Optional;
 @Service
 @Transactional
 @RequiredArgsConstructor
+@SuppressWarnings("null")
 public class CartServiceImpl implements CartService {
 
     private final CartRepository cartRepository;

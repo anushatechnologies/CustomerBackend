@@ -19,6 +19,7 @@ import java.util.List;
 @Service
 @Transactional
 @RequiredArgsConstructor
+@SuppressWarnings("null")
 public class BannerServiceImpl implements BannerService {
 
     private final BannerRepository bannerRepository;

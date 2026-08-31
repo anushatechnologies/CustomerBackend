@@ -36,6 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(BannerController.class)
 @Import({GlobalExceptionHandler.class, SecurityConfig.class})
+@SuppressWarnings("null")
 class BannerControllerTest {
 
     @Autowired

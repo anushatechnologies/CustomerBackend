@@ -18,6 +18,7 @@ import java.math.RoundingMode;
 @Service
 @Transactional(readOnly = true)
 @RequiredArgsConstructor
+@SuppressWarnings("null")
 public class CheckoutServiceImpl implements CheckoutService {
 
     private final CartService cartService;

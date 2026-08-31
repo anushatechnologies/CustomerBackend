@@ -17,6 +17,7 @@ import java.util.List;
 
 @Service
 @Transactional
+@SuppressWarnings("null")
 public class CustomerDocumentServiceImpl implements CustomerDocumentService {
 
     private final CustomerDocumentRepository documentRepository;

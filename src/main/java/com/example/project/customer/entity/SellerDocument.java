@@ -50,6 +50,12 @@ public class SellerDocument {
     @Column(name = "file_type", nullable = false)
     private String fileType;
 
+    @Column(name = "file_size")
+    private Long fileSize;
+
+    @Column(name = "remarks", length = 1000)
+    private String remarks;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "verification_status", nullable = false)
     @Builder.Default

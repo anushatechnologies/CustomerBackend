@@ -15,6 +15,7 @@ import java.util.List;
 
 @Slf4j
 @RestControllerAdvice
+@SuppressWarnings("null")
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(CustomerNotFoundException.class)

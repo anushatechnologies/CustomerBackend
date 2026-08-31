@@ -16,6 +16,7 @@ import java.util.List;
 @Service
 @Transactional
 @RequiredArgsConstructor
+@SuppressWarnings("null")
 public class AddressServiceImpl implements AddressService {
 
     private final AddressRepository addressRepository;
