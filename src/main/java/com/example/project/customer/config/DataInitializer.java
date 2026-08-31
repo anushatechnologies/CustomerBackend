@@ -1,20 +1,33 @@
 package com.example.project.customer.config;
 
 import com.example.project.customer.entity.Address;
+import com.example.project.customer.entity.ApprovalStatus;
 import com.example.project.customer.entity.Banner;
+import com.example.project.customer.entity.Brand;
 import com.example.project.customer.entity.BulkPricingTier;
 import com.example.project.customer.entity.Category;
+import com.example.project.customer.entity.Customer;
+import com.example.project.customer.entity.Order;
+import com.example.project.customer.entity.OrderItem;
 import com.example.project.customer.entity.Product;
+import com.example.project.customer.entity.ProductReview;
 import com.example.project.customer.entity.Quotation;
+import com.example.project.customer.entity.ReviewStatus;
 import com.example.project.customer.entity.Rfq;
 import com.example.project.customer.entity.RfqQuestion;
 import com.example.project.customer.entity.Subcategory;
+import com.example.project.customer.entity.TrackingCheckpoint;
 import com.example.project.customer.entity.UserProfile;
 import com.example.project.customer.entity.VendorInfo;
 import com.example.project.customer.repository.AddressRepository;
 import com.example.project.customer.repository.BannerRepository;
+import com.example.project.customer.repository.BrandRepository;
 import com.example.project.customer.repository.CategoryRepository;
+import com.example.project.customer.repository.CustomerRepository;
+import com.example.project.customer.repository.OrderItemRepository;
+import com.example.project.customer.repository.OrderRepository;
 import com.example.project.customer.repository.ProductRepository;
+import com.example.project.customer.repository.ProductReviewRepository;
 import com.example.project.customer.repository.QuotationRepository;
 import com.example.project.customer.repository.RfqQuestionRepository;
 import com.example.project.customer.repository.RfqRepository;
@@ -40,6 +53,7 @@ public class DataInitializer implements CommandLineRunner {
 
     private final CategoryRepository categoryRepository;
     private final SubcategoryRepository subcategoryRepository;
+    private final BrandRepository brandRepository;
     private final ProductRepository productRepository;
     private final BannerRepository bannerRepository;
     private final UserProfileRepository userProfileRepository;
@@ -47,9 +61,19 @@ public class DataInitializer implements CommandLineRunner {
     private final RfqRepository rfqRepository;
     private final QuotationRepository quotationRepository;
     private final RfqQuestionRepository rfqQuestionRepository;
+    private final CustomerRepository customerRepository;
+    private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
+    private final ProductReviewRepository productReviewRepository;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     @Override
     public void run(String... args) {
+        try {
+            jdbcTemplate.execute("ALTER TABLE seller_documents MODIFY COLUMN document_type VARCHAR(50) NOT NULL");
+            jdbcTemplate.execute("ALTER TABLE seller_documents MODIFY COLUMN title VARCHAR(150) NULL DEFAULT ''");
+        } catch (Exception ignored) {
+        }
         try {
             initUserProfile();
             initAddresses();
@@ -57,7 +81,7 @@ public class DataInitializer implements CommandLineRunner {
             initSampleRfq();
             log.info("HINCH MART database successfully initialized with rich B2B catalog and seed data.");
         } catch (Exception e) {
-            log.warn("Data initialization skipped or already present: {}", e.getMessage());
+            log.warn("Data initialization skipped or already present: {}", e.getMessage(), e);
         }
     }
 
@@ -81,6 +105,21 @@ public class DataInitializer implements CommandLineRunner {
                     .build();
             userProfileRepository.save(user);
         }
+        if (customerRepository.count() == 0) {
+            Customer customer1 = Customer.builder()
+                    .customerId(101)
+                    .name("Rajesh Sharma")
+                    .email("rajesh@apexbldrs.com")
+                    .phone("9876543210")
+                    .build();
+            Customer customer2 = Customer.builder()
+                    .customerId(102)
+                    .name("Ananya Reddy")
+                    .email("ananya@infrahyderabad.in")
+                    .phone("9849012345")
+                    .build();
+            customerRepository.saveAll(List.of(customer1, customer2));
+        }
     }
 
     private void initAddresses() {
@@ -93,97 +132,240 @@ public class DataInitializer implements CommandLineRunner {
                     .city("Hyderabad")
                     .state("Telangana")
                     .pincode("500032")
-                    .landmark("Near Wave Rock")
+                    .landmark("Opp. WaveRock SEZ")
                     .isDefault(true)
                     .hasHeavyVehicleAccess(true)
                     .build();
 
             Address site2 = Address.builder()
-                    .siteName("Highway Expressway Yard #4")
-                    .recipientName("Supervisor Anand Rao")
-                    .phone("9849556677")
-                    .addressLine1("Survey 112, ORR Service Road")
+                    .siteName("Highway Expansion Yard - Outer Ring Road")
+                    .recipientName("Store Mgr. Anil Kumar")
+                    .phone("9849223344")
+                    .addressLine1("Survey 108, Exit 11 ORR, Pedda Amberpet")
                     .city("Hyderabad")
                     .state("Telangana")
-                    .pincode("500075")
-                    .landmark("Exit 11 Toll Plaza")
+                    .pincode("501505")
+                    .landmark("Near Toll Plaza Gate 3")
                     .isDefault(false)
                     .hasHeavyVehicleAccess(true)
                     .build();
 
-            addressRepository.saveAll(List.of(site1, site2));
+            Address site3 = Address.builder()
+                    .siteName("Gachibowli Metro Depot Project")
+                    .recipientName("Procurement Officer Ramesh")
+                    .phone("9849334455")
+                    .addressLine1("Metro Pillar 140, Old Mumbai Highway")
+                    .city("Hyderabad")
+                    .state("Telangana")
+                    .pincode("500081")
+                    .landmark("Behind Bio-Diversity Park")
+                    .isDefault(false)
+                    .hasHeavyVehicleAccess(true)
+                    .build();
+
+            Address site4 = Address.builder()
+                    .siteName("Commercial Warehouse 4")
+                    .recipientName("Logistics Lead Suresh")
+                    .phone("9849445566")
+                    .addressLine1("Shed 12, IDA Nacharam Industrial Area")
+                    .city("Hyderabad")
+                    .state("Telangana")
+                    .pincode("500076")
+                    .landmark("Road No. 5")
+                    .isDefault(false)
+                    .hasHeavyVehicleAccess(true)
+                    .build();
+
+            addressRepository.saveAll(List.of(site1, site2, site3, site4));
         }
     }
 
     private void initCatalogAndBanners() {
-        if (categoryRepository.count() == 0) {
-            Category civil = categoryRepository.save(Category.builder()
-                    .name("Civil & Structural")
-                    .slug("civil-structural")
-                    .imageUrl("https://cdn.hinchmart.com/categories/civil_structural.jpg")
+        if (brandRepository.count() == 0) {
+            Category civil = categoryRepository.findBySlugIgnoreCase("civil-structural")
+                    .orElseGet(() -> categoryRepository.save(Category.builder()
+                            .name("Civil & Structural")
+                            .slug("civil-structural")
+                            .imageUrl("https://cdn.hinchmart.com/categories/civil_structural.jpg")
+                            .active(true)
+                            .sortOrder(1)
+                            .build()));
+
+            Category electrical = categoryRepository.findBySlugIgnoreCase("electrical-cables")
+                    .orElseGet(() -> categoryRepository.save(Category.builder()
+                            .name("Electrical & Cables")
+                            .slug("electrical-cables")
+                            .imageUrl("https://cdn.hinchmart.com/categories/electrical.jpg")
+                            .active(true)
+                            .sortOrder(2)
+                            .build()));
+
+            Category plumbing = categoryRepository.findBySlugIgnoreCase("plumbing-sanitary")
+                    .orElseGet(() -> categoryRepository.save(Category.builder()
+                            .name("Plumbing & Sanitary")
+                            .slug("plumbing-sanitary")
+                            .imageUrl("https://cdn.hinchmart.com/categories/plumbing.jpg")
+                            .active(true)
+                            .sortOrder(3)
+                            .build()));
+
+            Category paints = categoryRepository.findBySlugIgnoreCase("paints-finishes")
+                    .orElseGet(() -> categoryRepository.save(Category.builder()
+                            .name("Paints & Finishes")
+                            .slug("paints-finishes")
+                            .imageUrl("https://cdn.hinchmart.com/categories/paints.jpg")
+                            .active(true)
+                            .sortOrder(4)
+                            .build()));
+
+            // Subcategories
+            Subcategory tmt = subcategoryRepository.findBySlugIgnoreCase("tmt-steel-rebars")
+                    .orElseGet(() -> subcategoryRepository.save(Subcategory.builder()
+                            .category(civil)
+                            .name("TMT Steel & Rebars")
+                            .slug("tmt-steel-rebars")
+                            .imageUrl("https://cdn.hinchmart.com/subcategories/tmt_steel.jpg")
+                            .active(true)
+                            .sortOrder(1)
+                            .build()));
+
+            Subcategory cement = subcategoryRepository.findBySlugIgnoreCase("cement-rmc")
+                    .orElseGet(() -> subcategoryRepository.save(Subcategory.builder()
+                            .category(civil)
+                            .name("Cement & RMC")
+                            .slug("cement-rmc")
+                            .imageUrl("https://cdn.hinchmart.com/subcategories/cement.jpg")
+                            .active(true)
+                            .sortOrder(2)
+                            .build()));
+
+            Subcategory cables = subcategoryRepository.findBySlugIgnoreCase("armoured-cables")
+                    .orElseGet(() -> subcategoryRepository.save(Subcategory.builder()
+                            .category(electrical)
+                            .name("Armoured XLPE Cables")
+                            .slug("armoured-cables")
+                            .imageUrl("https://cdn.hinchmart.com/subcategories/armoured_cables.jpg")
+                            .active(true)
+                            .sortOrder(1)
+                            .build()));
+
+            Subcategory pipes = subcategoryRepository.findBySlugIgnoreCase("cpvc-pipes")
+                    .orElseGet(() -> subcategoryRepository.save(Subcategory.builder()
+                            .category(plumbing)
+                            .name("CPVC & UPVC Pipes")
+                            .slug("cpvc-pipes")
+                            .imageUrl("https://cdn.hinchmart.com/subcategories/pipes.jpg")
+                            .active(true)
+                            .sortOrder(1)
+                            .build()));
+
+            // Brands
+            Brand tataTiscon = brandRepository.save(Brand.builder()
+                    .subcategory(tmt)
+                    .name("Tata Tiscon")
+                    .slug("tata-tiscon")
+                    .imageUrl("https://cdn.hinchmart.com/brands/tata_tiscon.png")
                     .active(true)
                     .sortOrder(1)
                     .build());
 
-            Category electrical = categoryRepository.save(Category.builder()
-                    .name("Electrical & Cables")
-                    .slug("electrical-cables")
-                    .imageUrl("https://cdn.hinchmart.com/categories/electrical.jpg")
+            Brand jswSteel = brandRepository.save(Brand.builder()
+                    .subcategory(tmt)
+                    .name("JSW Neosteel")
+                    .slug("jsw-neosteel")
+                    .imageUrl("https://cdn.hinchmart.com/brands/jsw_steel.png")
                     .active(true)
                     .sortOrder(2)
                     .build());
 
-            Category plumbing = categoryRepository.save(Category.builder()
-                    .name("Plumbing & Sanitary")
-                    .slug("plumbing-sanitary")
-                    .imageUrl("https://cdn.hinchmart.com/categories/plumbing.jpg")
+            Brand jindal = brandRepository.save(Brand.builder()
+                    .subcategory(tmt)
+                    .name("Jindal Panther")
+                    .slug("jindal-panther")
+                    .imageUrl("https://cdn.hinchmart.com/brands/jindal_panther.png")
                     .active(true)
                     .sortOrder(3)
                     .build());
 
-            Category paints = categoryRepository.save(Category.builder()
-                    .name("Paints & Finishes")
-                    .slug("paints-finishes")
-                    .imageUrl("https://cdn.hinchmart.com/categories/paints.jpg")
-                    .active(true)
-                    .sortOrder(4)
-                    .build());
-
-            // Subcategories
-            Subcategory tmt = subcategoryRepository.save(Subcategory.builder()
-                    .category(civil)
-                    .name("TMT Steel & Rebars")
-                    .slug("tmt-steel-rebars")
-                    .imageUrl("https://cdn.hinchmart.com/subcategories/tmt_steel.jpg")
+            Brand ultratech = brandRepository.save(Brand.builder()
+                    .subcategory(cement)
+                    .name("UltraTech")
+                    .slug("ultratech")
+                    .imageUrl("https://cdn.hinchmart.com/brands/ultratech.png")
                     .active(true)
                     .sortOrder(1)
                     .build());
 
-            Subcategory cement = subcategoryRepository.save(Subcategory.builder()
-                    .category(civil)
-                    .name("Cement & RMC")
-                    .slug("cement-rmc")
-                    .imageUrl("https://cdn.hinchmart.com/subcategories/cement.jpg")
+            Brand acc = brandRepository.save(Brand.builder()
+                    .subcategory(cement)
+                    .name("ACC Cement")
+                    .slug("acc-cement")
+                    .imageUrl("https://cdn.hinchmart.com/brands/acc_cement.png")
                     .active(true)
                     .sortOrder(2)
                     .build());
 
-            Subcategory cables = subcategoryRepository.save(Subcategory.builder()
-                    .category(electrical)
-                    .name("Armoured XLPE Cables")
-                    .slug("armoured-cables")
-                    .imageUrl("https://cdn.hinchmart.com/subcategories/armoured_cables.jpg")
+            Brand ambuja = brandRepository.save(Brand.builder()
+                    .subcategory(cement)
+                    .name("Ambuja Cement")
+                    .slug("ambuja-cement")
+                    .imageUrl("https://cdn.hinchmart.com/brands/ambuja_cement.png")
+                    .active(true)
+                    .sortOrder(3)
+                    .build());
+
+            Brand polycab = brandRepository.save(Brand.builder()
+                    .subcategory(cables)
+                    .name("Polycab")
+                    .slug("polycab")
+                    .imageUrl("https://cdn.hinchmart.com/brands/polycab.png")
                     .active(true)
                     .sortOrder(1)
                     .build());
 
-            Subcategory pipes = subcategoryRepository.save(Subcategory.builder()
-                    .category(plumbing)
-                    .name("CPVC & UPVC Pipes")
-                    .slug("cpvc-pipes")
-                    .imageUrl("https://cdn.hinchmart.com/subcategories/pipes.jpg")
+            Brand havells = brandRepository.save(Brand.builder()
+                    .subcategory(cables)
+                    .name("Havells")
+                    .slug("havells")
+                    .imageUrl("https://cdn.hinchmart.com/brands/havells.png")
+                    .active(true)
+                    .sortOrder(2)
+                    .build());
+
+            Brand kei = brandRepository.save(Brand.builder()
+                    .subcategory(cables)
+                    .name("KEI Wires & Cables")
+                    .slug("kei-wires-cables")
+                    .imageUrl("https://cdn.hinchmart.com/brands/kei.png")
+                    .active(true)
+                    .sortOrder(3)
+                    .build());
+
+            Brand astral = brandRepository.save(Brand.builder()
+                    .subcategory(pipes)
+                    .name("Astral")
+                    .slug("astral")
+                    .imageUrl("https://cdn.hinchmart.com/brands/astral.png")
                     .active(true)
                     .sortOrder(1)
+                    .build());
+
+            Brand ashirvad = brandRepository.save(Brand.builder()
+                    .subcategory(pipes)
+                    .name("Ashirvad Pipes")
+                    .slug("ashirvad-pipes")
+                    .imageUrl("https://cdn.hinchmart.com/brands/ashirvad.png")
+                    .active(true)
+                    .sortOrder(2)
+                    .build());
+
+            Brand finolex = brandRepository.save(Brand.builder()
+                    .subcategory(pipes)
+                    .name("Finolex")
+                    .slug("finolex")
+                    .imageUrl("https://cdn.hinchmart.com/brands/finolex.png")
+                    .active(true)
+                    .sortOrder(3)
                     .build());
 
             // Products
@@ -201,11 +383,10 @@ public class DataInitializer implements CommandLineRunner {
             tmtSpecs.put("Manufacturer Test Certificate (MTC)", "Included per batch");
 
             Product p1 = Product.builder()
-                    .subcategory(tmt)
+                    .brand(tataTiscon)
                     .title("TMT Steel Rebars Fe 550D (12mm)")
                     .slug("tmt-steel-rebars-fe-550d-12mm")
                     .sku("STL-TMT-12-FE550D")
-                    .brand("Tata Tiscon")
                     .description("High-ductility primary steel rebars conforming to IS 1786 standards.")
                     .imageUrl("https://cdn.hinchmart.com/products/tmt_steel_12mm.jpg")
                     .images(List.of(
@@ -219,9 +400,10 @@ public class DataInitializer implements CommandLineRunner {
                     .moq(5)
                     .stockQty(500)
                     .active(true)
+                    .approvalStatus(ApprovalStatus.APPROVED)
                     .is24HourDelivery(true)
-                    .rating(4.8)
-                    .reviewCount(42)
+                    .rating(0.0)
+                    .reviewCount(0)
                     .gstRate(BigDecimal.valueOf(18.0))
                     .hsnCode("7214")
                     .specifications(tmtSpecs)
@@ -246,11 +428,10 @@ public class DataInitializer implements CommandLineRunner {
             cementSpecs.put("Initial Setting Time", "120 mins");
 
             Product p2 = Product.builder()
-                    .subcategory(cement)
+                    .brand(ultratech)
                     .title("UltraTech Super Cement PPC (50kg Bag)")
                     .slug("ultratech-super-cement-ppc-50kg")
                     .sku("CMT-PPC-50KG-UT")
-                    .brand("UltraTech")
                     .description("Premium Portland Pozzolana Cement for high durability concrete construction.")
                     .imageUrl("https://cdn.hinchmart.com/products/ultratech_cement.jpg")
                     .images(List.of("https://cdn.hinchmart.com/products/ultratech_cement_1.jpg"))
@@ -260,9 +441,10 @@ public class DataInitializer implements CommandLineRunner {
                     .moq(100)
                     .stockQty(2500)
                     .active(true)
+                    .approvalStatus(ApprovalStatus.APPROVED)
                     .is24HourDelivery(true)
-                    .rating(4.9)
-                    .reviewCount(128)
+                    .rating(0.0)
+                    .reviewCount(0)
                     .gstRate(BigDecimal.valueOf(28.0))
                     .hsnCode("2523")
                     .specifications(cementSpecs)
@@ -282,11 +464,10 @@ public class DataInitializer implements CommandLineRunner {
             );
 
             Product p3 = Product.builder()
-                    .subcategory(cables)
+                    .brand(polycab)
                     .title("Polycab 4-Core 16 sq mm Aluminium Armoured Cable")
                     .slug("polycab-4-core-16-sqmm-armoured-cable")
                     .sku("ELE-CBL-4C-16AL")
-                    .brand("Polycab")
                     .description("Heavy-duty underground armoured electrical cable for industrial power distribution.")
                     .imageUrl("https://cdn.hinchmart.com/products/armoured_cable.jpg")
                     .price(BigDecimal.valueOf(215.0))
@@ -295,20 +476,20 @@ public class DataInitializer implements CommandLineRunner {
                     .moq(100)
                     .stockQty(5000)
                     .active(true)
+                    .approvalStatus(ApprovalStatus.APPROVED)
                     .is24HourDelivery(true)
-                    .rating(4.7)
-                    .reviewCount(31)
+                    .rating(0.0)
+                    .reviewCount(0)
                     .gstRate(BigDecimal.valueOf(18.0))
                     .hsnCode("8544")
                     .bulkPricingTiers(cableTiers)
                     .build();
 
             Product p4 = Product.builder()
-                    .subcategory(pipes)
+                    .brand(astral)
                     .title("Astral CPVC Pro SDR 11 Pipe 1 Inch (3m)")
                     .slug("astral-cpvc-pro-sdr11-pipe-1inch")
                     .sku("PLM-CPVC-1IN-SDR11")
-                    .brand("Astral")
                     .description("Hot and cold water CPVC plumbing pipe conforming to ASTM D2846.")
                     .imageUrl("https://cdn.hinchmart.com/products/cpvc_pipe.jpg")
                     .price(BigDecimal.valueOf(540.0))
@@ -317,14 +498,20 @@ public class DataInitializer implements CommandLineRunner {
                     .moq(20)
                     .stockQty(800)
                     .active(true)
+                    .approvalStatus(ApprovalStatus.APPROVED)
                     .is24HourDelivery(true)
-                    .rating(4.8)
-                    .reviewCount(19)
+                    .rating(0.0)
+                    .reviewCount(0)
                     .gstRate(BigDecimal.valueOf(18.0))
                     .hsnCode("3917")
                     .build();
 
-            productRepository.saveAll(List.of(p1, p2, p3, p4));
+            Product savedP1 = productRepository.save(p1);
+            Product savedP2 = productRepository.save(p2);
+            Product savedP3 = productRepository.save(p3);
+            Product savedP4 = productRepository.save(p4);
+
+            initSampleReviewsAndOrders(savedP1, savedP2, savedP3, savedP4);
         }
 
         if (bannerRepository.count() == 0) {
@@ -352,6 +539,116 @@ public class DataInitializer implements CommandLineRunner {
 
             bannerRepository.saveAll(List.of(b1, b2));
         }
+    }
+
+    private void initSampleReviewsAndOrders(Product p1, Product p2, Product p3, Product p4) {
+        Customer c1 = customerRepository.findById(101).orElse(null);
+        Customer c2 = customerRepository.findById(102).orElse(null);
+        if (c1 == null) return;
+
+        // Create a delivered order for verified purchase
+        Order deliveredOrder = Order.builder()
+                .orderNumber("ORD-20260815-101")
+                .userId(c1.getCustomerId())
+                .deliveryLocation("Plot 42, Financial District, Hyderabad")
+                .subtotal(BigDecimal.valueOf(542000.0))
+                .discount(BigDecimal.ZERO)
+                .taxableAmount(BigDecimal.valueOf(542000.0))
+                .cgst(BigDecimal.valueOf(48780.0))
+                .sgst(BigDecimal.valueOf(48780.0))
+                .igst(BigDecimal.ZERO)
+                .totalGst(BigDecimal.valueOf(97560.0))
+                .freightCharge(BigDecimal.valueOf(4500.0))
+                .craneUnloadingCharge(BigDecimal.ZERO)
+                .totalAmount(BigDecimal.valueOf(644060.0))
+                .paymentMethod("RAZORPAY")
+                .paymentStatus("PAID")
+                .orderStatus("DELIVERED")
+                .carrierName("VRL Logistics Heavy Freight Fleet")
+                .vehicleNumber("TS 09 UB 4412")
+                .driverName("Ramesh Yadav")
+                .trackingNumber("VRL-HYD-DEL-01")
+                .estimatedDelivery(LocalDateTime.now().minusDays(5))
+                .build();
+
+        Order savedOrder = orderRepository.save(deliveredOrder);
+
+        OrderItem item1 = OrderItem.builder()
+                .order(savedOrder)
+                .productId(p1.getProductId())
+                .title(p1.getTitle())
+                .imageUrl(p1.getImageUrl())
+                .quantity(10)
+                .unit("MT")
+                .unitPrice(p1.getPrice())
+                .originalPrice(p1.getPrice())
+                .appliedTier("10 MT Tier")
+                .gstRate(BigDecimal.valueOf(18.0))
+                .lineTotal(BigDecimal.valueOf(542000.0))
+                .lineGst(BigDecimal.valueOf(97560.0))
+                .build();
+
+        OrderItem item2 = OrderItem.builder()
+                .order(savedOrder)
+                .productId(p2.getProductId())
+                .title(p2.getTitle())
+                .imageUrl(p2.getImageUrl())
+                .quantity(200)
+                .unit("Bags")
+                .unitPrice(p2.getPrice())
+                .originalPrice(p2.getPrice())
+                .appliedTier("200 Bags Tier")
+                .gstRate(BigDecimal.valueOf(28.0))
+                .lineTotal(BigDecimal.valueOf(76000.0))
+                .lineGst(BigDecimal.valueOf(21280.0))
+                .build();
+
+        OrderItem savedItem1 = orderItemRepository.save(item1);
+        OrderItem savedItem2 = orderItemRepository.save(item2);
+
+        // Seed genuine product reviews with authentic ratings
+        ProductReview review1 = ProductReview.builder()
+                .product(p1)
+                .customer(c1)
+                .order(savedOrder)
+                .orderItem(savedItem1)
+                .rating(5)
+                .title("Excellent Batch Quality and Prompt Delivery")
+                .comment("Received test certificate conforming to Fe 550D standards. Bend test passed at our project site with zero issues.")
+                .status(ReviewStatus.APPROVED)
+                .helpfulCount(4)
+                .build();
+
+        ProductReview review2 = ProductReview.builder()
+                .product(p2)
+                .customer(c1)
+                .order(savedOrder)
+                .orderItem(savedItem2)
+                .rating(5)
+                .title("Genuine Fresh Stock UltraTech PPC")
+                .comment("Fresh manufacturing batch within 2 weeks of packing. Setting time and strength are spot on.")
+                .status(ReviewStatus.APPROVED)
+                .helpfulCount(2)
+                .build();
+
+        productReviewRepository.saveAll(List.of(review1, review2));
+
+        // Dynamically compute and store product ratings and review counts
+        recalculateAndSaveProductRating(p1.getProductId());
+        recalculateAndSaveProductRating(p2.getProductId());
+        recalculateAndSaveProductRating(p3.getProductId());
+        recalculateAndSaveProductRating(p4.getProductId());
+    }
+
+    private void recalculateAndSaveProductRating(Integer productId) {
+        productRepository.findById(productId).ifPresent(p -> {
+            Double avg = productReviewRepository.averageRatingByProductAndStatus(productId, ReviewStatus.APPROVED);
+            long count = productReviewRepository.countByProductAndStatus(productId, ReviewStatus.APPROVED);
+            double rounded = avg != null ? Math.round(avg * 10.0) / 10.0 : 0.0;
+            p.setRating(rounded);
+            p.setReviewCount((int) count);
+            productRepository.save(p);
+        });
     }
 
     private void initSampleRfq() {

@@ -2,7 +2,6 @@ package com.example.project.customer.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
@@ -12,8 +11,6 @@ import java.util.List;
 
 @Getter
 @Setter
-@Builder
-@AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ApiResponse<T> {
 
@@ -39,14 +36,30 @@ public class ApiResponse<T> {
         this.timestamp = LocalDateTime.now();
     }
 
+    // Private all-args constructor for builder use
+    private ApiResponse(boolean success, Integer statusCode, String message, T data,
+                        PaginationMeta pagination, List<ErrorDetail> errors, LocalDateTime timestamp) {
+        this.success = success;
+        this.statusCode = statusCode;
+        this.message = message;
+        this.data = data;
+        this.pagination = pagination;
+        this.errors = errors;
+        this.timestamp = timestamp;
+    }
+
+    public static <T> ApiResponseBuilder<T> builder() {
+        return new ApiResponseBuilder<>();
+    }
+
     public static <T> ApiResponse<T> ok(String message, T data) {
-        return ApiResponse.<T>builder()
-                .success(true)
-                .statusCode(200)
-                .message(message)
-                .data(data)
-                .timestamp(LocalDateTime.now())
-                .build();
+        ApiResponse<T> r = new ApiResponse<>();
+        r.success = true;
+        r.statusCode = 200;
+        r.message = message;
+        r.data = data;
+        r.timestamp = LocalDateTime.now();
+        return r;
     }
 
     public static <T> ApiResponse<T> ok(T data) {
@@ -54,33 +67,33 @@ public class ApiResponse<T> {
     }
 
     public static <T> ApiResponse<T> paginated(T data, PaginationMeta pagination) {
-        return ApiResponse.<T>builder()
-                .success(true)
-                .data(data)
-                .pagination(pagination)
-                .timestamp(LocalDateTime.now())
-                .build();
+        ApiResponse<T> r = new ApiResponse<>();
+        r.success = true;
+        r.data = data;
+        r.pagination = pagination;
+        r.timestamp = LocalDateTime.now();
+        return r;
     }
 
     public static <T> ApiResponse<T> paginated(String message, T data, PaginationMeta pagination) {
-        return ApiResponse.<T>builder()
-                .success(true)
-                .statusCode(200)
-                .message(message)
-                .data(data)
-                .pagination(pagination)
-                .timestamp(LocalDateTime.now())
-                .build();
+        ApiResponse<T> r = new ApiResponse<>();
+        r.success = true;
+        r.statusCode = 200;
+        r.message = message;
+        r.data = data;
+        r.pagination = pagination;
+        r.timestamp = LocalDateTime.now();
+        return r;
     }
 
     public static <T> ApiResponse<T> created(String message, T data) {
-        return ApiResponse.<T>builder()
-                .success(true)
-                .statusCode(201)
-                .message(message)
-                .data(data)
-                .timestamp(LocalDateTime.now())
-                .build();
+        ApiResponse<T> r = new ApiResponse<>();
+        r.success = true;
+        r.statusCode = 201;
+        r.message = message;
+        r.data = data;
+        r.timestamp = LocalDateTime.now();
+        return r;
     }
 
     public static <T> ApiResponse<T> created(T data) {
@@ -88,21 +101,52 @@ public class ApiResponse<T> {
     }
 
     public static <T> ApiResponse<T> error(int statusCode, String message) {
-        return ApiResponse.<T>builder()
-                .success(false)
-                .statusCode(statusCode)
-                .message(message)
-                .timestamp(LocalDateTime.now())
-                .build();
+        ApiResponse<T> r = new ApiResponse<>();
+        r.success = false;
+        r.statusCode = statusCode;
+        r.message = message;
+        r.timestamp = LocalDateTime.now();
+        return r;
     }
 
     public static <T> ApiResponse<T> error(int statusCode, String message, List<ErrorDetail> errors) {
-        return ApiResponse.<T>builder()
-                .success(false)
-                .statusCode(statusCode)
-                .message(message)
-                .errors(errors)
-                .timestamp(LocalDateTime.now())
-                .build();
+        ApiResponse<T> r = new ApiResponse<>();
+        r.success = false;
+        r.statusCode = statusCode;
+        r.message = message;
+        r.errors = errors;
+        r.timestamp = LocalDateTime.now();
+        return r;
+    }
+
+    // Manual builder to avoid Lombok @Builder + manual constructor conflicts on generic class
+    public static class ApiResponseBuilder<T> {
+        private boolean success;
+        private Integer statusCode;
+        private String message;
+        private T data;
+        private PaginationMeta pagination;
+        private List<ErrorDetail> errors;
+        private LocalDateTime timestamp;
+
+        public ApiResponseBuilder<T> success(boolean success) { this.success = success; return this; }
+        public ApiResponseBuilder<T> statusCode(Integer statusCode) { this.statusCode = statusCode; return this; }
+        public ApiResponseBuilder<T> message(String message) { this.message = message; return this; }
+        public ApiResponseBuilder<T> data(T data) { this.data = data; return this; }
+        public ApiResponseBuilder<T> pagination(PaginationMeta pagination) { this.pagination = pagination; return this; }
+        public ApiResponseBuilder<T> errors(List<ErrorDetail> errors) { this.errors = errors; return this; }
+        public ApiResponseBuilder<T> timestamp(LocalDateTime timestamp) { this.timestamp = timestamp; return this; }
+
+        public ApiResponse<T> build() {
+            ApiResponse<T> r = new ApiResponse<>();
+            r.success = this.success;
+            r.statusCode = this.statusCode;
+            r.message = this.message;
+            r.data = this.data;
+            r.pagination = this.pagination;
+            r.errors = this.errors;
+            r.timestamp = this.timestamp != null ? this.timestamp : LocalDateTime.now();
+            return r;
+        }
     }
 }

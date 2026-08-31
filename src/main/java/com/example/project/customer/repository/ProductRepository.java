@@ -38,7 +38,7 @@ public interface ProductRepository
             boolean active
     );
 
-    // Product validation / category counts
+    // Product validation / brand, subcategory, category counts
     boolean existsBySlugIgnoreCase(String slug);
 
     boolean existsBySlugIgnoreCaseAndProductIdNot(
@@ -46,17 +46,35 @@ public interface ProductRepository
             Integer productId
     );
 
-    int countBySubcategory_SubcategoryId(
+    boolean existsByTitleIgnoreCase(String title);
+
+    boolean existsByTitleIgnoreCaseAndProductIdNot(
+            String title,
+            Integer productId
+    );
+
+    boolean existsBySkuIgnoreCase(String sku);
+
+    boolean existsBySkuIgnoreCaseAndProductIdNot(
+            String sku,
+            Integer productId
+    );
+
+    int countByBrand_BrandId(
+            Integer brandId
+    );
+
+    int countByBrand_Subcategory_SubcategoryId(
             Integer subcategoryId
     );
 
-    int countBySubcategory_Category_CategoryId(
+    int countByBrand_Subcategory_Category_CategoryId(
             Integer categoryId
     );
 
     // Search suggestions
-    List<Product> findTop5ByTitleContainingIgnoreCaseOrBrandContainingIgnoreCase(
+    List<Product> findTop5ByTitleContainingIgnoreCaseOrBrand_NameContainingIgnoreCase(
             String title,
-            String brand
+            String brandName
     );
 }

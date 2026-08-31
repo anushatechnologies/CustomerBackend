@@ -37,7 +37,7 @@ public class AddressServiceImpl implements AddressService {
     public AddressResponse createAddress(AddressRequest request) {
         if (Boolean.TRUE.equals(request.getIsDefault())) {
             addressRepository.findByIsDefaultTrue().ifPresent(addr -> {
-                addr.setDefault(false);
+                addr.setIsDefault(false);
                 addressRepository.save(addr);
             });
         }
@@ -63,9 +63,9 @@ public class AddressServiceImpl implements AddressService {
     public AddressResponse updateAddress(Integer id, AddressRequest request) {
         Address address = findAddress(id);
 
-        if (Boolean.TRUE.equals(request.getIsDefault()) && !address.isDefault()) {
+        if (Boolean.TRUE.equals(request.getIsDefault()) && !Boolean.TRUE.equals(address.getIsDefault())) {
             addressRepository.findByIsDefaultTrue().ifPresent(addr -> {
-                addr.setDefault(false);
+                addr.setIsDefault(false);
                 addressRepository.save(addr);
             });
         }
@@ -80,7 +80,7 @@ public class AddressServiceImpl implements AddressService {
         address.setPincode(request.getPincode());
         address.setLandmark(request.getLandmark());
         if (request.getIsDefault() != null) {
-            address.setDefault(request.getIsDefault());
+            address.setIsDefault(request.getIsDefault());
         }
         if (request.getHasHeavyVehicleAccess() != null) {
             address.setHasHeavyVehicleAccess(request.getHasHeavyVehicleAccess());
@@ -112,8 +112,8 @@ public class AddressServiceImpl implements AddressService {
                 .state(a.getState())
                 .pincode(a.getPincode())
                 .landmark(a.getLandmark())
-                .isDefault(a.isDefault())
-                .hasHeavyVehicleAccess(a.isHasHeavyVehicleAccess())
+                .isDefault(Boolean.TRUE.equals(a.getIsDefault()))
+                .hasHeavyVehicleAccess(Boolean.TRUE.equals(a.getHasHeavyVehicleAccess()))
                 .createdAt(a.getCreatedAt())
                 .build();
     }

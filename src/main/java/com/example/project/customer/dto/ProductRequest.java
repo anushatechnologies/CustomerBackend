@@ -25,8 +25,8 @@ import java.util.Map;
 @AllArgsConstructor
 public class ProductRequest {
 
-    @NotNull(message = "Subcategory ID is required")
-    @Positive(message = "Subcategory ID must be positive")
+    private Integer brandId;
+
     private Integer subcategoryId;
 
     private Integer categoryId;

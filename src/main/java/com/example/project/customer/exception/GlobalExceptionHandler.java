@@ -47,6 +47,12 @@ public class GlobalExceptionHandler {
         return response(HttpStatus.CONFLICT, exception.getMessage());
     }
 
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(org.springframework.dao.DataIntegrityViolationException exception) {
+        log.warn("Data integrity violation (duplicate entry): {}", exception.getMessage());
+        return response(HttpStatus.CONFLICT, "A record with these unique details (Email, Aadhaar, PAN, GSTIN, or Bank Account) already exists.");
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException exception) {
         List<ErrorDetail> errors = new ArrayList<>();
@@ -54,6 +60,20 @@ public class GlobalExceptionHandler {
                 errors.add(new ErrorDetail(error.getField(), error.getDefaultMessage()))
         );
         log.warn("Validation failed: {}", errors);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Invalid request parameter", errors));
+    }
+
+    @ExceptionHandler(jakarta.validation.ConstraintViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleConstraintViolation(jakarta.validation.ConstraintViolationException exception) {
+        List<ErrorDetail> errors = new ArrayList<>();
+        exception.getConstraintViolations().forEach(violation -> {
+            String path = violation.getPropertyPath().toString();
+            int dotIdx = path.lastIndexOf('.');
+            String fieldName = dotIdx >= 0 ? path.substring(dotIdx + 1) : path;
+            errors.add(new ErrorDetail(fieldName, violation.getMessage()));
+        });
+        log.warn("Constraint validation failed: {}", errors);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Invalid request parameter", errors));
     }
@@ -82,10 +102,19 @@ public class GlobalExceptionHandler {
         return response(HttpStatus.INTERNAL_SERVER_ERROR, "Image storage error: " + exception.getMessage());
     }
 
+    @ExceptionHandler({
+            org.springframework.web.multipart.support.MissingServletRequestPartException.class,
+            org.springframework.web.bind.MissingServletRequestParameterException.class
+    })
+    public ResponseEntity<ApiResponse<Void>> handleMissingParams(Exception exception) {
+        log.warn("Missing parameter/part: {}", exception.getMessage());
+        return response(HttpStatus.BAD_REQUEST, exception.getMessage());
+    }
+
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ApiResponse<Void>> handleMaxSizeExceeded(MaxUploadSizeExceededException exception) {
         log.warn("Upload size exceeded: {}", exception.getMessage());
-        return response(HttpStatus.BAD_REQUEST, "File upload size exceeded maximum limit of 10MB");
+        return response(HttpStatus.BAD_REQUEST, "File upload size exceeded maximum limit of 15MB");
     }
 
     @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
@@ -98,6 +127,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleMethodNotAllowed(org.springframework.web.HttpRequestMethodNotSupportedException exception) {
         log.warn("Method not supported: {}", exception.getMessage());
         return response(HttpStatus.METHOD_NOT_ALLOWED, exception.getMessage());
+    }
+
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException exception) {
+        String msg = String.format("Invalid value '%s' for parameter '%s'", exception.getValue(), exception.getName());
+        log.warn("Type mismatch: {}", msg);
+        return response(HttpStatus.BAD_REQUEST, msg);
     }
 
     @ExceptionHandler(Exception.class)

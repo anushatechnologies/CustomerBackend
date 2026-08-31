@@ -56,15 +56,17 @@ public class Address {
 
     private String landmark;
 
+    // Using Boolean (wrapper) so Lombok generates getIsDefault()/setIsDefault()
+    // instead of the confusing isDefault()/setDefault() from primitive boolean
     @Column(name = "is_default")
     @Builder.Default
     @JsonProperty("isDefault")
-    private boolean isDefault = false;
+    private Boolean isDefault = false;
 
     @Column(name = "has_heavy_vehicle_access")
     @Builder.Default
     @JsonProperty("hasHeavyVehicleAccess")
-    private boolean hasHeavyVehicleAccess = true;
+    private Boolean hasHeavyVehicleAccess = true;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

@@ -23,17 +23,25 @@ public class ProductResponse {
 
     private Integer productId;
 
+    private Integer brandId;
+
+    private String brand;
+
+    private String brandName;
+
     private Integer subcategoryId;
 
+    private String subcategoryName;
+
     private Integer categoryId;
+
+    private String categoryName;
 
     private String title;
 
     private String slug;
 
     private String sku;
-
-    private String brand;
 
     private String description;
 

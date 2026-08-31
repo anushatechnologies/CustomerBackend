@@ -9,11 +9,12 @@ import com.example.project.customer.dto.ProductResponse;
 import com.example.project.customer.dto.SearchSuggestionResponse;
 import com.example.project.customer.dto.StockQuantityUpdateRequest;
 import com.example.project.customer.entity.ApprovalStatus;
+import com.example.project.customer.entity.Brand;
 import com.example.project.customer.entity.Category;
 import com.example.project.customer.entity.Product;
-import com.example.project.customer.entity.Subcategory;
 import com.example.project.customer.exception.ResourceConflictException;
 import com.example.project.customer.exception.ResourceNotFoundException;
+import com.example.project.customer.repository.BrandRepository;
 import com.example.project.customer.repository.CategoryRepository;
 import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.repository.SubcategoryRepository;
@@ -39,22 +40,43 @@ import java.util.List;
 public class ProductServiceImpl implements ProductService {
 
     private final ProductRepository repository;
+    private final BrandRepository brandRepository;
     private final SubcategoryRepository subcategoryRepository;
     private final CategoryRepository categoryRepository;
     private final S3ImageService s3ImageService;
 
     @Override
     public ProductResponse create(ProductRequest request) {
+        String cleanTitle = request.getTitle() != null ? request.getTitle().trim() : "";
+        if (cleanTitle.isEmpty()) {
+            throw new IllegalArgumentException("Product title cannot be empty");
+        }
 
-        Subcategory subcategory = subcategoryRepository.findById(request.getSubcategoryId())
-                .orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                "Subcategory not found with id: " + request.getSubcategoryId()
-                        ));
+        if (repository.existsByTitleIgnoreCase(cleanTitle)) {
+            throw new ResourceConflictException("Product already exists with title: '" + cleanTitle + "'");
+        }
+
+        if (request.getSku() != null && !request.getSku().isBlank()) {
+            String sku = request.getSku().trim().toUpperCase();
+            if (repository.existsBySkuIgnoreCase(sku)) {
+                throw new ResourceConflictException("Product already exists with SKU: '" + sku + "'");
+            }
+        }
+
+        String slug = generateSlug(cleanTitle, request.getSlug());
+        if (repository.existsBySlugIgnoreCase(slug)) {
+            throw new ResourceConflictException("Product already exists with slug: '" + slug + "'");
+        }
+
+        Brand brand = resolveBrand(request);
 
         Product product = new Product();
-
-        mapRequestToProduct(product, request, subcategory);
+        mapRequestToProduct(product, request, brand);
+        product.setTitle(cleanTitle);
+        product.setSlug(slug);
+        if (request.getSku() != null && !request.getSku().isBlank()) {
+            product.setSku(request.getSku().trim().toUpperCase());
+        }
 
         // IMPORTANT:
         // Every newly submitted product must wait for admin approval.
@@ -68,7 +90,6 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public ProductResponse getById(Integer id) {
-
         Product product = repository
                 .findByProductIdAndApprovalStatusAndActive(
                         id,
@@ -88,6 +109,7 @@ public class ProductServiceImpl implements ProductService {
     public ApiResponse<List<ProductResponse>> getAll(
             Integer categoryId,
             Integer subcategoryId,
+            Integer brandId,
             String search,
             BigDecimal minPrice,
             BigDecimal maxPrice,
@@ -125,11 +147,12 @@ public class ProductServiceImpl implements ProductService {
                     cb.isTrue(root.get("active"))
             );
 
-            // Category filter
+            // Category filter via brand -> subcategory -> category
             if (categoryId != null) {
                 predicates.add(
                         cb.equal(
-                                root.get("subcategory")
+                                root.get("brand")
+                                        .get("subcategory")
                                         .get("category")
                                         .get("categoryId"),
                                 categoryId
@@ -137,18 +160,40 @@ public class ProductServiceImpl implements ProductService {
                 );
             }
 
-            // Subcategory filter
+            // Subcategory filter via brand -> subcategory
             if (subcategoryId != null) {
                 predicates.add(
                         cb.equal(
-                                root.get("subcategory")
+                                root.get("brand")
+                                        .get("subcategory")
                                         .get("subcategoryId"),
                                 subcategoryId
                         )
                 );
             }
 
-            // Search
+            // Brand ID filter
+            if (brandId != null) {
+                predicates.add(
+                        cb.equal(
+                                root.get("brand")
+                                        .get("brandId"),
+                                brandId
+                        )
+                );
+            }
+
+            // Brand name string filter
+            if (brand != null && !brand.isBlank()) {
+                predicates.add(
+                        cb.equal(
+                                cb.lower(root.get("brand").get("name")),
+                                brand.trim().toLowerCase()
+                        )
+                );
+            }
+
+            // Search filter
             if (search != null && !search.isBlank()) {
 
                 String pattern =
@@ -162,7 +207,7 @@ public class ProductServiceImpl implements ProductService {
 
                 Predicate brandPredicate =
                         cb.like(
-                                cb.lower(root.get("brand")),
+                                cb.lower(root.get("brand").get("name")),
                                 pattern
                         );
 
@@ -197,16 +242,6 @@ public class ProductServiceImpl implements ProductService {
                         cb.lessThanOrEqualTo(
                                 root.get("price"),
                                 maxPrice
-                        )
-                );
-            }
-
-            // Brand
-            if (brand != null && !brand.isBlank()) {
-                predicates.add(
-                        cb.equal(
-                                cb.lower(root.get("brand")),
-                                brand.trim().toLowerCase()
                         )
                 );
             }
@@ -257,20 +292,39 @@ public class ProductServiceImpl implements ProductService {
         String oldMainImage = product.getImageUrl();
         List<String> oldGalleryImages = product.getImages() != null ? new ArrayList<>(product.getImages()) : List.of();
 
-        Subcategory subcategory =
-                subcategoryRepository.findById(
-                        request.getSubcategoryId()
-                ).orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                "Subcategory not found with id: "
-                                        + request.getSubcategoryId()
-                        ));
+        String cleanTitle = request.getTitle() != null ? request.getTitle().trim() : "";
+        if (cleanTitle.isEmpty()) {
+            throw new IllegalArgumentException("Product title cannot be empty");
+        }
+
+        if (repository.existsByTitleIgnoreCaseAndProductIdNot(cleanTitle, id)) {
+            throw new ResourceConflictException("Product already exists with title: '" + cleanTitle + "'");
+        }
+
+        if (request.getSku() != null && !request.getSku().isBlank()) {
+            String sku = request.getSku().trim().toUpperCase();
+            if (repository.existsBySkuIgnoreCaseAndProductIdNot(sku, id)) {
+                throw new ResourceConflictException("Product already exists with SKU: '" + sku + "'");
+            }
+        }
+
+        String slug = generateSlug(cleanTitle, request.getSlug());
+        if (repository.existsBySlugIgnoreCaseAndProductIdNot(slug, id)) {
+            throw new ResourceConflictException("Product already exists with slug: '" + slug + "'");
+        }
+
+        Brand brand = resolveBrand(request);
 
         mapRequestToProduct(
                 product,
                 request,
-                subcategory
+                brand
         );
+        product.setTitle(cleanTitle);
+        product.setSlug(slug);
+        if (request.getSku() != null && !request.getSku().isBlank()) {
+            product.setSku(request.getSku().trim().toUpperCase());
+        }
 
         /*
          * Do NOT allow a normal product update to approve
@@ -366,7 +420,7 @@ public class ProductServiceImpl implements ProductService {
 
         List<Product> products =
                 repository
-                        .findTop5ByTitleContainingIgnoreCaseOrBrandContainingIgnoreCase(
+                        .findTop5ByTitleContainingIgnoreCaseOrBrand_NameContainingIgnoreCase(
                                 trimmed,
                                 trimmed
                         );
@@ -387,12 +441,10 @@ public class ProductServiceImpl implements ProductService {
                                         .productId(product.getProductId())
                                         .title(product.getTitle())
                                         .category(
-                                                product.getSubcategory() != null
-                                                        && product.getSubcategory()
-                                                        .getCategory() != null
-                                                        ? product.getSubcategory()
-                                                        .getCategory()
-                                                        .getName()
+                                                product.getBrand() != null
+                                                        && product.getBrand().getSubcategory() != null
+                                                        && product.getBrand().getSubcategory().getCategory() != null
+                                                        ? product.getBrand().getSubcategory().getCategory().getName()
                                                         : ""
                                         )
                                         .build()
@@ -569,6 +621,35 @@ public class ProductServiceImpl implements ProductService {
     // HELPERS
     // =========================================================
 
+    private Brand resolveBrand(ProductRequest request) {
+        if (request.getBrandId() != null) {
+            return brandRepository.findById(request.getBrandId())
+                    .orElseThrow(() ->
+                            new ResourceNotFoundException(
+                                    "Brand not found with id: " + request.getBrandId()
+                            ));
+        }
+
+        if (request.getBrand() != null && !request.getBrand().isBlank()) {
+            if (request.getSubcategoryId() != null) {
+                return brandRepository
+                        .findByNameIgnoreCaseAndSubcategory_SubcategoryId(request.getBrand().trim(), request.getSubcategoryId())
+                        .orElseGet(() -> brandRepository.findByNameIgnoreCase(request.getBrand().trim())
+                                .orElseThrow(() ->
+                                        new ResourceNotFoundException(
+                                                "Brand not found with name: " + request.getBrand()
+                                        )));
+            }
+            return brandRepository.findByNameIgnoreCase(request.getBrand().trim())
+                    .orElseThrow(() ->
+                            new ResourceNotFoundException(
+                                    "Brand not found with name: " + request.getBrand()
+                            ));
+        }
+
+        throw new IllegalArgumentException("Brand ID or Brand name is required");
+    }
+
     private Product findProduct(Integer id) {
 
         return repository.findById(id)
@@ -613,10 +694,10 @@ public class ProductServiceImpl implements ProductService {
     private void mapRequestToProduct(
             Product product,
             ProductRequest req,
-            Subcategory subcategory
+            Brand brand
     ) {
 
-        product.setSubcategory(subcategory);
+        product.setBrand(brand);
 
         product.setTitle(req.getTitle());
 
@@ -644,8 +725,6 @@ public class ProductServiceImpl implements ProductService {
         }
 
         product.setSku(req.getSku());
-
-        product.setBrand(req.getBrand());
 
         product.setDescription(
                 req.getDescription()
@@ -694,13 +773,13 @@ public class ProductServiceImpl implements ProductService {
         product.setRating(
                 req.getRating() != null
                         ? req.getRating()
-                        : 4.5
+                        : (product.getRating() != null ? product.getRating() : 0.0)
         );
 
         product.setReviewCount(
                 req.getReviewCount() != null
                         ? req.getReviewCount()
-                        : 0
+                        : (product.getReviewCount() != null ? product.getReviewCount() : 0)
         );
 
         product.setGstRate(
@@ -734,13 +813,24 @@ public class ProductServiceImpl implements ProductService {
             Product p
     ) {
 
-        Integer categoryId =
-                p.getSubcategory() != null
-                        && p.getSubcategory().getCategory() != null
-                        ? p.getSubcategory()
-                        .getCategory()
-                        .getCategoryId()
-                        : null;
+        Integer brandId = p.getBrand() != null ? p.getBrand().getBrandId() : null;
+        String brandName = p.getBrand() != null ? p.getBrand().getName() : null;
+
+        Integer subcategoryId = (p.getBrand() != null && p.getBrand().getSubcategory() != null)
+                ? p.getBrand().getSubcategory().getSubcategoryId()
+                : null;
+
+        String subcategoryName = (p.getBrand() != null && p.getBrand().getSubcategory() != null)
+                ? p.getBrand().getSubcategory().getName()
+                : null;
+
+        Integer categoryId = (p.getBrand() != null && p.getBrand().getSubcategory() != null && p.getBrand().getSubcategory().getCategory() != null)
+                ? p.getBrand().getSubcategory().getCategory().getCategoryId()
+                : null;
+
+        String categoryName = (p.getBrand() != null && p.getBrand().getSubcategory() != null && p.getBrand().getSubcategory().getCategory() != null)
+                ? p.getBrand().getSubcategory().getCategory().getName()
+                : null;
 
         ApprovalStatus approvalStatus =
                 p.getApprovalStatus() != null
@@ -770,17 +860,16 @@ public class ProductServiceImpl implements ProductService {
 
         return ProductResponse.builder()
                 .productId(p.getProductId())
-                .subcategoryId(
-                        p.getSubcategory() != null
-                                ? p.getSubcategory()
-                                .getSubcategoryId()
-                                : null
-                )
+                .brandId(brandId)
+                .brand(brandName)
+                .brandName(brandName)
+                .subcategoryId(subcategoryId)
+                .subcategoryName(subcategoryName)
                 .categoryId(categoryId)
+                .categoryName(categoryName)
                 .title(p.getTitle())
                 .slug(p.getSlug())
                 .sku(p.getSku())
-                .brand(p.getBrand())
                 .description(p.getDescription())
                 .imageUrl(p.getImageUrl())
                 .images(p.getImages())

@@ -267,7 +267,7 @@ public class S3ImageServiceImpl implements S3ImageService {
         if (folderName == null || folderName.isBlank()) {
             return ImageFolder.OTHER.getFolderName();
         }
-        String cleaned = folderName.trim().replaceAll("[^a-zA-Z0-9_-]", "");
+        String cleaned = folderName.trim().replaceAll("^/+|/+$", "").replaceAll("[^a-zA-Z0-9_/\\-]", "");
         return cleaned.isEmpty() ? ImageFolder.OTHER.getFolderName() : cleaned;
     }
 
