@@ -32,14 +32,23 @@ public class BrandServiceImpl implements BrandService {
         Subcategory subcategory = subcategoryRepository.findById(request.getSubcategoryId())
                 .orElseThrow(() -> new ResourceNotFoundException("Subcategory not found with id: " + request.getSubcategoryId()));
 
-        String slug = generateSlug(request.getName(), request.getSlug());
+        String cleanName = request.getName() != null ? request.getName().trim() : "";
+        if (cleanName.isEmpty()) {
+            throw new IllegalArgumentException("Brand name cannot be empty");
+        }
+
+        if (repository.existsByNameIgnoreCaseAndSubcategory_SubcategoryId(cleanName, subcategory.getSubcategoryId())) {
+            throw new ResourceConflictException("Brand already exists with name: '" + cleanName + "' in subcategory: '" + subcategory.getName() + "'");
+        }
+
+        String slug = generateSlug(cleanName, request.getSlug());
         if (repository.existsBySlugIgnoreCase(slug)) {
-            throw new ResourceConflictException("Brand already exists with slug: " + slug);
+            throw new ResourceConflictException("Brand already exists with slug: '" + slug + "'");
         }
 
         Brand brand = Brand.builder()
                 .subcategory(subcategory)
-                .name(request.getName())
+                .name(cleanName)
                 .slug(slug)
                 .imageUrl(request.getImageUrl())
                 .active(request.getActive() != null ? request.getActive() : true)
@@ -94,12 +103,21 @@ public class BrandServiceImpl implements BrandService {
             brand.setSubcategory(subcategory);
         }
 
-        String slug = generateSlug(request.getName(), request.getSlug());
-        if (repository.existsBySlugIgnoreCaseAndBrandIdNot(slug, id)) {
-            throw new ResourceConflictException("Brand already exists with slug: " + slug);
+        String cleanName = request.getName() != null ? request.getName().trim() : "";
+        if (cleanName.isEmpty()) {
+            throw new IllegalArgumentException("Brand name cannot be empty");
         }
 
-        brand.setName(request.getName());
+        if (repository.existsByNameIgnoreCaseAndSubcategory_SubcategoryIdAndBrandIdNot(cleanName, brand.getSubcategory().getSubcategoryId(), id)) {
+            throw new ResourceConflictException("Brand already exists with name: '" + cleanName + "' in subcategory: '" + brand.getSubcategory().getName() + "'");
+        }
+
+        String slug = generateSlug(cleanName, request.getSlug());
+        if (repository.existsBySlugIgnoreCaseAndBrandIdNot(slug, id)) {
+            throw new ResourceConflictException("Brand already exists with slug: '" + slug + "'");
+        }
+
+        brand.setName(cleanName);
         brand.setSlug(slug);
         if (request.getImageUrl() != null) {
             brand.setImageUrl(request.getImageUrl());

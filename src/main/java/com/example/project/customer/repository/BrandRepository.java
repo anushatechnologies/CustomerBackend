@@ -27,6 +27,16 @@ public interface BrandRepository extends JpaRepository<Brand, Integer>, JpaSpeci
 
     boolean existsBySlugIgnoreCaseAndBrandIdNot(String slug, Integer brandId);
 
+    boolean existsByNameIgnoreCase(String name);
+
+    boolean existsByNameIgnoreCaseAndBrandIdNot(String name, Integer brandId);
+
+    boolean existsByNameIgnoreCaseAndSubcategory_SubcategoryId(String name, Integer subcategoryId);
+
+    boolean existsByNameIgnoreCaseAndSubcategory_SubcategoryIdAndBrandIdNot(String name, Integer subcategoryId, Integer brandId);
+
+    int countByBrandId(Integer brandId);
+
     int countBySubcategory_SubcategoryId(Integer subcategoryId);
 
     int countBySubcategory_Category_CategoryId(Integer categoryId);

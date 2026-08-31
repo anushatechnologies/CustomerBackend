@@ -13,7 +13,12 @@ public interface SubcategoryRepository extends JpaRepository<Subcategory, Intege
     boolean existsBySlugIgnoreCase(String slug);
     boolean existsBySlugIgnoreCaseAndSubcategoryIdNot(String slug, Integer subcategoryId);
 
-    // Filter by Category ID to fix Bug 1
+    boolean existsByNameIgnoreCase(String name);
+    boolean existsByNameIgnoreCaseAndSubcategoryIdNot(String name, Integer subcategoryId);
+    boolean existsByNameIgnoreCaseAndCategory_CategoryId(String name, Integer categoryId);
+    boolean existsByNameIgnoreCaseAndCategory_CategoryIdAndSubcategoryIdNot(String name, Integer categoryId, Integer subcategoryId);
+
+    // Filter by Category ID
     List<Subcategory> findByCategory_CategoryIdOrderBySortOrderAsc(Integer categoryId);
     List<Subcategory> findByCategory_CategoryIdAndActiveOrderBySortOrderAsc(Integer categoryId, boolean active);
 

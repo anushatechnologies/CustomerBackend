@@ -38,6 +38,20 @@ public interface ProductRepository
             Integer productId
     );
 
+    boolean existsByTitleIgnoreCase(String title);
+
+    boolean existsByTitleIgnoreCaseAndProductIdNot(
+            String title,
+            Integer productId
+    );
+
+    boolean existsBySkuIgnoreCase(String sku);
+
+    boolean existsBySkuIgnoreCaseAndProductIdNot(
+            String sku,
+            Integer productId
+    );
+
     int countByBrand_BrandId(
             Integer brandId
     );

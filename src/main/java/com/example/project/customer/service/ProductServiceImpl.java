@@ -46,10 +46,36 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public ProductResponse create(ProductRequest request) {
+        String cleanTitle = request.getTitle() != null ? request.getTitle().trim() : "";
+        if (cleanTitle.isEmpty()) {
+            throw new IllegalArgumentException("Product title cannot be empty");
+        }
+
+        if (repository.existsByTitleIgnoreCase(cleanTitle)) {
+            throw new ResourceConflictException("Product already exists with title: '" + cleanTitle + "'");
+        }
+
+        if (request.getSku() != null && !request.getSku().isBlank()) {
+            String sku = request.getSku().trim().toUpperCase();
+            if (repository.existsBySkuIgnoreCase(sku)) {
+                throw new ResourceConflictException("Product already exists with SKU: '" + sku + "'");
+            }
+        }
+
+        String slug = generateSlug(cleanTitle, request.getSlug());
+        if (repository.existsBySlugIgnoreCase(slug)) {
+            throw new ResourceConflictException("Product already exists with slug: '" + slug + "'");
+        }
+
         Brand brand = resolveBrand(request);
 
         Product product = new Product();
         mapRequestToProduct(product, request, brand);
+        product.setTitle(cleanTitle);
+        product.setSlug(slug);
+        if (request.getSku() != null && !request.getSku().isBlank()) {
+            product.setSku(request.getSku().trim().toUpperCase());
+        }
 
         // IMPORTANT:
         // Every newly submitted product must wait for admin approval.
@@ -265,6 +291,27 @@ public class ProductServiceImpl implements ProductService {
         String oldMainImage = product.getImageUrl();
         List<String> oldGalleryImages = product.getImages() != null ? new ArrayList<>(product.getImages()) : List.of();
 
+        String cleanTitle = request.getTitle() != null ? request.getTitle().trim() : "";
+        if (cleanTitle.isEmpty()) {
+            throw new IllegalArgumentException("Product title cannot be empty");
+        }
+
+        if (repository.existsByTitleIgnoreCaseAndProductIdNot(cleanTitle, id)) {
+            throw new ResourceConflictException("Product already exists with title: '" + cleanTitle + "'");
+        }
+
+        if (request.getSku() != null && !request.getSku().isBlank()) {
+            String sku = request.getSku().trim().toUpperCase();
+            if (repository.existsBySkuIgnoreCaseAndProductIdNot(sku, id)) {
+                throw new ResourceConflictException("Product already exists with SKU: '" + sku + "'");
+            }
+        }
+
+        String slug = generateSlug(cleanTitle, request.getSlug());
+        if (repository.existsBySlugIgnoreCaseAndProductIdNot(slug, id)) {
+            throw new ResourceConflictException("Product already exists with slug: '" + slug + "'");
+        }
+
         Brand brand = resolveBrand(request);
 
         mapRequestToProduct(
@@ -272,6 +319,11 @@ public class ProductServiceImpl implements ProductService {
                 request,
                 brand
         );
+        product.setTitle(cleanTitle);
+        product.setSlug(slug);
+        if (request.getSku() != null && !request.getSku().isBlank()) {
+            product.setSku(request.getSku().trim().toUpperCase());
+        }
 
         /*
          * Do NOT allow a normal product update to approve
@@ -836,5 +888,12 @@ public class ProductServiceImpl implements ProductService {
                 )
                 .createdAt(p.getCreatedAt())
                 .build();
+    }
+
+    private String generateSlug(String name, String providedSlug) {
+        if (providedSlug != null && !providedSlug.isBlank()) {
+            return providedSlug.trim().toLowerCase().replaceAll("[^a-z0-9-]+", "-");
+        }
+        return name.trim().toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
     }
 }
