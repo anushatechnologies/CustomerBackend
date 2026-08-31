@@ -905,4 +905,11 @@ public class ProductServiceImpl implements ProductService {
                 .createdAt(p.getCreatedAt())
                 .build();
     }
+
+    private String generateSlug(String name, String providedSlug) {
+        if (providedSlug != null && !providedSlug.isBlank()) {
+            return providedSlug.trim().toLowerCase().replaceAll("[^a-z0-9-]+", "-");
+        }
+        return name.trim().toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
+    }
 }
