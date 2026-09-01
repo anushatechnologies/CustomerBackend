@@ -2,12 +2,12 @@ package com.example.project.customer.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
 import java.util.List;
+
 
 @Getter
 @Setter
@@ -36,18 +36,6 @@ public class ApiResponse<T> {
         this.timestamp = LocalDateTime.now();
     }
 
-    // Private all-args constructor for builder use
-    private ApiResponse(boolean success, Integer statusCode, String message, T data,
-                        PaginationMeta pagination, List<ErrorDetail> errors, LocalDateTime timestamp) {
-        this.success = success;
-        this.statusCode = statusCode;
-        this.message = message;
-        this.data = data;
-        this.pagination = pagination;
-        this.errors = errors;
-        this.timestamp = timestamp;
-    }
-
     public static <T> ApiResponseBuilder<T> builder() {
         return new ApiResponseBuilder<>();
     }
@@ -59,6 +47,7 @@ public class ApiResponse<T> {
         r.message = message;
         r.data = data;
         r.timestamp = LocalDateTime.now();
+        
         return r;
     }
 

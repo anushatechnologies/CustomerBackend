@@ -16,7 +16,6 @@ import com.example.project.customer.entity.ReviewStatus;
 import com.example.project.customer.entity.Rfq;
 import com.example.project.customer.entity.RfqQuestion;
 import com.example.project.customer.entity.Subcategory;
-import com.example.project.customer.entity.TrackingCheckpoint;
 import com.example.project.customer.entity.UserProfile;
 import com.example.project.customer.entity.VendorInfo;
 import com.example.project.customer.repository.AddressRepository;
@@ -209,7 +208,7 @@ public class DataInitializer implements CommandLineRunner {
                             .sortOrder(3)
                             .build()));
 
-            Category paints = categoryRepository.findBySlugIgnoreCase("paints-finishes")
+            categoryRepository.findBySlugIgnoreCase("paints-finishes")
                     .orElseGet(() -> categoryRepository.save(Category.builder()
                             .name("Paints & Finishes")
                             .slug("paints-finishes")
@@ -269,7 +268,7 @@ public class DataInitializer implements CommandLineRunner {
                     .sortOrder(1)
                     .build());
 
-            Brand jswSteel = brandRepository.save(Brand.builder()
+            brandRepository.save(Brand.builder()
                     .subcategory(tmt)
                     .name("JSW Neosteel")
                     .slug("jsw-neosteel")
@@ -278,7 +277,7 @@ public class DataInitializer implements CommandLineRunner {
                     .sortOrder(2)
                     .build());
 
-            Brand jindal = brandRepository.save(Brand.builder()
+            brandRepository.save(Brand.builder()
                     .subcategory(tmt)
                     .name("Jindal Panther")
                     .slug("jindal-panther")
@@ -296,7 +295,7 @@ public class DataInitializer implements CommandLineRunner {
                     .sortOrder(1)
                     .build());
 
-            Brand acc = brandRepository.save(Brand.builder()
+            brandRepository.save(Brand.builder()
                     .subcategory(cement)
                     .name("ACC Cement")
                     .slug("acc-cement")
@@ -305,7 +304,7 @@ public class DataInitializer implements CommandLineRunner {
                     .sortOrder(2)
                     .build());
 
-            Brand ambuja = brandRepository.save(Brand.builder()
+            brandRepository.save(Brand.builder()
                     .subcategory(cement)
                     .name("Ambuja Cement")
                     .slug("ambuja-cement")
@@ -323,7 +322,7 @@ public class DataInitializer implements CommandLineRunner {
                     .sortOrder(1)
                     .build());
 
-            Brand havells = brandRepository.save(Brand.builder()
+            brandRepository.save(Brand.builder()
                     .subcategory(cables)
                     .name("Havells")
                     .slug("havells")
@@ -332,7 +331,7 @@ public class DataInitializer implements CommandLineRunner {
                     .sortOrder(2)
                     .build());
 
-            Brand kei = brandRepository.save(Brand.builder()
+            brandRepository.save(Brand.builder()
                     .subcategory(cables)
                     .name("KEI Wires & Cables")
                     .slug("kei-wires-cables")
@@ -350,7 +349,7 @@ public class DataInitializer implements CommandLineRunner {
                     .sortOrder(1)
                     .build());
 
-            Brand ashirvad = brandRepository.save(Brand.builder()
+            brandRepository.save(Brand.builder()
                     .subcategory(pipes)
                     .name("Ashirvad Pipes")
                     .slug("ashirvad-pipes")
@@ -359,7 +358,7 @@ public class DataInitializer implements CommandLineRunner {
                     .sortOrder(2)
                     .build());
 
-            Brand finolex = brandRepository.save(Brand.builder()
+            brandRepository.save(Brand.builder()
                     .subcategory(pipes)
                     .name("Finolex")
                     .slug("finolex")
@@ -543,7 +542,6 @@ public class DataInitializer implements CommandLineRunner {
 
     private void initSampleReviewsAndOrders(Product p1, Product p2, Product p3, Product p4) {
         Customer c1 = customerRepository.findById(101).orElse(null);
-        Customer c2 = customerRepository.findById(102).orElse(null);
         if (c1 == null) return;
 
         // Create a delivered order for verified purchase

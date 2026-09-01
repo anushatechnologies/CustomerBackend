@@ -17,7 +17,6 @@ import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.repository.BrandRepository;
 import com.example.project.customer.repository.CategoryRepository;
 import com.example.project.customer.repository.ProductRepository;
-import com.example.project.customer.repository.SubcategoryRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,7 +41,6 @@ public class ProductServiceImpl implements ProductService {
 
     private final ProductRepository repository;
     private final BrandRepository brandRepository;
-    private final SubcategoryRepository subcategoryRepository;
     private final CategoryRepository categoryRepository;
     private final S3ImageService s3ImageService;
 
