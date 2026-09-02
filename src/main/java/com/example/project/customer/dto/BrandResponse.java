@@ -40,4 +40,9 @@ public class BrandResponse {
     private Integer productCount;
 
     private LocalDateTime createdAt;
+
+    @JsonProperty("id")
+    public Integer getId() {
+        return brandId;
+    }
 }

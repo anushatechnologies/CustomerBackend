@@ -133,8 +133,18 @@ private List<BulkPricingTier> bulkPricingTiers = new ArrayList<>();
 @Convert(converter = VendorInfoConverter.class)
 private VendorInfo vendor;
 
+    @Column(name = "seller_id")
+    private Integer sellerId;
+
+    @Column(name = "selling_price", precision = 12, scale = 2)
+    private BigDecimal sellingPrice;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    @org.hibernate.annotations.UpdateTimestamp
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
 
     @JsonProperty("is24HourDelivery")
     public Boolean is24HourDelivery() {
@@ -178,6 +188,12 @@ private VendorInfo vendor;
         }
         if (this.is24HourDelivery == null) {
             this.is24HourDelivery = false;
+        }
+        if (this.sellingPrice == null && this.price != null) {
+            this.sellingPrice = this.price;
+        }
+        if (this.price == null && this.sellingPrice != null) {
+            this.price = this.sellingPrice;
         }
     }
 

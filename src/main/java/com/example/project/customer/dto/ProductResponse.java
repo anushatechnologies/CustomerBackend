@@ -79,6 +79,10 @@ public class ProductResponse {
 
     private VendorInfo vendor;
 
+    private String sellerId;
+
+    private BigDecimal sellingPrice;
+
     // Admin approval information
     private String approvalStatus;
 
@@ -87,4 +91,22 @@ public class ProductResponse {
     private String rejectionReason;
 
     private LocalDateTime createdAt;
+
+    private LocalDateTime updatedAt;
+
+    @JsonProperty("id")
+    public Object getId() {
+        return productId != null ? productId : null;
+    }
+
+    public BigDecimal getSellingPrice() {
+        return sellingPrice != null ? sellingPrice : price;
+    }
+
+    public String getStatus() {
+        if (status != null && !status.isEmpty()) {
+            return status;
+        }
+        return approvalStatus != null ? approvalStatus : "PENDING";
+    }
 }

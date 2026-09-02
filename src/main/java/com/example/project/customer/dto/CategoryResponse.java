@@ -28,4 +28,9 @@ public class CategoryResponse {
     private Integer productCount;
     private List<SubcategoryResponse> subcategories;
     private LocalDateTime createdAt;
+
+    @JsonProperty("id")
+    public Integer getId() {
+        return categoryId;
+    }
 }

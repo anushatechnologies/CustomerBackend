@@ -35,10 +35,28 @@ public class Quotation {
     @Column(name = "quote_id")
     private Integer quoteId;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "rfq_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "rfq_id", nullable = true)
     @JsonIgnore
     private Rfq rfq;
+
+    @Column(name = "quotation_number")
+    private String quotationNumber;
+
+    @Column(name = "buyer_name")
+    private String buyerName;
+
+    @Column(name = "buyer_email")
+    private String buyerEmail;
+
+    @Column(name = "freight_charges", precision = 12, scale = 2)
+    private BigDecimal freightCharges;
+
+    @Column(name = "delivery_timeline")
+    private String deliveryTimeline;
+
+    @Column(name = "items_json", columnDefinition = "TEXT")
+    private String itemsJson;
 
     @Column(name = "vendor_id", nullable = false)
     private Integer vendorId;

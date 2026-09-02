@@ -22,6 +22,14 @@ public interface ProductRepository
     @Query("select p from Product p where p.productId = :productId")
     Optional<Product> findByIdForStockUpdate(@Param("productId") Integer productId);
 
+    List<Product> findBySellerId(Integer sellerId);
+
+    Optional<Product> findByProductIdAndSellerId(Integer productId, Integer sellerId);
+
+    List<Product> findBySellerIdAndBrand_BrandId(Integer sellerId, Integer brandId);
+
+    List<Product> findBySellerIdAndBrand_Subcategory_Category_CategoryId(Integer sellerId, Integer categoryId);
+
     // Product approval workflow
     List<Product> findByApprovalStatusAndActive(
             ApprovalStatus approvalStatus,

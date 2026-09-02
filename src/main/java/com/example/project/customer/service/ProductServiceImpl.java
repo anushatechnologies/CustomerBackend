@@ -903,7 +903,18 @@ public class ProductServiceImpl implements ProductService {
                 .rejectionReason(
                         p.getRejectionReason()
                 )
+                .sellerId(
+                        p.getSellerId() != null
+                                ? "seller_" + p.getSellerId()
+                                : (p.getVendor() != null && p.getVendor().getVendorId() != null
+                                        ? "seller_" + p.getVendor().getVendorId()
+                                        : null)
+                )
+                .sellingPrice(
+                        p.getSellingPrice() != null ? p.getSellingPrice() : p.getPrice()
+                )
                 .createdAt(p.getCreatedAt())
+                .updatedAt(p.getUpdatedAt() != null ? p.getUpdatedAt() : p.getCreatedAt())
                 .build();
     }
 
