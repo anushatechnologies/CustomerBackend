@@ -86,7 +86,7 @@ class BannerServiceTest {
         assertEquals("100", response.getLinkValue());
         assertEquals("HEADER", response.getPosition());
         assertEquals(1, response.getSortOrder());
-        assertTrue(response.getIsActive());
+        assertTrue(response.getActive());
         assertNotNull(response.getStartDate());
         assertNotNull(response.getEndDate());
         verify(bannerRepository).save(any(Banner.class));

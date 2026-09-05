@@ -1,5 +1,6 @@
 package com.example.project.customer.controller;
 
+import com.example.project.customer.config.UserContextUtil;
 import com.example.project.customer.dto.ApiResponse;
 import com.example.project.customer.dto.QuotationRequest;
 import com.example.project.customer.dto.QuotationResponse;
@@ -29,10 +30,12 @@ import java.util.Map;
 public class RfqController {
 
     private final RfqService rfqService;
+    private final UserContextUtil userContextUtil;
 
     @PostMapping
     public ResponseEntity<ApiResponse<RfqResponse>> createRfq(@Valid @RequestBody RfqRequest request) {
-        RfqResponse rfq = rfqService.createRfq(101, request);
+        Integer userId = userContextUtil.getCurrentUserId();
+        RfqResponse rfq = rfqService.createRfq(userId, request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.created("RFQ created successfully", rfq));
     }
@@ -42,7 +45,8 @@ public class RfqController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false, defaultValue = "1") int page,
             @RequestParam(required = false, defaultValue = "20") int limit) {
-        ApiResponse<List<RfqResponse>> response = rfqService.getRfqs(101, status, page, limit);
+        Integer userId = userContextUtil.getCurrentUserId();
+        ApiResponse<List<RfqResponse>> response = rfqService.getRfqs(userId, status, page, limit);
         return ResponseEntity.ok(response);
     }
 

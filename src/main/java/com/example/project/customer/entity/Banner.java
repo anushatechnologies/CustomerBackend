@@ -75,16 +75,6 @@ public class Banner {
         this.active = active;
     }
 
-    @JsonProperty("isActive")
-    public Boolean getIsActive() {
-        return active;
-    }
-
-    @JsonProperty("isActive")
-    public void setIsActive(Boolean active) {
-        this.active = active;
-    }
-
     @PrePersist
     protected void onCreate() {
         if (this.createdAt == null) {

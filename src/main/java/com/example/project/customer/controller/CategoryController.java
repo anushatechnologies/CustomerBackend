@@ -42,9 +42,11 @@ public class CategoryController {
     @GetMapping
     public ResponseEntity<ApiResponse<List<CategoryResponse>>> getAll(
             @RequestParam(required = false) Boolean active,
-            @RequestParam(required = false, defaultValue = "false") Boolean includeSubcategories) {
-        List<CategoryResponse> list = service.getAll(active, includeSubcategories);
-        return ResponseEntity.ok(ApiResponse.ok("Categories retrieved successfully", list));
+            @RequestParam(required = false, defaultValue = "false") Boolean includeSubcategories,
+            @RequestParam(required = false, defaultValue = "1") int page,
+            @RequestParam(required = false, defaultValue = "20") int limit) {
+        ApiResponse<List<CategoryResponse>> response = service.getAll(active, includeSubcategories, page, limit);
+        return ResponseEntity.ok(response);
     }
 
     @PutMapping("/{id}")

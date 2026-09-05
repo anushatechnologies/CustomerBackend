@@ -15,6 +15,7 @@ public interface OrderService {
     OrderResponse getOrderById(Integer id);
     OrderTrackingResponse getOrderTracking(Integer id);
     InvoiceResponse getOrderInvoice(Integer id);
+    byte[] generateInvoicePdf(Integer id);
     OrderResponse updateOrderStatus(Integer id, String status, String location, String description);
     OrderResponse cancelOrder(Integer id, String location, String description);
 }

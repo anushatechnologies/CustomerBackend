@@ -1,5 +1,6 @@
 package com.example.project.customer.service;
 
+import com.example.project.customer.dto.ApiResponse;
 import com.example.project.customer.dto.CategoryRequest;
 import com.example.project.customer.dto.CategoryResponse;
 import com.example.project.customer.entity.Category;
@@ -131,5 +132,26 @@ class CategoryServiceTest {
 
         assertThatThrownBy(() -> categoryService.delete(99))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("getAll paginated - should return paginated category response")
+    void getAll_Paginated_Success() {
+        org.springframework.data.domain.Page<Category> page = new org.springframework.data.domain.PageImpl<>(
+                java.util.List.of(category),
+                org.springframework.data.domain.PageRequest.of(0, 10),
+                1
+        );
+        when(repository.findAllByOrderBySortOrderAsc(any(org.springframework.data.domain.Pageable.class))).thenReturn(page);
+        when(productRepository.countByBrand_Subcategory_Category_CategoryId(1)).thenReturn(5);
+
+        ApiResponse<java.util.List<CategoryResponse>> response = categoryService.getAll(false, false, 1, 10);
+
+        assertThat(response).isNotNull();
+        assertThat(response.isSuccess()).isTrue();
+        assertThat(response.getData()).hasSize(1);
+        assertThat(response.getPagination()).isNotNull();
+        assertThat(response.getPagination().getTotalCount()).isEqualTo(1L);
+        assertThat(response.getPagination().getPage()).isEqualTo(1);
     }
 }

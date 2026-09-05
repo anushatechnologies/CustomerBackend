@@ -28,11 +28,6 @@ public class BannerResponse {
     @JsonProperty("active")
     private Boolean active;
 
-    @JsonProperty("isActive")
-    public Boolean getIsActive() {
-        return active;
-    }
-
     private LocalDateTime startDate;
     private LocalDateTime endDate;
     private LocalDateTime createdAt;

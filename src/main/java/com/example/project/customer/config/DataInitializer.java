@@ -66,6 +66,18 @@ public class DataInitializer implements CommandLineRunner {
     private final OrderItemRepository orderItemRepository;
     private final ProductReviewRepository productReviewRepository;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+    private final com.example.project.customer.repository.WalletRepository walletRepository;
+    private final com.example.project.customer.repository.WalletTransactionRepository walletTransactionRepository;
+    private final com.example.project.customer.repository.RewardVoucherRepository rewardVoucherRepository;
+    private final com.example.project.customer.repository.RentalEquipmentRepository rentalEquipmentRepository;
+    private final com.example.project.customer.repository.PurchaseOrderRepository purchaseOrderRepository;
+    private final com.example.project.customer.repository.PurchaseOrderItemRepository purchaseOrderItemRepository;
+    private final com.example.project.customer.repository.ConversationRepository conversationRepository;
+    private final com.example.project.customer.repository.ChatMessageRepository chatMessageRepository;
+    private final com.example.project.customer.repository.BlogArticleRepository blogArticleRepository;
+    private final com.example.project.customer.repository.NewsItemRepository newsItemRepository;
+    private final com.example.project.customer.repository.SupportTicketRepository supportTicketRepository;
+    private final com.example.project.customer.repository.TicketMessageRepository ticketMessageRepository;
 
     @Override
     public void run(String... args) {
@@ -79,6 +91,7 @@ public class DataInitializer implements CommandLineRunner {
             initAddresses();
             initCatalogAndBanners();
             initSampleRfq();
+            initExtendedModules();
             log.info("HINCH MART database successfully initialized with rich B2B catalog and seed data.");
         } catch (Exception e) {
             log.warn("Data initialization skipped or already present: {}", e.getMessage(), e);
@@ -703,6 +716,307 @@ public class DataInitializer implements CommandLineRunner {
                     .build();
 
             rfqQuestionRepository.save(q);
+        }
+    }
+
+    private void initExtendedModules() {
+        // 1. Reward Vouchers & Wallet
+        if (rewardVoucherRepository.count() == 0) {
+            rewardVoucherRepository.saveAll(List.of(
+                    com.example.project.customer.entity.RewardVoucher.builder()
+                            .code("BUILDER50K")
+                            .title("Commercial Project Flat Discount")
+                            .description("Flat INR 50,000 off on bulk orders over INR 5 Lakhs")
+                            .discountType("FIXED")
+                            .discountValue(new BigDecimal("50000.00"))
+                            .minOrderValue(new BigDecimal("500000.00"))
+                            .maxDiscount(new BigDecimal("50000.00"))
+                            .expiryDate(LocalDateTime.now().plusMonths(6))
+                            .redeemed(false)
+                            .active(true)
+                            .build(),
+                    com.example.project.customer.entity.RewardVoucher.builder()
+                            .code("HINCH10")
+                            .title("10% Construction Site Kickoff")
+                            .description("10% instant discount up to INR 25,000 for verified builders")
+                            .discountType("PERCENTAGE")
+                            .discountValue(new BigDecimal("10.00"))
+                            .minOrderValue(new BigDecimal("100000.00"))
+                            .maxDiscount(new BigDecimal("25000.00"))
+                            .expiryDate(LocalDateTime.now().plusMonths(3))
+                            .redeemed(false)
+                            .active(true)
+                            .build(),
+                    com.example.project.customer.entity.RewardVoucher.builder()
+                            .code("STEEL5")
+                            .title("Primary Steel Concession")
+                            .description("5% concession on Tata & JSW Fe550D TMT consignments")
+                            .discountType("PERCENTAGE")
+                            .discountValue(new BigDecimal("5.00"))
+                            .minOrderValue(new BigDecimal("200000.00"))
+                            .maxDiscount(new BigDecimal("15000.00"))
+                            .expiryDate(LocalDateTime.now().plusMonths(4))
+                            .redeemed(false)
+                            .active(true)
+                            .build()
+            ));
+        }
+
+        if (walletRepository.findByUserId(101).isEmpty()) {
+            com.example.project.customer.entity.Wallet wallet = com.example.project.customer.entity.Wallet.builder()
+                    .userId(101)
+                    .balance(new BigDecimal("75000.00"))
+                    .currency("INR")
+                    .loyaltyPoints(1850)
+                    .tier("PLATINUM")
+                    .active(true)
+                    .build();
+            com.example.project.customer.entity.Wallet savedWallet = walletRepository.save(wallet);
+
+            walletTransactionRepository.save(com.example.project.customer.entity.WalletTransaction.builder()
+                    .wallet(savedWallet)
+                    .type("CREDIT")
+                    .amount(new BigDecimal("75000.00"))
+                    .source("ENTERPRISE_CREDIT_APPROVAL")
+                    .referenceId("CR-20260801-101")
+                    .description("Approved B2B revolving credit line deposit")
+                    .balanceAfter(new BigDecimal("75000.00"))
+                    .timestamp(LocalDateTime.now().minusDays(15))
+                    .build());
+        }
+
+        // 2. Equipment Rentals
+        if (rentalEquipmentRepository.count() == 0) {
+            rentalEquipmentRepository.saveAll(List.of(
+                    com.example.project.customer.entity.RentalEquipment.builder()
+                            .name("JCB 3DX Plus Backhoe Loader & Excavator")
+                            .category("EXCAVATOR")
+                            .model("2025 EcoXcellence 76 HP")
+                            .specifications("Max dig depth: 4.77m, Loader bucket capacity: 1.1 cu.m, High-traction 4WD, Air-conditioned operator cabin.")
+                            .dailyRate(new BigDecimal("8500.00"))
+                            .weeklyRate(new BigDecimal("52000.00"))
+                            .monthlyRate(new BigDecimal("185000.00"))
+                            .depositAmount(new BigDecimal("25000.00"))
+                            .imageUrl("https://cdn.hinchmart.com/rentals/jcb_3dx.jpg")
+                            .location("Hyderabad Hub - Nanakramguda")
+                            .operatorAvailable(true)
+                            .operatorDailyCharge(new BigDecimal("1200.00"))
+                            .available(true)
+                            .build(),
+                    com.example.project.customer.entity.RentalEquipment.builder()
+                            .name("SANY STC250C 25-Ton Hydraulic Truck Crane")
+                            .category("CRANE")
+                            .model("STC250C 4-Section U-Shape Boom")
+                            .specifications("Max lifting capacity: 25T, Max boom reach: 33.5m, Full 360-degree slew, Wireless safe load indicator (SLI).")
+                            .dailyRate(new BigDecimal("22000.00"))
+                            .weeklyRate(new BigDecimal("135000.00"))
+                            .monthlyRate(new BigDecimal("480000.00"))
+                            .depositAmount(new BigDecimal("50000.00"))
+                            .imageUrl("https://cdn.hinchmart.com/rentals/sany_crane.jpg")
+                            .location("Hyderabad Hub - Patancheru")
+                            .operatorAvailable(true)
+                            .operatorDailyCharge(new BigDecimal("2000.00"))
+                            .available(true)
+                            .build(),
+                    com.example.project.customer.entity.RentalEquipment.builder()
+                            .name("Heavy-Duty Cuplock Scaffolding System (5,000 sq.ft)")
+                            .category("SCAFFOLDING")
+                            .model("EN 12810 Heavy Industrial")
+                            .specifications("Galvanized high-yield steel standards, ledgers, base jacks, and steel walking planks. Rated for 450 kg/m2 load.")
+                            .dailyRate(new BigDecimal("2500.00"))
+                            .weeklyRate(new BigDecimal("15000.00"))
+                            .monthlyRate(new BigDecimal("50000.00"))
+                            .depositAmount(new BigDecimal("20000.00"))
+                            .imageUrl("https://cdn.hinchmart.com/rentals/cuplock_scaffold.jpg")
+                            .location("Hyderabad Hub - HITEC City")
+                            .operatorAvailable(false)
+                            .operatorDailyCharge(BigDecimal.ZERO)
+                            .available(true)
+                            .build(),
+                    com.example.project.customer.entity.RentalEquipment.builder()
+                            .name("Cummins 125 kVA Soundproof Silent Diesel Generator")
+                            .category("GENERATOR")
+                            .model("CP125D5 CPCB-IV+ Compliant")
+                            .specifications("Prime power rating 125 kVA / 100 kWe, 415V 50Hz 3-phase, Acoustic enclosure < 75 dBA at 1m, 240L fuel tank.")
+                            .dailyRate(new BigDecimal("4500.00"))
+                            .weeklyRate(new BigDecimal("28000.00"))
+                            .monthlyRate(new BigDecimal("95000.00"))
+                            .depositAmount(new BigDecimal("15000.00"))
+                            .imageUrl("https://cdn.hinchmart.com/rentals/cummins_dg.jpg")
+                            .location("Hyderabad Hub - Shamshabad")
+                            .operatorAvailable(true)
+                            .operatorDailyCharge(new BigDecimal("1000.00"))
+                            .available(true)
+                            .build()
+            ));
+        }
+
+        // 3. Purchase Orders
+        if (purchaseOrderRepository.count() == 0) {
+            com.example.project.customer.entity.PurchaseOrder po1 = com.example.project.customer.entity.PurchaseOrder.builder()
+                    .poNumber("PO-20260818-001")
+                    .userId(101)
+                    .vendorId(1001)
+                    .totalAmount(new BigDecimal("330400.00"))
+                    .status("APPROVED")
+                    .deliveryDate(LocalDate.now().plusDays(5))
+                    .billingAddress("Skyline Infra Ventures Ltd, HITEC City, Hyderabad, TS - 500081")
+                    .shippingAddress("Project Site #4B, Financial District, Hyderabad, TS")
+                    .paymentTerms("NET_30")
+                    .notes("Dispatch only primary producer rebars with standard manufacturer test certificates.")
+                    .approvedAt(LocalDateTime.now().minusDays(2))
+                    .approvedBy("Senior Procurement Lead")
+                    .build();
+
+            com.example.project.customer.entity.PurchaseOrder savedPo1 = purchaseOrderRepository.save(po1);
+
+            purchaseOrderItemRepository.save(com.example.project.customer.entity.PurchaseOrderItem.builder()
+                    .purchaseOrder(savedPo1)
+                    .productId(1)
+                    .productTitle("Tata Tiscon 550D TMT Rebars 12mm (Bundle)")
+                    .quantity(5)
+                    .unit("Metric Ton")
+                    .unitPrice(new BigDecimal("56000.00"))
+                    .taxRate(new BigDecimal("18.00"))
+                    .lineTotal(new BigDecimal("330400.00"))
+                    .build());
+        }
+
+        // 4. Chat Conversation
+        if (conversationRepository.count() == 0) {
+            com.example.project.customer.entity.Conversation conv = com.example.project.customer.entity.Conversation.builder()
+                    .buyerId(101)
+                    .sellerId(1001)
+                    .topic("PRODUCT")
+                    .referenceId("PROD-1")
+                    .title("Fe550D Rebar Consignment Logistics & MTC")
+                    .lastMessageText("Yes, mill test certificates are attached with every dispatched trailer.")
+                    .lastMessageTimestamp(LocalDateTime.now().minusHours(2))
+                    .unreadBuyer(0)
+                    .unreadSeller(0)
+                    .build();
+            com.example.project.customer.entity.Conversation savedConv = conversationRepository.save(conv);
+
+            chatMessageRepository.saveAll(List.of(
+                    com.example.project.customer.entity.ChatMessage.builder()
+                            .conversation(savedConv)
+                            .senderId(101)
+                            .senderRole("BUYER")
+                            .content("Hello, we are planning a 20 MT order for Tata Tiscon Fe550D 16mm. Can you confirm the dispatch timeline to Gachibowli?")
+                            .messageType("TEXT")
+                            .isRead(true)
+                            .timestamp(LocalDateTime.now().minusHours(4))
+                            .build(),
+                    com.example.project.customer.entity.ChatMessage.builder()
+                            .conversation(savedConv)
+                            .senderId(1001)
+                            .senderRole("SELLER")
+                            .content("Hi! We have direct stock available at our Patancheru central yard. We can dispatch within 24 hours of PO confirmation.")
+                            .messageType("TEXT")
+                            .isRead(true)
+                            .timestamp(LocalDateTime.now().minusHours(3))
+                            .build(),
+                    com.example.project.customer.entity.ChatMessage.builder()
+                            .conversation(savedConv)
+                            .senderId(1001)
+                            .senderRole("SELLER")
+                            .content("Yes, mill test certificates are attached with every dispatched trailer.")
+                            .messageType("TEXT")
+                            .isRead(true)
+                            .timestamp(LocalDateTime.now().minusHours(2))
+                            .build()
+            ));
+        }
+
+        // 5. Blog Articles
+        if (blogArticleRepository.count() == 0) {
+            blogArticleRepository.saveAll(List.of(
+                    com.example.project.customer.entity.BlogArticle.builder()
+                            .title("How to Verify Mill Test Certificates (MTC) for Fe550D TMT Rebars")
+                            .slug("verify-mtc-fe550d-rebars")
+                            .excerpt("A technical guide for project site engineers on validating chemical compositions, yield strength, and BIS 1786 compliance.")
+                            .content("Ensuring structural integrity starts with material verification. Mill Test Certificates (MTC) provide proof of yield stress (min 550 N/mm2), elongation (min 14.5%), and carbon equivalent (CE max 0.42%). Always check heat numbers etched on rebar bundles against the certificate before unloading on site.")
+                            .author("Dr. V. Ramanathan, Chief Structural Consultant")
+                            .category("MATERIAL_TESTING")
+                            .tags("tmt,steel,quality,bis-1786")
+                            .readTimeMinutes(6)
+                            .imageUrl("https://cdn.hinchmart.com/blog/mtc_verification.jpg")
+                            .published(true)
+                            .publishedAt(LocalDateTime.now().minusDays(10))
+                            .build(),
+                    com.example.project.customer.entity.BlogArticle.builder()
+                            .title("Navigating Split GST & Input Tax Credit (ITC) on Bulk Construction Procurement")
+                            .slug("split-gst-input-tax-credit-infra")
+                            .excerpt("Optimizing working capital and tax compliance for infrastructure contractors and enterprise developers in India.")
+                            .content("Procuring bulk cement, steel, and aggregate involves multiple GST slabs (18% for steel, 28% for cement). Understanding the place of supply and ensuring supplier filing on GSTR-1 directly impacts your monthly Input Tax Credit flow. Learn how HinchMart automates split tax reporting.")
+                            .author("Ananya Sengupta, Head of B2B Tax & Finance")
+                            .category("PROCUREMENT")
+                            .tags("gst,tax,b2b,invoicing")
+                            .readTimeMinutes(8)
+                            .imageUrl("https://cdn.hinchmart.com/blog/b2b_tax.jpg")
+                            .published(true)
+                            .publishedAt(LocalDateTime.now().minusDays(4))
+                            .build()
+            ));
+        }
+
+        // 6. News Items
+        if (newsItemRepository.count() == 0) {
+            newsItemRepository.saveAll(List.of(
+                    com.example.project.customer.entity.NewsItem.builder()
+                            .title("TMT Steel Ex-Yard Prices Consolidate with 2.4% Upward Trend Across Southern Hubs")
+                            .summary("Primary mills report strong commercial and metro infrastructure demand holding prices firm at INR 52,000 - 54,000 per MT.")
+                            .content("Primary rebar manufacturers Tata Steel, JSW, and SAIL experienced strong volume absorption from state highway developments and urban infrastructure packages, leading to a mild 2.4% price consolidation.")
+                            .category("COMMODITY_PRICES")
+                            .source("HinchMart Market Intelligence")
+                            .priceChangePercentage(2.4)
+                            .trendDirection("UP")
+                            .publishedAt(LocalDateTime.now().minusHours(8))
+                            .build(),
+                    com.example.project.customer.entity.NewsItem.builder()
+                            .title("UltraTech & ACC Cement Maintain Stable Pricing for Ready-Mix Concrete Grades")
+                            .summary("Bulk cement supply remains fluid across Telangana and Karnataka with prompt 48-hour delivery.")
+                            .content("OPC 53 and PPC bulk grades trade steady at INR 340 - 360 per bag. Demand from precast fabrication yards is expected to peak over the upcoming quarter.")
+                            .category("COMMODITY_PRICES")
+                            .source("National Infrastructure News")
+                            .priceChangePercentage(0.0)
+                            .trendDirection("STABLE")
+                            .publishedAt(LocalDateTime.now().minusHours(24))
+                            .build()
+            ));
+        }
+
+        // 7. Support Tickets
+        if (supportTicketRepository.count() == 0) {
+            com.example.project.customer.entity.SupportTicket tkt = com.example.project.customer.entity.SupportTicket.builder()
+                    .ticketNumber("TKT-20260825-001")
+                    .userId(101)
+                    .subject("Crane Unloading Request & Slot Confirmation for Site Delivery")
+                    .category("DELIVERY")
+                    .priority("HIGH")
+                    .status("RESOLVED")
+                    .orderId(1)
+                    .build();
+            com.example.project.customer.entity.SupportTicket savedTkt = supportTicketRepository.save(tkt);
+
+            ticketMessageRepository.saveAll(List.of(
+                    com.example.project.customer.entity.TicketMessage.builder()
+                            .ticket(savedTkt)
+                            .senderId(101)
+                            .senderRole("USER")
+                            .senderName("Customer")
+                            .content("Hello, our site gate requires an articulated 25-Ton hydraulic crane for unloading the 16mm rebar trailer. Please confirm the operator arrival time.")
+                            .timestamp(LocalDateTime.now().minusDays(3))
+                            .build(),
+                    com.example.project.customer.entity.TicketMessage.builder()
+                            .ticket(savedTkt)
+                            .senderId(1)
+                            .senderRole("SUPPORT_AGENT")
+                            .senderName("HinchMart Logistics Team")
+                            .content("Hello, we have assigned crane unit CR-12 with certified rigger. Arrival scheduled at 08:30 AM tomorrow. Driver contact details shared on tracking link.")
+                            .timestamp(LocalDateTime.now().minusDays(2))
+                            .build()
+            ));
         }
     }
 }

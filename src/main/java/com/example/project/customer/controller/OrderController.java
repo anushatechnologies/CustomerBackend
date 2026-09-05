@@ -1,5 +1,6 @@
 package com.example.project.customer.controller;
 
+import com.example.project.customer.config.UserContextUtil;
 import com.example.project.customer.dto.ApiResponse;
 import com.example.project.customer.dto.InvoiceResponse;
 import com.example.project.customer.dto.OrderCreateRequest;
@@ -9,7 +10,9 @@ import com.example.project.customer.dto.OrderTrackingResponse;
 import com.example.project.customer.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -30,10 +33,12 @@ import java.util.Map;
 public class OrderController {
 
     private final OrderService orderService;
+    private final UserContextUtil userContextUtil;
 
     @PostMapping
     public ResponseEntity<ApiResponse<OrderResponse>> createOrder(@Valid @RequestBody OrderCreateRequest request) {
-        OrderResponse order = orderService.createOrder(101, request);
+        Integer userId = userContextUtil.getCurrentUserId();
+        OrderResponse order = orderService.createOrder(userId, request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.created("Order placed successfully", order));
     }
@@ -43,7 +48,8 @@ public class OrderController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false, defaultValue = "1") int page,
             @RequestParam(required = false, defaultValue = "20") int limit) {
-        ApiResponse<List<OrderSummaryResponse>> response = orderService.getOrders(101, status, page, limit);
+        Integer userId = userContextUtil.getCurrentUserId();
+        ApiResponse<List<OrderSummaryResponse>> response = orderService.getOrders(userId, status, page, limit);
         return ResponseEntity.ok(response);
     }
 
@@ -63,6 +69,25 @@ public class OrderController {
     public ResponseEntity<ApiResponse<InvoiceResponse>> getOrderInvoice(@PathVariable Integer id) {
         InvoiceResponse invoice = orderService.getOrderInvoice(id);
         return ResponseEntity.ok(ApiResponse.ok("Tax invoice retrieved successfully", invoice));
+    }
+
+    @GetMapping("/{id}/invoice/download")
+    public ResponseEntity<byte[]> downloadOrderInvoice(@PathVariable Integer id) {
+        byte[] pdfBytes = orderService.generateInvoicePdf(id);
+        String filename = "INV-" + String.format("%06d", id) + ".pdf";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .body(pdfBytes);
+    }
+
+    @GetMapping("/{id}/invoice/pdf")
+    public ResponseEntity<byte[]> previewOrderInvoice(@PathVariable Integer id) {
+        byte[] pdfBytes = orderService.generateInvoicePdf(id);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"invoice-" + id + ".pdf\"")
+                .body(pdfBytes);
     }
 
     @PutMapping("/{id}/status")

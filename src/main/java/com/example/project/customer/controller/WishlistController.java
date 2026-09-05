@@ -1,5 +1,6 @@
 package com.example.project.customer.controller;
 
+import com.example.project.customer.config.UserContextUtil;
 import com.example.project.customer.dto.ApiResponse;
 import com.example.project.customer.dto.WishlistResponse;
 import com.example.project.customer.service.WishlistService;
@@ -21,23 +22,27 @@ import java.util.List;
 public class WishlistController {
 
     private final WishlistService wishlistService;
+    private final UserContextUtil userContextUtil;
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<WishlistResponse>>> getWishlist() {
-        List<WishlistResponse> wishlist = wishlistService.getWishlist(101);
+        Integer userId = userContextUtil.getCurrentUserId();
+        List<WishlistResponse> wishlist = wishlistService.getWishlist(userId);
         return ResponseEntity.ok(ApiResponse.ok("Wishlist retrieved successfully", wishlist));
     }
 
     @PostMapping("/{productId}")
     public ResponseEntity<ApiResponse<WishlistResponse>> addToWishlist(@PathVariable Integer productId) {
-        WishlistResponse item = wishlistService.addToWishlist(101, productId);
+        Integer userId = userContextUtil.getCurrentUserId();
+        WishlistResponse item = wishlistService.addToWishlist(userId, productId);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.created("Product added to wishlist successfully", item));
     }
 
     @DeleteMapping("/{productId}")
     public ResponseEntity<ApiResponse<Void>> removeFromWishlist(@PathVariable Integer productId) {
-        wishlistService.removeFromWishlist(101, productId);
+        Integer userId = userContextUtil.getCurrentUserId();
+        wishlistService.removeFromWishlist(userId, productId);
         return ResponseEntity.ok(ApiResponse.ok("Product removed from wishlist successfully", null));
     }
 }

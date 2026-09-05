@@ -52,6 +52,7 @@ public class OrderServiceImpl implements OrderService {
     private final UserProfileRepository userProfileRepository;
     private final CartService cartService;
     private final CheckoutService checkoutService;
+    private final PdfInvoiceGeneratorService pdfInvoiceGeneratorService;
 
     @Override
     public OrderResponse createOrder(Integer userId, OrderCreateRequest request) {
@@ -258,8 +259,17 @@ public class OrderServiceImpl implements OrderService {
                 .sgst(order.getSgst())
                 .igst(order.getIgst())
                 .grandTotal(order.getTotalAmount())
-                .pdfUrl("https://cdn.hinchmart.com/invoices/" + invoiceNum + ".pdf")
+                .pdfUrl("/api/orders/" + order.getOrderId() + "/invoice/download")
                 .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] generateInvoicePdf(Integer id) {
+        Order order = findOrder(id);
+        UserProfile user = userProfileRepository.findById(order.getUserId()).orElse(null);
+        String invoiceNum = "INV-" + LocalDate.now().getYear() + "-" + String.format("%06d", order.getOrderId());
+        return pdfInvoiceGeneratorService.generateInvoicePdf(order, user, invoiceNum);
     }
 
     @Override

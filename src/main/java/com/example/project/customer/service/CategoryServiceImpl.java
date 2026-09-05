@@ -1,7 +1,9 @@
 package com.example.project.customer.service;
 
+import com.example.project.customer.dto.ApiResponse;
 import com.example.project.customer.dto.CategoryRequest;
 import com.example.project.customer.dto.CategoryResponse;
+import com.example.project.customer.dto.PaginationMeta;
 import com.example.project.customer.dto.SubcategoryResponse;
 import com.example.project.customer.entity.Category;
 import com.example.project.customer.entity.Subcategory;
@@ -12,6 +14,9 @@ import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.repository.SubcategoryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -78,6 +83,29 @@ public class CategoryServiceImpl implements CategoryService {
         return categories.stream()
                 .map(cat -> mapToResponse(cat, includeSubs))
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ApiResponse<List<CategoryResponse>> getAll(Boolean active, Boolean includeSubcategories, int page, int limit) {
+        int pageNumber = page > 0 ? page : 1;
+        int pageSize = limit > 0 ? limit : 20;
+        Pageable pageable = PageRequest.of(pageNumber - 1, pageSize);
+
+        Page<Category> categoryPage;
+        if (Boolean.TRUE.equals(active)) {
+            categoryPage = repository.findByActiveTrueOrderBySortOrderAsc(pageable);
+        } else {
+            categoryPage = repository.findAllByOrderBySortOrderAsc(pageable);
+        }
+
+        boolean includeSubs = Boolean.TRUE.equals(includeSubcategories);
+        List<CategoryResponse> data = categoryPage.getContent().stream()
+                .map(cat -> mapToResponse(cat, includeSubs))
+                .toList();
+
+        PaginationMeta pagination = PaginationMeta.of(pageNumber, pageSize, categoryPage.getTotalElements());
+        return ApiResponse.paginated("Categories retrieved successfully", data, pagination);
     }
 
     @Override

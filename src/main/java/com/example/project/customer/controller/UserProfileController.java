@@ -1,5 +1,6 @@
 package com.example.project.customer.controller;
 
+import com.example.project.customer.config.UserContextUtil;
 import com.example.project.customer.dto.ApiResponse;
 import com.example.project.customer.dto.UserProfileRequest;
 import com.example.project.customer.dto.UserProfileResponse;
@@ -18,16 +19,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserProfileController {
 
     private final UserProfileService userProfileService;
+    private final UserContextUtil userContextUtil;
 
     @GetMapping("/profile")
     public ResponseEntity<ApiResponse<UserProfileResponse>> getProfile() {
-        UserProfileResponse profile = userProfileService.getProfile(101);
+        Integer userId = userContextUtil.getCurrentUserId();
+        UserProfileResponse profile = userProfileService.getProfile(userId);
         return ResponseEntity.ok(ApiResponse.ok("User profile retrieved successfully", profile));
     }
 
     @PutMapping("/profile")
     public ResponseEntity<ApiResponse<UserProfileResponse>> updateProfile(@RequestBody UserProfileRequest request) {
-        UserProfileResponse updated = userProfileService.updateProfile(101, request);
+        Integer userId = userContextUtil.getCurrentUserId();
+        UserProfileResponse updated = userProfileService.updateProfile(userId, request);
         return ResponseEntity.ok(ApiResponse.ok("User profile updated successfully", updated));
     }
 }

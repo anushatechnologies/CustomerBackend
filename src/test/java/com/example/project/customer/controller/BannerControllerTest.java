@@ -94,7 +94,7 @@ class BannerControllerTest {
                 .andExpect(jsonPath("$.data.linkValue").value("summer-deals"))
                 .andExpect(jsonPath("$.data.position").value("HOME_HERO"))
                 .andExpect(jsonPath("$.data.sortOrder").value(1))
-                .andExpect(jsonPath("$.data.isActive").value(true));
+                .andExpect(jsonPath("$.data.active").value(true));
     }
 
     @Test
@@ -207,7 +207,7 @@ class BannerControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.title").value("Updated Title"))
                 .andExpect(jsonPath("$.data.position").value("POPUP"))
-                .andExpect(jsonPath("$.data.isActive").value(false));
+                .andExpect(jsonPath("$.data.active").value(false));
     }
 
     @Test

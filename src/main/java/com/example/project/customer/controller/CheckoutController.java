@@ -1,5 +1,6 @@
 package com.example.project.customer.controller;
 
+import com.example.project.customer.config.UserContextUtil;
 import com.example.project.customer.dto.ApiResponse;
 import com.example.project.customer.dto.CheckoutPreviewRequest;
 import com.example.project.customer.dto.CheckoutPreviewResponse;
@@ -18,11 +19,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class CheckoutController {
 
     private final CheckoutService checkoutService;
+    private final UserContextUtil userContextUtil;
 
     @PostMapping("/preview")
     public ResponseEntity<ApiResponse<CheckoutPreviewResponse>> previewCheckout(
             @Valid @RequestBody CheckoutPreviewRequest request) {
-        CheckoutPreviewResponse preview = checkoutService.previewCheckout(101, request);
+        Integer userId = userContextUtil.getCurrentUserId();
+        CheckoutPreviewResponse preview = checkoutService.previewCheckout(userId, request);
         return ResponseEntity.ok(ApiResponse.ok("Checkout preview calculated successfully", preview));
     }
 }

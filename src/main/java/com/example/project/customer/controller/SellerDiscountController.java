@@ -1,5 +1,6 @@
 package com.example.project.customer.controller;
 
+import com.example.project.customer.config.SellerContextUtil;
 import com.example.project.customer.dto.ApiResponse;
 import com.example.project.customer.dto.DiscountRejectionRequest;
 import com.example.project.customer.dto.SellerDiscountRequest;
@@ -26,10 +27,11 @@ import java.util.List;
 public class SellerDiscountController {
 
     private final SellerDiscountService service;
+    private final SellerContextUtil sellerContextUtil;
 
     @PostMapping("/seller/discounts")
     public ResponseEntity<ApiResponse<SellerDiscountResponse>> create(@Valid @RequestBody SellerDiscountRequest request) {
-        Integer sellerId = 101;
+        Integer sellerId = sellerContextUtil.getCurrentSellerId();
         SellerDiscountResponse response = service.create(sellerId, request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.created("Discount created successfully", response));
@@ -37,24 +39,28 @@ public class SellerDiscountController {
 
     @GetMapping("/seller/discounts")
     public ResponseEntity<ApiResponse<List<SellerDiscountResponse>>> getBySeller() {
-        return ResponseEntity.ok(ApiResponse.ok("Seller discounts retrieved successfully", service.getBySeller(101)));
+        Integer sellerId = sellerContextUtil.getCurrentSellerId();
+        return ResponseEntity.ok(ApiResponse.ok("Seller discounts retrieved successfully", service.getBySeller(sellerId)));
     }
 
     @GetMapping("/seller/discounts/{discountId}")
     public ResponseEntity<ApiResponse<SellerDiscountResponse>> getById(@PathVariable Integer discountId) {
-        return ResponseEntity.ok(ApiResponse.ok("Discount retrieved successfully", service.getById(101, discountId)));
+        Integer sellerId = sellerContextUtil.getCurrentSellerId();
+        return ResponseEntity.ok(ApiResponse.ok("Discount retrieved successfully", service.getById(sellerId, discountId)));
     }
 
     @PutMapping("/seller/discounts/{discountId}")
     public ResponseEntity<ApiResponse<SellerDiscountResponse>> update(@PathVariable Integer discountId,
                                                                      @Valid @RequestBody SellerDiscountRequest request) {
-        SellerDiscountResponse response = service.update(101, discountId, request);
+        Integer sellerId = sellerContextUtil.getCurrentSellerId();
+        SellerDiscountResponse response = service.update(sellerId, discountId, request);
         return ResponseEntity.ok(ApiResponse.ok("Discount updated successfully", response));
     }
 
     @PatchMapping("/seller/discounts/{discountId}/submit")
     public ResponseEntity<ApiResponse<SellerDiscountResponse>> submitForReview(@PathVariable Integer discountId) {
-        SellerDiscountResponse response = service.submitForReview(101, discountId);
+        Integer sellerId = sellerContextUtil.getCurrentSellerId();
+        SellerDiscountResponse response = service.submitForReview(sellerId, discountId);
         return ResponseEntity.ok(ApiResponse.ok("Discount submitted for admin review", response));
     }
 
