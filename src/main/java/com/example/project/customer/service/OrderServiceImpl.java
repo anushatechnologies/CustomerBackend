@@ -16,14 +16,14 @@ import com.example.project.customer.entity.Order;
 import com.example.project.customer.entity.OrderItem;
 import com.example.project.customer.entity.Product;
 import com.example.project.customer.entity.TrackingCheckpoint;
-import com.example.project.customer.entity.UserProfile;
+import com.example.project.customer.entity.Customer;
 import com.example.project.customer.exception.ResourceConflictException;
 import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.repository.AddressRepository;
+import com.example.project.customer.repository.CustomerRepository;
 import com.example.project.customer.repository.OrderItemRepository;
 import com.example.project.customer.repository.OrderRepository;
 import com.example.project.customer.repository.ProductRepository;
-import com.example.project.customer.repository.UserProfileRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -49,7 +49,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderItemRepository orderItemRepository;
     private final ProductRepository productRepository;
     private final AddressRepository addressRepository;
-    private final UserProfileRepository userProfileRepository;
+    private final CustomerRepository customerRepository;
     private final CartService cartService;
     private final CheckoutService checkoutService;
     private final PdfInvoiceGeneratorService pdfInvoiceGeneratorService;
@@ -83,7 +83,7 @@ public class OrderServiceImpl implements OrderService {
 
         Order order = Order.builder()
                 .orderNumber(orderNumber)
-                .userId(uid)
+                .customer(Customer.builder().customerId(uid).build())
                 .addressId(address.getId())
                 .deliveryLocation(formattedAddress)
                 .subtotal(preview.getSubtotal())
@@ -188,9 +188,9 @@ public class OrderServiceImpl implements OrderService {
 
         Page<Order> orderPage;
         if (status != null && !status.isBlank()) {
-            orderPage = orderRepository.findByUserIdAndOrderStatusIgnoreCaseOrderByCreatedAtDesc(uid, status.trim(), pageable);
+            orderPage = orderRepository.findByCustomer_CustomerIdAndOrderStatusIgnoreCaseOrderByCreatedAtDesc(uid, status.trim(), pageable);
         } else {
-            orderPage = orderRepository.findByUserIdOrderByCreatedAtDesc(uid, pageable);
+            orderPage = orderRepository.findByCustomer_CustomerIdOrderByCreatedAtDesc(uid, pageable);
         }
 
         List<OrderSummaryResponse> summaries = orderPage.getContent().stream()
@@ -239,10 +239,10 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public InvoiceResponse getOrderInvoice(Integer id) {
         Order order = findOrder(id);
-        UserProfile user = userProfileRepository.findById(order.getUserId()).orElse(null);
+        Customer user = order.getCustomer();
 
-        String buyerGstin = user != null && user.getGstNumber() != null ? user.getGstNumber() : "36AAACT2727Q1ZW";
-        String buyerLegalName = user != null && user.getCompanyName() != null ? user.getCompanyName() : "Apex Infra Projects Pvt Ltd";
+        String buyerGstin = "36AAACT2727Q1ZW";
+        String buyerLegalName = user != null && user.getName() != null ? user.getName() : "Apex Infra Projects Pvt Ltd";
 
         String invoiceNum = "INV-" + LocalDate.now().getYear() + "-" + String.format("%06d", order.getOrderId());
 
@@ -267,7 +267,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public byte[] generateInvoicePdf(Integer id) {
         Order order = findOrder(id);
-        UserProfile user = userProfileRepository.findById(order.getUserId()).orElse(null);
+        Customer user = order.getCustomer();
         String invoiceNum = "INV-" + LocalDate.now().getYear() + "-" + String.format("%06d", order.getOrderId());
         return pdfInvoiceGeneratorService.generateInvoicePdf(order, user, invoiceNum);
     }

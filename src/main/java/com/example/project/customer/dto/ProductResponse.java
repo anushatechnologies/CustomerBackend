@@ -1,7 +1,6 @@
 package com.example.project.customer.dto;
 
 import com.example.project.customer.entity.BulkPricingTier;
-import com.example.project.customer.entity.VendorInfo;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
@@ -77,9 +76,9 @@ public class ProductResponse {
 
     private List<BulkPricingTier> bulkPricingTiers;
 
-    private VendorInfo vendor;
+    private Object sellerId;
 
-    private String sellerId;
+    private String sellerName;
 
     private BigDecimal sellingPrice;
 

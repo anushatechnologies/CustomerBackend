@@ -17,8 +17,6 @@ import com.example.project.customer.entity.Rfq;
 import com.example.project.customer.entity.RfqQuestion;
 import com.example.project.customer.entity.Subcategory;
 import com.example.project.customer.entity.TrackingCheckpoint;
-import com.example.project.customer.entity.UserProfile;
-import com.example.project.customer.entity.VendorInfo;
 import com.example.project.customer.repository.AddressRepository;
 import com.example.project.customer.repository.BannerRepository;
 import com.example.project.customer.repository.BrandRepository;
@@ -32,7 +30,7 @@ import com.example.project.customer.repository.QuotationRepository;
 import com.example.project.customer.repository.RfqQuestionRepository;
 import com.example.project.customer.repository.RfqRepository;
 import com.example.project.customer.repository.SubcategoryRepository;
-import com.example.project.customer.repository.UserProfileRepository;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
@@ -56,7 +54,7 @@ public class DataInitializer implements CommandLineRunner {
     private final BrandRepository brandRepository;
     private final ProductRepository productRepository;
     private final BannerRepository bannerRepository;
-    private final UserProfileRepository userProfileRepository;
+
     private final AddressRepository addressRepository;
     private final RfqRepository rfqRepository;
     private final QuotationRepository quotationRepository;
@@ -87,7 +85,7 @@ public class DataInitializer implements CommandLineRunner {
         } catch (Exception ignored) {
         }
         try {
-            initUserProfile();
+            initCustomers();
             initAddresses();
             initCatalogAndBanners();
             initSampleRfq();
@@ -98,38 +96,21 @@ public class DataInitializer implements CommandLineRunner {
         }
     }
 
-    private void initUserProfile() {
-        if (userProfileRepository.count() == 0) {
-            UserProfile user = UserProfile.builder()
-                    .id(101)
-                    .fullName("Rajesh Sharma")
-                    .phone("9876543210")
-                    .email("rajesh@apexbldrs.com")
-                    .role("BUYER")
-                    .tier("GOLD")
-                    .profileComplete(true)
-                    .companyName("Apex Infra Projects Pvt Ltd")
-                    .gstNumber("36AAACT2727Q1ZW")
-                    .panNumber("AAACT2727Q")
-                    .businessType("General Contractor")
-                    .gstVerified(true)
-                    .creditLimit(BigDecimal.valueOf(5000000.0))
-                    .availableCredit(BigDecimal.valueOf(3250000.0))
-                    .build();
-            userProfileRepository.save(user);
-        }
+    private void initCustomers() {
         if (customerRepository.count() == 0) {
             Customer customer1 = Customer.builder()
                     .customerId(101)
                     .name("Rajesh Sharma")
                     .email("rajesh@apexbldrs.com")
                     .phone("9876543210")
+                    .role("BUYER")
                     .build();
             Customer customer2 = Customer.builder()
                     .customerId(102)
                     .name("Ananya Reddy")
                     .email("ananya@infrahyderabad.in")
                     .phone("9849012345")
+                    .role("BUYER")
                     .build();
             customerRepository.saveAll(List.of(customer1, customer2));
         }
@@ -421,13 +402,6 @@ public class DataInitializer implements CommandLineRunner {
                     .hsnCode("7214")
                     .specifications(tmtSpecs)
                     .bulkPricingTiers(tmtTiers)
-                    .vendor(VendorInfo.builder()
-                            .vendorId(12)
-                            .companyName("Tata Steel Distribution Yard")
-                            .city("Hyderabad")
-                            .isVerified(true)
-                            .rating(4.9)
-                            .build())
                     .build();
 
             List<BulkPricingTier> cementTiers = List.of(
@@ -462,13 +436,6 @@ public class DataInitializer implements CommandLineRunner {
                     .hsnCode("2523")
                     .specifications(cementSpecs)
                     .bulkPricingTiers(cementTiers)
-                    .vendor(VendorInfo.builder()
-                            .vendorId(18)
-                            .companyName("UltraTech Authorized Depot")
-                            .city("Hyderabad")
-                            .isVerified(true)
-                            .rating(4.8)
-                            .build())
                     .build();
 
             List<BulkPricingTier> cableTiers = List.of(
@@ -562,7 +529,7 @@ public class DataInitializer implements CommandLineRunner {
         // Create a delivered order for verified purchase
         Order deliveredOrder = Order.builder()
                 .orderNumber("ORD-20260815-101")
-                .userId(c1.getCustomerId())
+                .customer(Customer.builder().customerId(c1.getCustomerId()).build())
                 .deliveryLocation("Plot 42, Financial District, Hyderabad")
                 .subtotal(BigDecimal.valueOf(542000.0))
                 .discount(BigDecimal.ZERO)
@@ -668,7 +635,7 @@ public class DataInitializer implements CommandLineRunner {
         if (rfqRepository.count() == 0) {
             Rfq rfq = Rfq.builder()
                     .rfqNumber("RFQ-2026-000601")
-                    .userId(101)
+                    .customer(Customer.builder().customerId(101).build())
                     .title("Bulk Procurement for G+14 Commercial Tower Project")
                     .category("Civil & Structural")
                     .productMaterial("TMT Rebars Fe 550D")
@@ -692,8 +659,8 @@ public class DataInitializer implements CommandLineRunner {
 
             Quotation quote = Quotation.builder()
                     .rfq(savedRfq)
-                    .vendorId(45)
-                    .vendorName("JSW Authorized Regional Yard")
+                    .sellerId(45)
+                    .sellerName("JSW Authorized Regional Yard")
                     .unitPrice(BigDecimal.valueOf(50800.0))
                     .totalAmount(BigDecimal.valueOf(5080000.0))
                     .deliveryLeadTimeDays(5)
@@ -701,7 +668,7 @@ public class DataInitializer implements CommandLineRunner {
                     .mtcIncluded(true)
                     .freightIncluded(true)
                     .validUntil(LocalDateTime.now().plusDays(7))
-                    .vendorRating(4.9)
+                    .sellerRating(4.9)
                     .status("PENDING")
                     .build();
 
@@ -762,9 +729,9 @@ public class DataInitializer implements CommandLineRunner {
             ));
         }
 
-        if (walletRepository.findByUserId(101).isEmpty()) {
+        if (walletRepository.findByCustomer_CustomerId(101).isEmpty()) {
             com.example.project.customer.entity.Wallet wallet = com.example.project.customer.entity.Wallet.builder()
-                    .userId(101)
+                    .customer(Customer.builder().customerId(101).build())
                     .balance(new BigDecimal("75000.00"))
                     .currency("INR")
                     .loyaltyPoints(1850)
@@ -855,8 +822,8 @@ public class DataInitializer implements CommandLineRunner {
         if (purchaseOrderRepository.count() == 0) {
             com.example.project.customer.entity.PurchaseOrder po1 = com.example.project.customer.entity.PurchaseOrder.builder()
                     .poNumber("PO-20260818-001")
-                    .userId(101)
-                    .vendorId(1001)
+                    .customer(Customer.builder().customerId(101).build())
+                    .sellerId(1001)
                     .totalAmount(new BigDecimal("330400.00"))
                     .status("APPROVED")
                     .deliveryDate(LocalDate.now().plusDays(5))
@@ -990,7 +957,7 @@ public class DataInitializer implements CommandLineRunner {
         if (supportTicketRepository.count() == 0) {
             com.example.project.customer.entity.SupportTicket tkt = com.example.project.customer.entity.SupportTicket.builder()
                     .ticketNumber("TKT-20260825-001")
-                    .userId(101)
+                    .customer(Customer.builder().customerId(101).build())
                     .subject("Crane Unloading Request & Slot Confirmation for Site Delivery")
                     .category("DELIVERY")
                     .priority("HIGH")

@@ -1,8 +1,8 @@
 package com.example.project.customer.service;
 
+import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.Order;
 import com.example.project.customer.entity.OrderItem;
-import com.example.project.customer.entity.UserProfile;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -20,12 +20,11 @@ class PdfInvoiceGeneratorServiceTest {
     @Test
     @DisplayName("generateInvoicePdf should produce valid PDF-1.4 binary bytes containing B2B tax details")
     void generateInvoicePdf_Success() {
-        UserProfile user = UserProfile.builder()
-                .id(101)
-                .fullName("John Doe")
-                .companyName("Skyline Infra Ventures Ltd")
-                .gstNumber("36AAACT2727Q1ZW")
-                .panNumber("AAACT2727Q")
+        Customer user = Customer.builder()
+                .customerId(101)
+                .name("Skyline Infra Ventures Ltd")
+                .email("procurement@skyline.com")
+                .phone("9876543210")
                 .build();
 
         OrderItem item1 = OrderItem.builder()
@@ -42,7 +41,7 @@ class PdfInvoiceGeneratorServiceTest {
         Order order = Order.builder()
                 .orderId(1)
                 .orderNumber("ORD-20260904-001")
-                .userId(101)
+                .customer(user)
                 .deliveryLocation("Sector 5, Financial District, Hyderabad")
                 .subtotal(new BigDecimal("55000.00"))
                 .taxableAmount(new BigDecimal("55000.00"))

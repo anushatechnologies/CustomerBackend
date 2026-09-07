@@ -7,6 +7,8 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.PrePersist;
@@ -37,8 +39,9 @@ public class Wallet {
     @Column(name = "wallet_id")
     private Integer walletId;
 
-    @Column(name = "user_id", nullable = false, unique = true)
-    private Integer userId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "customer_id", referencedColumnName = "customer_id", nullable = false, unique = true)
+    private Customer customer;
 
     @Column(name = "balance", precision = 14, scale = 2, nullable = false)
     @Builder.Default

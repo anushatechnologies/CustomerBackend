@@ -7,6 +7,7 @@ import com.example.project.customer.dto.CouponResponse;
 import com.example.project.customer.entity.BulkPricingTier;
 import com.example.project.customer.entity.Cart;
 import com.example.project.customer.entity.CartItem;
+import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.Product;
 import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.repository.CartItemRepository;
@@ -117,10 +118,10 @@ public class CartServiceImpl implements CartService {
 
     public Cart getOrCreateCart(Integer userId) {
         int uid = userId != null ? userId : 101;
-        return cartRepository.findByUserId(uid)
+        return cartRepository.findByCustomer_CustomerId(uid)
                 .orElseGet(() -> {
                     Cart newCart = Cart.builder()
-                            .userId(uid)
+                            .customer(Customer.builder().customerId(uid).build())
                             .deliveryCharge(BigDecimal.valueOf(4500.0))
                             .build();
                     return cartRepository.save(newCart);

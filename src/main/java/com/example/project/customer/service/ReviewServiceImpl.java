@@ -64,7 +64,7 @@ public class ReviewServiceImpl implements ReviewService {
         }
 
         // 2. Verify Order ownership (verified purchase check)
-        if (!order.getUserId().equals(uid)) {
+        if (!order.getCustomer().getCustomerId().equals(uid)) {
             throw new IllegalArgumentException("You can only review items from your own orders");
         }
 

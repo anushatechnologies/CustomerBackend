@@ -71,6 +71,14 @@ public class CustomerServiceImpl implements CustomerService {
     }
 
     private CustomerResponse toResponse(Customer customer) {
-        return new CustomerResponse(customer.getCustomerId(), customer.getName(), customer.getEmail(), customer.getPhone());
+        return CustomerResponse.builder()
+                .customerId(customer.getCustomerId())
+                .name(customer.getName())
+                .email(customer.getEmail())
+                .phone(customer.getPhone())
+                .role(customer.getRole())
+                .active(customer.isActive())
+                .createdAt(customer.getCreatedAt())
+                .build();
     }
 }

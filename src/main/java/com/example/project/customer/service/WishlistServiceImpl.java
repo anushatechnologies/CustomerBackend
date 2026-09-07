@@ -2,6 +2,7 @@ package com.example.project.customer.service;
 
 import com.example.project.customer.dto.ProductResponse;
 import com.example.project.customer.dto.WishlistResponse;
+import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.Product;
 import com.example.project.customer.entity.WishlistItem;
 import com.example.project.customer.exception.ResourceNotFoundException;
@@ -29,7 +30,7 @@ public class WishlistServiceImpl implements WishlistService {
     @Transactional(readOnly = true)
     public List<WishlistResponse> getWishlist(Integer userId) {
         int uid = userId != null ? userId : 101;
-        return wishlistRepository.findByUserIdOrderByCreatedAtDesc(uid).stream()
+        return wishlistRepository.findByCustomer_CustomerIdOrderByCreatedAtDesc(uid).stream()
                 .map(this::mapToResponse)
                 .toList();
     }
@@ -40,13 +41,13 @@ public class WishlistServiceImpl implements WishlistService {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
 
-        Optional<WishlistItem> existing = wishlistRepository.findByUserIdAndProduct_ProductId(uid, productId);
+        Optional<WishlistItem> existing = wishlistRepository.findByCustomer_CustomerIdAndProduct_ProductId(uid, productId);
         if (existing.isPresent()) {
             return mapToResponse(existing.get());
         }
 
         WishlistItem item = WishlistItem.builder()
-                .userId(uid)
+                .customer(Customer.builder().customerId(uid).build())
                 .product(product)
                 .build();
 
@@ -94,7 +95,8 @@ public class WishlistServiceImpl implements WishlistService {
                 .hsnCode(p.getHsnCode())
                 .specifications(p.getSpecifications())
                 .bulkPricingTiers(p.getBulkPricingTiers())
-                .vendor(p.getVendor())
+                .sellerId(p.getSeller() != null ? p.getSeller().getSellerId() : null)
+                .sellerName(p.getSeller() != null ? p.getSeller().getName() : null)
                 .createdAt(p.getCreatedAt())
                 .build();
 

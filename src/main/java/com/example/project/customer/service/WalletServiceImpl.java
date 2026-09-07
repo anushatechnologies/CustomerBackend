@@ -6,6 +6,7 @@ import com.example.project.customer.dto.RewardVoucherResponse;
 import com.example.project.customer.dto.WalletInfoResponse;
 import com.example.project.customer.dto.WalletTopupRequest;
 import com.example.project.customer.dto.WalletTransactionResponse;
+import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.RewardVoucher;
 import com.example.project.customer.entity.Wallet;
 import com.example.project.customer.entity.WalletTransaction;
@@ -91,10 +92,10 @@ public class WalletServiceImpl implements WalletService {
     }
 
     private Wallet getOrCreateWallet(Integer userId) {
-        return walletRepository.findByUserId(userId)
+        return walletRepository.findByCustomer_CustomerId(userId)
                 .orElseGet(() -> {
                     Wallet w = Wallet.builder()
-                            .userId(userId)
+                            .customer(Customer.builder().customerId(userId).build())
                             .balance(new BigDecimal("50000.00"))
                             .currency("INR")
                             .loyaltyPoints(1250)
@@ -122,7 +123,7 @@ public class WalletServiceImpl implements WalletService {
     private WalletInfoResponse mapToWalletInfo(Wallet wallet) {
         return WalletInfoResponse.builder()
                 .walletId(wallet.getWalletId())
-                .userId(wallet.getUserId())
+                .userId(wallet.getCustomer() != null ? wallet.getCustomer().getCustomerId() : null)
                 .balance(wallet.getBalance())
                 .currency(wallet.getCurrency())
                 .loyaltyPoints(wallet.getLoyaltyPoints())

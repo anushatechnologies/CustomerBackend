@@ -7,6 +7,8 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
@@ -40,11 +42,12 @@ public class PurchaseOrder {
     @Column(name = "po_number", nullable = false, unique = true)
     private String poNumber;
 
-    @Column(name = "user_id", nullable = false)
-    private Integer userId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "customer_id", referencedColumnName = "customer_id", nullable = false)
+    private Customer customer;
 
-    @Column(name = "vendor_id", nullable = false)
-    private Integer vendorId;
+    @Column(name = "seller_id", nullable = false)
+    private Integer sellerId;
 
     @Column(name = "total_amount", precision = 14, scale = 2, nullable = false)
     private BigDecimal totalAmount;

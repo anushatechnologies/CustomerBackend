@@ -9,6 +9,16 @@ import java.util.Optional;
 
 @Repository
 public interface AddressRepository extends JpaRepository<Address, Integer> {
+
+    // --- User-scoped queries (use these) ---
+    List<Address> findByCustomer_CustomerIdOrderByIsDefaultDescCreatedAtDesc(Integer userId);
+
+    Optional<Address> findByCustomer_CustomerIdAndIsDefaultTrue(Integer userId);
+
+    Optional<Address> findByCustomer_CustomerIdAndId(Integer userId, Integer id);
+
+    // --- Legacy (kept for backward compat, prefer user-scoped) ---
     List<Address> findAllByOrderByIsDefaultDescCreatedAtDesc();
+
     Optional<Address> findByIsDefaultTrue();
 }

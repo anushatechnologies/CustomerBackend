@@ -2,7 +2,7 @@ package com.example.project.customer.service;
 
 import com.example.project.customer.entity.Order;
 import com.example.project.customer.entity.OrderItem;
-import com.example.project.customer.entity.UserProfile;
+import com.example.project.customer.entity.Customer;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
@@ -18,7 +18,7 @@ public class PdfInvoiceGeneratorService {
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd-MMM-yyyy");
 
-    public byte[] generateInvoicePdf(Order order, UserProfile userProfile, String invoiceNumber) {
+    public byte[] generateInvoicePdf(Order order, Customer customer, String invoiceNumber) {
         SimplePdfWriter pdf = new SimplePdfWriter();
 
         // Colors
@@ -61,10 +61,9 @@ public class PdfInvoiceGeneratorService {
         pdf.drawText(44, 608, "/F1", 8f, textDark[0], textDark[1], textDark[2], "Telangana, India - 500081 | help@hinchmart.com");
 
         // Right: Buyer Details
-        String buyerLegalName = userProfile != null && userProfile.getCompanyName() != null && !userProfile.getCompanyName().isBlank()
-                ? userProfile.getCompanyName() : "Apex Infra Projects Pvt Ltd";
-        String buyerGstin = userProfile != null && userProfile.getGstNumber() != null && !userProfile.getGstNumber().isBlank()
-                ? userProfile.getGstNumber() : "36AAACT2727Q1ZW";
+        String buyerLegalName = customer != null && customer.getName() != null && !customer.getName().isBlank()
+                ? customer.getName() : "Apex Infra Projects Pvt Ltd";
+        String buyerGstin = "36AAACT2727Q1ZW";
         String buyerAddress = order.getDeliveryLocation() != null && !order.getDeliveryLocation().isBlank()
                 ? order.getDeliveryLocation() : "Site #12, Financial District, Nanakramguda, Hyderabad, TS - 500032";
 

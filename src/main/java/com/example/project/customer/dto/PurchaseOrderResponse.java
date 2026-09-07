@@ -20,7 +20,7 @@ public class PurchaseOrderResponse {
     private Integer poId;
     private String poNumber;
     private Integer userId;
-    private Integer vendorId;
+    private Integer sellerId;
     private BigDecimal totalAmount;
     private String status;
     private LocalDate deliveryDate;

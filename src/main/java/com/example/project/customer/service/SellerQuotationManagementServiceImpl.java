@@ -139,8 +139,8 @@ public class SellerQuotationManagementServiceImpl implements SellerQuotationMana
         }
 
         Quotation quotation = Quotation.builder()
-                .vendorId(sellerId)
-                .vendorName(sellerName)
+                .sellerId(sellerId)
+                .sellerName(sellerName)
                 .quotationNumber(quotNumber)
                 .buyerName(request.getBuyerName() != null ? request.getBuyerName() : "L&T Construction Infra Project")
                 .buyerEmail(request.getBuyerEmail() != null ? request.getBuyerEmail() : "procurement@intec.lnt.com")
@@ -172,7 +172,7 @@ public class SellerQuotationManagementServiceImpl implements SellerQuotationMana
     @Override
     @Transactional(readOnly = true)
     public List<SellerQuotationRecordResponse> getQuotations(Integer sellerId) {
-        List<Quotation> quotations = quotationRepository.findByVendorIdOrderByCreatedAtDesc(sellerId);
+        List<Quotation> quotations = quotationRepository.findBySellerIdOrderByCreatedAtDesc(sellerId);
         List<SellerQuotationRecordResponse> responses = new ArrayList<>();
 
         for (Quotation q : quotations) {

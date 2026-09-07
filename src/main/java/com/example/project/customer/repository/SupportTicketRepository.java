@@ -11,6 +11,6 @@ import java.util.Optional;
 @Repository
 public interface SupportTicketRepository extends JpaRepository<SupportTicket, Integer> {
     Optional<SupportTicket> findByTicketNumber(String ticketNumber);
-    Page<SupportTicket> findByUserIdOrderByCreatedAtDesc(Integer userId, Pageable pageable);
-    Page<SupportTicket> findByUserIdAndStatusOrderByCreatedAtDesc(Integer userId, String status, Pageable pageable);
+    Page<SupportTicket> findByCustomer_CustomerIdOrderByCreatedAtDesc(Integer userId, Pageable pageable);
+    Page<SupportTicket> findByCustomer_CustomerIdAndStatusOrderByCreatedAtDesc(Integer userId, String status, Pageable pageable);
 }

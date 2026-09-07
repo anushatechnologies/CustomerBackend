@@ -7,9 +7,9 @@ import com.example.project.customer.controller.CategoryController;
 import com.example.project.customer.controller.CheckoutController;
 import com.example.project.customer.controller.ProductController;
 import com.example.project.customer.controller.RfqController;
+import com.example.project.customer.controller.CustomerController;
 import com.example.project.customer.controller.SellerDiscountController;
 import com.example.project.customer.controller.SubcategoryController;
-import com.example.project.customer.controller.UserProfileController;
 import com.example.project.customer.controller.WishlistController;
 import com.example.project.customer.dto.ApiResponse;
 import com.example.project.customer.dto.CartItemRequest;
@@ -33,19 +33,19 @@ import com.example.project.customer.dto.SellerDiscountResponse;
 import com.example.project.customer.dto.StockQuantityUpdateRequest;
 import com.example.project.customer.dto.SubcategoryRequest;
 import com.example.project.customer.dto.SubcategoryResponse;
-import com.example.project.customer.dto.UserProfileRequest;
-import com.example.project.customer.dto.UserProfileResponse;
+import com.example.project.customer.dto.CustomerRequest;
+import com.example.project.customer.dto.CustomerResponse;
 import com.example.project.customer.dto.WishlistResponse;
 import com.example.project.customer.entity.DiscountStatus;
 import com.example.project.customer.entity.DiscountType;
 import com.example.project.customer.service.CartService;
 import com.example.project.customer.service.CategoryService;
 import com.example.project.customer.service.CheckoutService;
+import com.example.project.customer.service.CustomerService;
 import com.example.project.customer.service.ProductService;
 import com.example.project.customer.service.RfqService;
 import com.example.project.customer.service.SellerDiscountService;
 import com.example.project.customer.service.SubcategoryService;
-import com.example.project.customer.service.UserProfileService;
 import com.example.project.customer.service.WishlistService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -84,7 +84,7 @@ public class CoreAndCustomerApisTest {
 
     @Mock private CartService cartService;
     @Mock private CheckoutService checkoutService;
-    @Mock private UserProfileService userProfileService;
+    @Mock private CustomerService customerService;
     @Mock private WishlistService wishlistService;
     @Mock private RfqService rfqService;
     @Mock private SellerDiscountService sellerDiscountService;
@@ -104,7 +104,7 @@ public class CoreAndCustomerApisTest {
         mockMvc = MockMvcBuilders.standaloneSetup(
                 new CartController(cartService, userContextUtil),
                 new CheckoutController(checkoutService, userContextUtil),
-                new UserProfileController(userProfileService, userContextUtil),
+                new CustomerController(customerService),
                 new WishlistController(wishlistService, userContextUtil),
                 new RfqController(rfqService, userContextUtil),
                 new SellerDiscountController(sellerDiscountService, sellerContextUtil),
@@ -235,42 +235,42 @@ public class CoreAndCustomerApisTest {
     // ==========================================
 
     @Test
-    @DisplayName("User Profile API: GET /api/user/profile retrieves profile")
-    void testGetUserProfile() throws Exception {
-        when(userContextUtil.getCurrentUserId()).thenReturn(101);
-        UserProfileResponse profile = UserProfileResponse.builder()
-                .id(101)
-                .fullName("Site Project Manager")
+    @DisplayName("Customer API: GET /api/customers/101 retrieves customer")
+    void testGetCustomer() throws Exception {
+        CustomerResponse customer = CustomerResponse.builder()
+                .customerId(101)
+                .name("Site Project Manager")
                 .email("infra@enterprise.com")
+                .phone("9876543210")
                 .build();
-        when(userProfileService.getProfile(101)).thenReturn(profile);
+        when(customerService.getCustomerById(101)).thenReturn(customer);
 
-        mockMvc.perform(get("/api/user/profile"))
+        mockMvc.perform(get("/api/customers/101"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.fullName").value("Site Project Manager"));
+                .andExpect(jsonPath("$.data.name").value("Site Project Manager"));
     }
 
     @Test
-    @DisplayName("User Profile API: PUT /api/user/profile updates profile")
-    void testUpdateUserProfile() throws Exception {
-        when(userContextUtil.getCurrentUserId()).thenReturn(101);
-        UserProfileRequest req = UserProfileRequest.builder()
-                .fullName("Chief Procurement Engineer")
-                .companyName("Skyline Infra Corp Ltd")
+    @DisplayName("Customer API: PUT /api/customers/101 updates customer")
+    void testUpdateCustomer() throws Exception {
+        CustomerRequest req = CustomerRequest.builder()
+                .name("Chief Procurement Engineer")
+                .email("infra@enterprise.com")
+                .phone("9876543210")
                 .build();
-        UserProfileResponse updated = UserProfileResponse.builder()
-                .id(101)
-                .fullName("Chief Procurement Engineer")
+        CustomerResponse updated = CustomerResponse.builder()
+                .customerId(101)
+                .name("Chief Procurement Engineer")
                 .build();
-        when(userProfileService.updateProfile(eq(101), any(UserProfileRequest.class))).thenReturn(updated);
+        when(customerService.updateCustomer(eq(101), any(CustomerRequest.class))).thenReturn(updated);
 
-        mockMvc.perform(put("/api/user/profile")
+        mockMvc.perform(put("/api/customers/101")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.fullName").value("Chief Procurement Engineer"));
+                .andExpect(jsonPath("$.data.name").value("Chief Procurement Engineer"));
     }
 
     // ==========================================
@@ -363,7 +363,7 @@ public class CoreAndCustomerApisTest {
         QuotationResponse quote = QuotationResponse.builder()
                 .quoteId(10)
                 .rfqId(1)
-                .vendorName("Patancheru Steel Distributors")
+                .sellerName("Patancheru Steel Distributors")
                 .unitPrice(BigDecimal.valueOf(53000.0))
                 .totalAmount(BigDecimal.valueOf(1060000.0))
                 .build();

@@ -3,6 +3,7 @@ package com.example.project.customer.service;
 import com.example.project.customer.dto.AddressRequest;
 import com.example.project.customer.dto.AddressResponse;
 import com.example.project.customer.entity.Address;
+import com.example.project.customer.entity.Customer;
 import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.repository.AddressRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,27 +24,28 @@ public class AddressServiceImpl implements AddressService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<AddressResponse> getAddresses() {
-        return addressRepository.findAllByOrderByIsDefaultDescCreatedAtDesc()
+    public List<AddressResponse> getAddresses(Integer userId) {
+        return addressRepository.findByCustomer_CustomerIdOrderByIsDefaultDescCreatedAtDesc(userId)
                 .stream().map(this::mapToResponse).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
-    public AddressResponse getAddressById(Integer id) {
-        return mapToResponse(findAddress(id));
+    public AddressResponse getAddressById(Integer userId, Integer id) {
+        return mapToResponse(findUserAddress(userId, id));
     }
 
     @Override
-    public AddressResponse createAddress(AddressRequest request) {
+    public AddressResponse createAddress(Integer userId, AddressRequest request) {
         if (Boolean.TRUE.equals(request.getIsDefault())) {
-            addressRepository.findByIsDefaultTrue().ifPresent(addr -> {
+            addressRepository.findByCustomer_CustomerIdAndIsDefaultTrue(userId).ifPresent(addr -> {
                 addr.setIsDefault(false);
                 addressRepository.save(addr);
             });
         }
 
         Address address = Address.builder()
+                .customer(Customer.builder().customerId(userId).build())
                 .siteName(request.getSiteName())
                 .recipientName(request.getRecipientName())
                 .phone(request.getPhone())
@@ -61,11 +63,11 @@ public class AddressServiceImpl implements AddressService {
     }
 
     @Override
-    public AddressResponse updateAddress(Integer id, AddressRequest request) {
-        Address address = findAddress(id);
+    public AddressResponse updateAddress(Integer userId, Integer id, AddressRequest request) {
+        Address address = findUserAddress(userId, id);
 
         if (Boolean.TRUE.equals(request.getIsDefault()) && !Boolean.TRUE.equals(address.getIsDefault())) {
-            addressRepository.findByIsDefaultTrue().ifPresent(addr -> {
+            addressRepository.findByCustomer_CustomerIdAndIsDefaultTrue(userId).ifPresent(addr -> {
                 addr.setIsDefault(false);
                 addressRepository.save(addr);
             });
@@ -91,13 +93,13 @@ public class AddressServiceImpl implements AddressService {
     }
 
     @Override
-    public void deleteAddress(Integer id) {
-        Address address = findAddress(id);
+    public void deleteAddress(Integer userId, Integer id) {
+        Address address = findUserAddress(userId, id);
         addressRepository.delete(address);
     }
 
-    private Address findAddress(Integer id) {
-        return addressRepository.findById(id)
+    private Address findUserAddress(Integer userId, Integer id) {
+        return addressRepository.findByCustomer_CustomerIdAndId(userId, id)
                 .orElseThrow(() -> new ResourceNotFoundException("Address not found with id: " + id));
     }
 

@@ -6,6 +6,7 @@ import com.example.project.customer.dto.PurchaseOrderItemRequest;
 import com.example.project.customer.dto.PurchaseOrderItemResponse;
 import com.example.project.customer.dto.PurchaseOrderRequest;
 import com.example.project.customer.dto.PurchaseOrderResponse;
+import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.PurchaseOrder;
 import com.example.project.customer.entity.PurchaseOrderItem;
 import com.example.project.customer.exception.ResourceNotFoundException;
@@ -44,8 +45,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
         PurchaseOrder po = PurchaseOrder.builder()
                 .poNumber(poNum)
-                .userId(uid)
-                .vendorId(request.getVendorId())
+                .customer(Customer.builder().customerId(uid).build())
+                .sellerId(request.getSellerId())
                 .totalAmount(BigDecimal.ZERO)
                 .status("PENDING_APPROVAL")
                 .deliveryDate(request.getDeliveryDate())
@@ -92,9 +93,9 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
         Page<PurchaseOrder> pageResult;
         if (status != null && !status.isBlank()) {
-            pageResult = purchaseOrderRepository.findByUserIdAndStatusOrderByCreatedAtDesc(uid, status.trim().toUpperCase(), pageable);
+            pageResult = purchaseOrderRepository.findByCustomer_CustomerIdAndStatusOrderByCreatedAtDesc(uid, status.trim().toUpperCase(), pageable);
         } else {
-            pageResult = purchaseOrderRepository.findByUserIdOrderByCreatedAtDesc(uid, pageable);
+            pageResult = purchaseOrderRepository.findByCustomer_CustomerIdOrderByCreatedAtDesc(uid, pageable);
         }
 
         List<PurchaseOrderResponse> data = pageResult.getContent().stream()
@@ -146,8 +147,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         return PurchaseOrderResponse.builder()
                 .poId(po.getPoId())
                 .poNumber(po.getPoNumber())
-                .userId(po.getUserId())
-                .vendorId(po.getVendorId())
+                .userId(po.getCustomer() != null ? po.getCustomer().getCustomerId() : null)
+                .sellerId(po.getSellerId())
                 .totalAmount(po.getTotalAmount())
                 .status(po.getStatus())
                 .deliveryDate(po.getDeliveryDate())

@@ -11,7 +11,6 @@ import com.example.project.customer.controller.OrderController;
 import com.example.project.customer.controller.PurchaseOrderController;
 import com.example.project.customer.controller.RentalController;
 import com.example.project.customer.controller.SupportTicketController;
-import com.example.project.customer.controller.VendorDashboardController;
 import com.example.project.customer.controller.WalletController;
 import com.example.project.customer.dto.ApiResponse;
 import com.example.project.customer.dto.BannerResponse;
@@ -35,9 +34,6 @@ import com.example.project.customer.dto.SupportTicketRequest;
 import com.example.project.customer.dto.SupportTicketResponse;
 import com.example.project.customer.dto.TicketMessageRequest;
 import com.example.project.customer.dto.TicketMessageResponse;
-import com.example.project.customer.dto.VendorDashboardResponse;
-import com.example.project.customer.dto.VendorPaymentsResponse;
-import com.example.project.customer.dto.VendorPerformanceResponse;
 import com.example.project.customer.dto.WalletInfoResponse;
 import com.example.project.customer.dto.WalletTopupRequest;
 import com.example.project.customer.dto.WalletTransactionResponse;
@@ -50,7 +46,6 @@ import com.example.project.customer.service.OrderService;
 import com.example.project.customer.service.PurchaseOrderService;
 import com.example.project.customer.service.RentalService;
 import com.example.project.customer.service.SupportTicketService;
-import com.example.project.customer.service.VendorDashboardService;
 import com.example.project.customer.service.WalletService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -89,7 +84,6 @@ public class ExtendedFeaturesFlowTest {
     @Mock private BannerService bannerService;
     @Mock private OrderService orderService;
     @Mock private WalletService walletService;
-    @Mock private VendorDashboardService vendorDashboardService;
     @Mock private PurchaseOrderService purchaseOrderService;
     @Mock private RentalService rentalService;
     @Mock private ChatService chatService;
@@ -111,7 +105,6 @@ public class ExtendedFeaturesFlowTest {
                 new BannerController(bannerService),
                 new OrderController(orderService, userContextUtil),
                 new WalletController(walletService, userContextUtil),
-                new VendorDashboardController(vendorDashboardService, sellerContextUtil),
                 new PurchaseOrderController(purchaseOrderService, userContextUtil),
                 new RentalController(rentalService, userContextUtil),
                 new ChatController(chatService, userContextUtil),
@@ -296,66 +289,7 @@ public class ExtendedFeaturesFlowTest {
                 .andExpect(jsonPath("$.data.balance").value(255000.00));
     }
 
-    @Test
-    @DisplayName("Section 4.2: Vendor Dashboard - Overview KPIs, Performance, and Settlements")
-    void testVendorDashboardFlow() throws Exception {
-        when(sellerContextUtil.getCurrentSellerId()).thenReturn(1001);
 
-        VendorDashboardResponse dash = VendorDashboardResponse.builder()
-                .sellerId(1001)
-                .totalProducts(24L)
-                .totalRevenue(new BigDecimal("4850000.00"))
-                .recentActivities(List.of(
-                        VendorDashboardResponse.VendorRecentActivity.builder()
-                                .id("1")
-                                .type("ORDER")
-                                .message("New PO received")
-                                .build()
-                ))
-                .build();
-        when(vendorDashboardService.getDashboard(1001)).thenReturn(dash);
-
-        VendorPerformanceResponse perf = VendorPerformanceResponse.builder()
-                .sellerId(1001)
-                .fulfillmentRate(98.40)
-                .customerRating(4.85)
-                .sellerTier("TIER_1_ENTERPRISE")
-                .build();
-        when(vendorDashboardService.getPerformance(1001)).thenReturn(perf);
-
-        VendorPaymentsResponse pay = VendorPaymentsResponse.builder()
-                .sellerId(1001)
-                .totalSettledAmount(new BigDecimal("3500000.00"))
-                .payouts(List.of())
-                .build();
-        when(vendorDashboardService.getPayments(1001)).thenReturn(pay);
-
-        // GET /api/vendor/dashboard
-        mockMvc.perform(get("/api/vendor/dashboard")
-                        .header("X-Seller-Id", "1001"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.totalProducts").value(24))
-                .andExpect(jsonPath("$.data.totalRevenue").value(4850000.00))
-                .andExpect(jsonPath("$.data.recentActivities").isArray());
-
-        // GET /api/vendor/performance
-        mockMvc.perform(get("/api/vendor/performance")
-                        .header("X-Seller-Id", "1001"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.fulfillmentRate").value(98.40))
-                .andExpect(jsonPath("$.data.customerRating").value(4.85))
-                .andExpect(jsonPath("$.data.sellerTier").value("TIER_1_ENTERPRISE"));
-
-        // GET /api/vendor/payments
-        mockMvc.perform(get("/api/vendor/payments")
-                        .header("X-Seller-Id", "1001"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.totalSettledAmount").value(3500000.00))
-                .andExpect(jsonPath("$.data.payouts").isArray());
-    }
 
     @Test
     @DisplayName("Section 4.3: Purchase Orders - Create, List, and Approve")
@@ -366,7 +300,7 @@ public class ExtendedFeaturesFlowTest {
                 .poId(501)
                 .poNumber("PO-2026-000501")
                 .userId(101)
-                .vendorId(1001)
+                .sellerId(1001)
                 .totalAmount(new BigDecimal("540000.00"))
                 .status("PENDING_APPROVAL")
                 .build();
@@ -383,7 +317,7 @@ public class ExtendedFeaturesFlowTest {
                 .poId(501)
                 .poNumber("PO-2026-000501")
                 .userId(101)
-                .vendorId(1001)
+                .sellerId(1001)
                 .totalAmount(new BigDecimal("540000.00"))
                 .status("APPROVED")
                 .build();
@@ -391,7 +325,7 @@ public class ExtendedFeaturesFlowTest {
 
         // Create PO
         PurchaseOrderRequest poReq = PurchaseOrderRequest.builder()
-                .vendorId(1001)
+                .sellerId(1001)
                 .deliveryDate(LocalDate.now().plusDays(7))
                 .billingAddress("Skyline Developers Ltd, Nanakramguda, Hyderabad")
                 .shippingAddress("Commercial Tower Site B, HITEC City, Hyderabad")

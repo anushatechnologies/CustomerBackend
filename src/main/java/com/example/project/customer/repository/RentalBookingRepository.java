@@ -11,7 +11,7 @@ import java.util.List;
 
 @Repository
 public interface RentalBookingRepository extends JpaRepository<RentalBooking, Integer> {
-    List<RentalBooking> findByUserIdOrderByCreatedAtDesc(Integer userId);
+    List<RentalBooking> findByCustomer_CustomerIdOrderByCreatedAtDesc(Integer userId);
     List<RentalBooking> findByEquipment_EquipmentId(Integer equipmentId);
 
     @Query("SELECT b FROM RentalBooking b WHERE b.equipment.equipmentId = :equipmentId " +

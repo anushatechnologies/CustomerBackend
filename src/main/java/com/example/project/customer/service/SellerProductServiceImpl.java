@@ -8,7 +8,7 @@ import com.example.project.customer.dto.SellerProductUpdateRequest;
 import com.example.project.customer.entity.ApprovalStatus;
 import com.example.project.customer.entity.Brand;
 import com.example.project.customer.entity.Product;
-import com.example.project.customer.entity.VendorInfo;
+import com.example.project.customer.entity.Seller;
 import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.repository.BrandRepository;
 import com.example.project.customer.repository.ProductRepository;
@@ -156,8 +156,11 @@ public class SellerProductServiceImpl implements SellerProductService {
         BigDecimal price = request.getEffectivePrice();
         BigDecimal mrp = request.getMrp() != null ? request.getMrp() : price;
 
+        Seller seller = sellerRepository.findById(sellerId)
+                .orElseGet(() -> Seller.builder().sellerId(sellerId).name("Seller #" + sellerId).build());
+
         Product product = Product.builder()
-                .sellerId(sellerId)
+                .seller(seller)
                 .brand(brand)
                 .title(request.getTitle())
                 .slug(slug)
@@ -178,12 +181,6 @@ public class SellerProductServiceImpl implements SellerProductService {
                 .active(true)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
-                .vendor(VendorInfo.builder()
-                        .vendorId(sellerId)
-                        .companyName(getSellerCompanyName(sellerId))
-                        .isVerified(true)
-                        .rating(4.8)
-                        .build())
                 .build();
 
         Product saved = productRepository.save(product);
@@ -282,8 +279,9 @@ public class SellerProductServiceImpl implements SellerProductService {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
 
-        boolean isOwner = (product.getSellerId() != null && product.getSellerId().equals(sellerId))
-                || (product.getVendor() != null && product.getVendor().getVendorId() != null && product.getVendor().getVendorId().equals(sellerId));
+        boolean isOwner = product.getSeller() != null
+                && product.getSeller().getSellerId() != null
+                && product.getSeller().getSellerId().equals(sellerId);
 
         if (!isOwner) {
             throw new ResourceNotFoundException("Product not found or not owned by seller: " + productId);
@@ -380,10 +378,10 @@ public class SellerProductServiceImpl implements SellerProductService {
                 .hsnCode(p.getHsnCode())
                 .specifications(p.getSpecifications() != null ? p.getSpecifications() : new java.util.LinkedHashMap<>())
                 .bulkPricingTiers(p.getBulkPricingTiers() != null ? p.getBulkPricingTiers() : new ArrayList<>())
-                .vendor(p.getVendor())
+                .sellerId(p.getSeller() != null && p.getSeller().getSellerId() != null ? "seller_" + p.getSeller().getSellerId() : "seller_1001")
+                .sellerName(p.getSeller() != null ? p.getSeller().getName() : null)
                 .approvalStatus(status)
                 .status(status)
-                .sellerId("seller_" + (p.getSellerId() != null ? p.getSellerId() : 1001))
                 .rejectionReason(p.getRejectionReason())
                 .createdAt(p.getCreatedAt())
                 .updatedAt(p.getUpdatedAt() != null ? p.getUpdatedAt() : p.getCreatedAt())

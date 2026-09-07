@@ -58,11 +58,11 @@ public class Quotation {
     @Column(name = "items_json", columnDefinition = "TEXT")
     private String itemsJson;
 
-    @Column(name = "vendor_id", nullable = false)
-    private Integer vendorId;
+    @Column(name = "seller_id", nullable = false)
+    private Integer sellerId;
 
-    @Column(name = "vendor_name", nullable = false)
-    private String vendorName;
+    @Column(name = "seller_name", nullable = false)
+    private String sellerName;
 
     @Column(name = "unit_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal unitPrice;
@@ -89,9 +89,9 @@ public class Quotation {
     @Column(name = "valid_until")
     private LocalDateTime validUntil;
 
-    @Column(name = "vendor_rating")
+    @Column(name = "seller_rating")
     @Builder.Default
-    private Double vendorRating = 4.8;
+    private Double sellerRating = 4.8;
 
     @Column(name = "status")
     @Builder.Default

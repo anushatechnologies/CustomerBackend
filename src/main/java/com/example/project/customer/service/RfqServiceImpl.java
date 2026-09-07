@@ -8,6 +8,7 @@ import com.example.project.customer.dto.RfqQuestionRequest;
 import com.example.project.customer.dto.RfqQuestionResponse;
 import com.example.project.customer.dto.RfqRequest;
 import com.example.project.customer.dto.RfqResponse;
+import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.Order;
 import com.example.project.customer.entity.OrderItem;
 import com.example.project.customer.entity.Quotation;
@@ -58,7 +59,7 @@ public class RfqServiceImpl implements RfqService {
 
         Rfq rfq = Rfq.builder()
                 .rfqNumber(rfqNum)
-                .userId(uid)
+                .customer(Customer.builder().customerId(uid).build())
                 .title(request.getTitle())
                 .category(request.getCategory())
                 .productMaterial(request.getProductMaterial())
@@ -91,9 +92,9 @@ public class RfqServiceImpl implements RfqService {
 
         Page<Rfq> rfqPage;
         if (status != null && !status.isBlank()) {
-            rfqPage = rfqRepository.findByUserIdOrderByCreatedAtDesc(uid, pageable);
+            rfqPage = rfqRepository.findByCustomer_CustomerIdOrderByCreatedAtDesc(uid, pageable);
         } else {
-            rfqPage = rfqRepository.findByUserIdOrderByCreatedAtDesc(uid, pageable);
+            rfqPage = rfqRepository.findByCustomer_CustomerIdOrderByCreatedAtDesc(uid, pageable);
         }
 
         List<RfqResponse> list = rfqPage.getContent().stream().map(this::mapToRfqResponse).toList();
@@ -124,8 +125,8 @@ public class RfqServiceImpl implements RfqService {
 
         Quotation quotation = Quotation.builder()
                 .rfq(rfq)
-                .vendorId(request.getVendorId())
-                .vendorName(request.getVendorName())
+                .sellerId(request.getSellerId())
+                .sellerName(request.getSellerName())
                 .unitPrice(request.getUnitPrice())
                 .totalAmount(total)
                 .deliveryLeadTimeDays(request.getDeliveryLeadTimeDays() != null ? request.getDeliveryLeadTimeDays() : 5)
@@ -133,7 +134,7 @@ public class RfqServiceImpl implements RfqService {
                 .mtcIncluded(request.getMtcIncluded() != null ? request.getMtcIncluded() : true)
                 .freightIncluded(request.getFreightIncluded() != null ? request.getFreightIncluded() : true)
                 .validUntil(request.getValidUntil() != null ? request.getValidUntil() : LocalDateTime.now().plusDays(7))
-                .vendorRating(request.getVendorRating() != null ? request.getVendorRating() : 4.8)
+                .sellerRating(request.getSellerRating() != null ? request.getSellerRating() : 4.8)
                 .status("PENDING")
                 .build();
 
@@ -171,7 +172,7 @@ public class RfqServiceImpl implements RfqService {
 
         Order order = Order.builder()
                 .orderNumber(orderNumber)
-                .userId(rfq.getUserId())
+                .customer(Customer.builder().customerId(rfq.getCustomer().getCustomerId()).build())
                 .deliveryLocation(rfq.getDeliveryLocation())
                 .subtotal(taxable)
                 .discount(BigDecimal.ZERO)
@@ -186,7 +187,7 @@ public class RfqServiceImpl implements RfqService {
                 .paymentStatus("PENDING")
                 .orderStatus("PLACED")
                 .poNumber("PO-RFQ-" + rfq.getRfqId())
-                .carrierName(quote.getVendorName() + " Logistics Fleet")
+                .carrierName(quote.getSellerName() + " Logistics Fleet")
                 .vehicleNumber("TS 09 UB 9901")
                 .driverName("Driver assigned upon dispatch")
                 .trackingNumber("VRL-RFQ-" + rfq.getRfqId())
@@ -216,7 +217,7 @@ public class RfqServiceImpl implements RfqService {
                 .status("ORDER_PLACED")
                 .title("RFQ Accepted & Order Created")
                 .location("HinchMart Central Enterprise Procurement Desk")
-                .description("RFQ #" + rfq.getRfqNumber() + " accepted with vendor " + quote.getVendorName())
+                .description("RFQ #" + rfq.getRfqNumber() + " accepted with seller " + quote.getSellerName())
                 .timestamp(LocalDateTime.now())
                 .build();
         savedOrder.getCheckpoints().add(checkpoint);
@@ -299,8 +300,8 @@ public class RfqServiceImpl implements RfqService {
         return QuotationResponse.builder()
                 .quoteId(q.getQuoteId())
                 .rfqId(q.getRfq().getRfqId())
-                .vendorId(q.getVendorId())
-                .vendorName(q.getVendorName())
+                .sellerId(q.getSellerId())
+                .sellerName(q.getSellerName())
                 .unitPrice(q.getUnitPrice())
                 .totalAmount(q.getTotalAmount())
                 .deliveryLeadTimeDays(q.getDeliveryLeadTimeDays())
@@ -308,7 +309,7 @@ public class RfqServiceImpl implements RfqService {
                 .mtcIncluded(q.isMtcIncluded())
                 .freightIncluded(q.isFreightIncluded())
                 .validUntil(q.getValidUntil())
-                .vendorRating(q.getVendorRating())
+                .sellerRating(q.getSellerRating())
                 .status(q.getStatus())
                 .build();
     }

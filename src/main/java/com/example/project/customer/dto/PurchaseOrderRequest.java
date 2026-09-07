@@ -17,8 +17,8 @@ import java.util.List;
 @AllArgsConstructor
 public class PurchaseOrderRequest {
 
-    @NotNull(message = "Vendor ID is required")
-    private Integer vendorId;
+    @NotNull(message = "Seller ID is required")
+    private Integer sellerId;
 
     private LocalDate deliveryDate;
 

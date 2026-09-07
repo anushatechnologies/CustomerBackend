@@ -16,11 +16,11 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class QuotationRequest {
 
-    @NotNull(message = "Vendor ID is required")
-    private Integer vendorId;
+    @NotNull(message = "Seller ID is required")
+    private Integer sellerId;
 
-    @NotNull(message = "Vendor name is required")
-    private String vendorName;
+    @NotNull(message = "Seller name is required")
+    private String sellerName;
 
     @NotNull(message = "Unit price is required")
     private BigDecimal unitPrice;
@@ -37,5 +37,5 @@ public class QuotationRequest {
     private Boolean freightIncluded = true;
 
     private LocalDateTime validUntil;
-    private Double vendorRating;
+    private Double sellerRating;
 }

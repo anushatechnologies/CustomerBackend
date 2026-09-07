@@ -6,6 +6,7 @@ import com.example.project.customer.dto.SupportTicketRequest;
 import com.example.project.customer.dto.SupportTicketResponse;
 import com.example.project.customer.dto.TicketMessageRequest;
 import com.example.project.customer.dto.TicketMessageResponse;
+import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.SupportTicket;
 import com.example.project.customer.entity.TicketMessage;
 import com.example.project.customer.exception.ResourceNotFoundException;
@@ -43,9 +44,9 @@ public class SupportTicketServiceImpl implements SupportTicketService {
 
         Page<SupportTicket> pageResult;
         if (status != null && !status.isBlank()) {
-            pageResult = ticketRepository.findByUserIdAndStatusOrderByCreatedAtDesc(uid, status.trim().toUpperCase(), pageable);
+            pageResult = ticketRepository.findByCustomer_CustomerIdAndStatusOrderByCreatedAtDesc(uid, status.trim().toUpperCase(), pageable);
         } else {
-            pageResult = ticketRepository.findByUserIdOrderByCreatedAtDesc(uid, pageable);
+            pageResult = ticketRepository.findByCustomer_CustomerIdOrderByCreatedAtDesc(uid, pageable);
         }
 
         List<SupportTicketResponse> data = pageResult.getContent().stream()
@@ -70,7 +71,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
 
         SupportTicket ticket = SupportTicket.builder()
                 .ticketNumber(tktNum)
-                .userId(uid)
+                .customer(Customer.builder().customerId(uid).build())
                 .subject(request.getSubject())
                 .category(request.getCategory() != null ? request.getCategory() : "GENERAL")
                 .priority(request.getPriority() != null ? request.getPriority() : "MEDIUM")
@@ -135,7 +136,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         return SupportTicketResponse.builder()
                 .ticketId(t.getTicketId())
                 .ticketNumber(t.getTicketNumber())
-                .userId(t.getUserId())
+                .userId(t.getCustomer() != null ? t.getCustomer().getCustomerId() : null)
                 .subject(t.getSubject())
                 .category(t.getCategory())
                 .priority(t.getPriority())

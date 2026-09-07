@@ -11,7 +11,7 @@ import java.util.Optional;
 @Repository
 public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, Integer> {
     Optional<PurchaseOrder> findByPoNumber(String poNumber);
-    Page<PurchaseOrder> findByUserIdOrderByCreatedAtDesc(Integer userId, Pageable pageable);
-    Page<PurchaseOrder> findByUserIdAndStatusOrderByCreatedAtDesc(Integer userId, String status, Pageable pageable);
-    Page<PurchaseOrder> findByVendorIdOrderByCreatedAtDesc(Integer vendorId, Pageable pageable);
+    Page<PurchaseOrder> findByCustomer_CustomerIdOrderByCreatedAtDesc(Integer userId, Pageable pageable);
+    Page<PurchaseOrder> findByCustomer_CustomerIdAndStatusOrderByCreatedAtDesc(Integer userId, String status, Pageable pageable);
+    Page<PurchaseOrder> findBySellerIdOrderByCreatedAtDesc(Integer sellerId, Pageable pageable);
 }

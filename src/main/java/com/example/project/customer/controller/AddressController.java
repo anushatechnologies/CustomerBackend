@@ -1,5 +1,6 @@
 package com.example.project.customer.controller;
 
+import com.example.project.customer.config.UserContextUtil;
 import com.example.project.customer.dto.AddressRequest;
 import com.example.project.customer.dto.AddressResponse;
 import com.example.project.customer.dto.ApiResponse;
@@ -25,22 +26,26 @@ import java.util.List;
 public class AddressController {
 
     private final AddressService addressService;
+    private final UserContextUtil userContextUtil;
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<AddressResponse>>> getAddresses() {
-        List<AddressResponse> list = addressService.getAddresses();
+        Integer userId = userContextUtil.getCurrentUserId();
+        List<AddressResponse> list = addressService.getAddresses(userId);
         return ResponseEntity.ok(ApiResponse.ok("Addresses retrieved successfully", list));
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<AddressResponse>> getAddressById(@PathVariable Integer id) {
-        AddressResponse address = addressService.getAddressById(id);
+        Integer userId = userContextUtil.getCurrentUserId();
+        AddressResponse address = addressService.getAddressById(userId, id);
         return ResponseEntity.ok(ApiResponse.ok("Address retrieved successfully", address));
     }
 
     @PostMapping
     public ResponseEntity<ApiResponse<AddressResponse>> createAddress(@Valid @RequestBody AddressRequest request) {
-        AddressResponse created = addressService.createAddress(request);
+        Integer userId = userContextUtil.getCurrentUserId();
+        AddressResponse created = addressService.createAddress(userId, request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.created("Address created successfully", created));
     }
@@ -49,13 +54,15 @@ public class AddressController {
     public ResponseEntity<ApiResponse<AddressResponse>> updateAddress(
             @PathVariable Integer id,
             @Valid @RequestBody AddressRequest request) {
-        AddressResponse updated = addressService.updateAddress(id, request);
+        Integer userId = userContextUtil.getCurrentUserId();
+        AddressResponse updated = addressService.updateAddress(userId, id, request);
         return ResponseEntity.ok(ApiResponse.ok("Address updated successfully", updated));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteAddress(@PathVariable Integer id) {
-        addressService.deleteAddress(id);
+        Integer userId = userContextUtil.getCurrentUserId();
+        addressService.deleteAddress(userId, id);
         return ResponseEntity.ok(ApiResponse.ok("Address deleted successfully", null));
     }
 }

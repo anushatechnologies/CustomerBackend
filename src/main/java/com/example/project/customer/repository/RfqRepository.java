@@ -12,8 +12,8 @@ import java.util.Optional;
 @Repository
 public interface RfqRepository extends JpaRepository<Rfq, Integer> {
     Optional<Rfq> findByRfqNumber(String rfqNumber);
-    List<Rfq> findByUserIdOrderByCreatedAtDesc(Integer userId);
-    List<Rfq> findByUserIdAndStatusIgnoreCaseOrderByCreatedAtDesc(Integer userId, String status);
-    Page<Rfq> findByUserIdOrderByCreatedAtDesc(Integer userId, Pageable pageable);
+    List<Rfq> findByCustomer_CustomerIdOrderByCreatedAtDesc(Integer userId);
+    List<Rfq> findByCustomer_CustomerIdAndStatusIgnoreCaseOrderByCreatedAtDesc(Integer userId, String status);
+    Page<Rfq> findByCustomer_CustomerIdOrderByCreatedAtDesc(Integer userId, Pageable pageable);
     int countByUserId(Integer userId);
 }

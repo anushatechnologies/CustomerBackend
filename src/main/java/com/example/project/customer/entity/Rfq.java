@@ -8,6 +8,8 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.PrePersist;
@@ -42,9 +44,9 @@ public class Rfq {
     @Column(name = "rfq_number", nullable = false, unique = true)
     private String rfqNumber;
 
-    @Column(name = "user_id")
-    @Builder.Default
-    private Integer userId = 101;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "customer_id", referencedColumnName = "customer_id")
+    private Customer customer;
 
     @Column(nullable = false)
     private String title;

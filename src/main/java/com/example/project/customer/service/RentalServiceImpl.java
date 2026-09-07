@@ -4,6 +4,7 @@ import com.example.project.customer.dto.RentalAvailabilityResponse;
 import com.example.project.customer.dto.RentalBookingRequest;
 import com.example.project.customer.dto.RentalBookingResponse;
 import com.example.project.customer.dto.RentalEquipmentResponse;
+import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.RentalBooking;
 import com.example.project.customer.entity.RentalEquipment;
 import com.example.project.customer.exception.ResourceConflictException;
@@ -110,7 +111,7 @@ public class RentalServiceImpl implements RentalService {
         BigDecimal totalCost = equipmentCost.add(operatorCost).add(deposit);
 
         RentalBooking booking = RentalBooking.builder()
-                .userId(uid)
+                .customer(Customer.builder().customerId(uid).build())
                 .equipment(eq)
                 .startDate(request.getStartDate())
                 .endDate(request.getEndDate())
@@ -155,7 +156,7 @@ public class RentalServiceImpl implements RentalService {
     private RentalBookingResponse mapToBookingResponse(RentalBooking b) {
         return RentalBookingResponse.builder()
                 .bookingId(b.getBookingId())
-                .userId(b.getUserId())
+                .userId(b.getCustomer() != null ? b.getCustomer().getCustomerId() : null)
                 .equipmentId(b.getEquipment().getEquipmentId())
                 .equipmentName(b.getEquipment().getName())
                 .category(b.getEquipment().getCategory())

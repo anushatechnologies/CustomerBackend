@@ -1,7 +1,6 @@
 package com.example.project.customer.dto;
 
 import com.example.project.customer.entity.BulkPricingTier;
-import com.example.project.customer.entity.VendorInfo;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
@@ -85,5 +84,5 @@ public class ProductRequest {
     @Builder.Default
     private List<BulkPricingTier> bulkPricingTiers = new ArrayList<>();
 
-    private VendorInfo vendor;
+    private Integer sellerId;
 }

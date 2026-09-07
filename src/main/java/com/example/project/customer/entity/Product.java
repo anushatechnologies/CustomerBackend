@@ -3,17 +3,16 @@ package com.example.project.customer.entity;
 import com.example.project.customer.entity.converter.BulkPricingTiersConverter;
 import com.example.project.customer.entity.converter.StringListConverter;
 import com.example.project.customer.entity.converter.StringMapConverter;
-import com.example.project.customer.entity.converter.VendorInfoConverter;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.Enumerated;
@@ -129,12 +128,9 @@ private String rejectionReason;
 @Builder.Default
 private List<BulkPricingTier> bulkPricingTiers = new ArrayList<>();
 
-@Column(name = "vendor_info", columnDefinition = "TEXT")
-@Convert(converter = VendorInfoConverter.class)
-private VendorInfo vendor;
-
-    @Column(name = "seller_id")
-    private Integer sellerId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "seller_id", referencedColumnName = "seller_id")
+    private Seller seller;
 
     @Column(name = "selling_price", precision = 12, scale = 2)
     private BigDecimal sellingPrice;

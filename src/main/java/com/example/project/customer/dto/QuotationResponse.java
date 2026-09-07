@@ -18,8 +18,8 @@ import java.time.LocalDateTime;
 public class QuotationResponse {
     private Integer quoteId;
     private Integer rfqId;
-    private Integer vendorId;
-    private String vendorName;
+    private Integer sellerId;
+    private String sellerName;
     private BigDecimal unitPrice;
     private BigDecimal totalAmount;
     private Integer deliveryLeadTimeDays;
@@ -32,6 +32,6 @@ public class QuotationResponse {
     private boolean freightIncluded;
 
     private LocalDateTime validUntil;
-    private Double vendorRating;
+    private Double sellerRating;
     private String status;
 }

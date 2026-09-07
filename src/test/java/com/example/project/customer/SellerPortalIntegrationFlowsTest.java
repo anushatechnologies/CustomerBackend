@@ -19,6 +19,7 @@ import com.example.project.customer.entity.Brand;
 import com.example.project.customer.entity.Category;
 import com.example.project.customer.entity.DocumentType;
 import com.example.project.customer.entity.Product;
+import com.example.project.customer.entity.Seller;
 import com.example.project.customer.entity.Subcategory;
 import com.example.project.customer.entity.Warehouse;
 import com.example.project.customer.repository.BrandRepository;
@@ -147,7 +148,7 @@ public class SellerPortalIntegrationFlowsTest {
     void testSellerStockAndPricingUpdates() {
         Product existing = Product.builder()
                 .productId(101)
-                .sellerId(1001)
+                .seller(Seller.builder().sellerId(1001).build())
                 .brand(mockBrand)
                 .title("Tata Tiscon 16mm")
                 .price(BigDecimal.valueOf(64500))
@@ -191,7 +192,7 @@ public class SellerPortalIntegrationFlowsTest {
 
         Product product = Product.builder()
                 .productId(101)
-                .sellerId(1001)
+                .seller(Seller.builder().sellerId(1001).build())
                 .stockQty(85)
                 .build();
 
@@ -214,8 +215,8 @@ public class SellerPortalIntegrationFlowsTest {
     @Test
     @DisplayName("Flow 4: Bulk Price Adjustment percentage calculation across products")
     void testBulkPriceAdjustment() {
-        Product p1 = Product.builder().productId(101).sellerId(1001).brand(mockBrand).price(BigDecimal.valueOf(1000.00)).sellingPrice(BigDecimal.valueOf(1000.00)).mrp(BigDecimal.valueOf(1100.00)).build();
-        Product p2 = Product.builder().productId(102).sellerId(1001).brand(mockBrand).price(BigDecimal.valueOf(2000.00)).sellingPrice(BigDecimal.valueOf(2000.00)).mrp(BigDecimal.valueOf(2200.00)).build();
+        Product p1 = Product.builder().productId(101).seller(Seller.builder().sellerId(1001).build()).brand(mockBrand).price(BigDecimal.valueOf(1000.00)).sellingPrice(BigDecimal.valueOf(1000.00)).mrp(BigDecimal.valueOf(1100.00)).build();
+        Product p2 = Product.builder().productId(102).seller(Seller.builder().sellerId(1001).build()).brand(mockBrand).price(BigDecimal.valueOf(2000.00)).sellingPrice(BigDecimal.valueOf(2000.00)).mrp(BigDecimal.valueOf(2200.00)).build();
 
         when(productRepository.findBySellerId(1001)).thenReturn(List.of(p1, p2));
 

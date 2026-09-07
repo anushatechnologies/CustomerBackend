@@ -804,10 +804,6 @@ public class ProductServiceImpl implements ProductService {
                         ? req.getBulkPricingTiers()
                         : new ArrayList<>()
         );
-
-        product.setVendor(
-                req.getVendor()
-        );
     }
 
     private ProductResponse mapToResponse(
@@ -895,20 +891,18 @@ public class ProductServiceImpl implements ProductService {
                 .bulkPricingTiers(
                         p.getBulkPricingTiers()
                 )
-                .vendor(p.getVendor())
+                .sellerId(
+                        p.getSeller() != null ? p.getSeller().getSellerId() : null
+                )
+                .sellerName(
+                        p.getSeller() != null ? p.getSeller().getName() : null
+                )
                 .approvalStatus(
                         approvalStatus.name()
                 )
                 .status(status)
                 .rejectionReason(
                         p.getRejectionReason()
-                )
-                .sellerId(
-                        p.getSellerId() != null
-                                ? "seller_" + p.getSellerId()
-                                : (p.getVendor() != null && p.getVendor().getVendorId() != null
-                                        ? "seller_" + p.getVendor().getVendorId()
-                                        : null)
                 )
                 .sellingPrice(
                         p.getSellingPrice() != null ? p.getSellingPrice() : p.getPrice()

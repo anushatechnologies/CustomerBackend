@@ -12,9 +12,9 @@ import java.util.Optional;
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Integer> {
     Optional<Order> findByOrderNumber(String orderNumber);
-    List<Order> findByUserIdOrderByCreatedAtDesc(Integer userId);
-    List<Order> findByUserIdAndOrderStatusIgnoreCaseOrderByCreatedAtDesc(Integer userId, String orderStatus);
-    Page<Order> findByUserIdOrderByCreatedAtDesc(Integer userId, Pageable pageable);
-    Page<Order> findByUserIdAndOrderStatusIgnoreCaseOrderByCreatedAtDesc(Integer userId, String orderStatus, Pageable pageable);
+    List<Order> findByCustomer_CustomerIdOrderByCreatedAtDesc(Integer userId);
+    List<Order> findByCustomer_CustomerIdAndOrderStatusIgnoreCaseOrderByCreatedAtDesc(Integer userId, String orderStatus);
+    Page<Order> findByCustomer_CustomerIdOrderByCreatedAtDesc(Integer userId, Pageable pageable);
+    Page<Order> findByCustomer_CustomerIdAndOrderStatusIgnoreCaseOrderByCreatedAtDesc(Integer userId, String orderStatus, Pageable pageable);
     int countByUserId(Integer userId);
 }
