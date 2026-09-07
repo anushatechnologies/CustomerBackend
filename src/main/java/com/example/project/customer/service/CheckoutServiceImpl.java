@@ -27,7 +27,7 @@ public class CheckoutServiceImpl implements CheckoutService {
     @Override
     public CheckoutPreviewResponse previewCheckout(Integer userId, CheckoutPreviewRequest request) {
         CartResponse cart = cartService.getCart(userId);
-        Address address = addressRepository.findById(request.getAddressId())
+        Address address = addressRepository.findByCustomer_CustomerIdAndId(userId, request.getAddressId())
                 .orElseThrow(() -> new ResourceNotFoundException("Address not found with id: " + request.getAddressId()));
 
         BigDecimal subtotal = cart.getSubtotal();

@@ -7,10 +7,12 @@ import com.example.project.customer.dto.ApiResponse;
 import com.example.project.customer.service.AddressService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -20,8 +22,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+@Slf4j
 @RestController
-@RequestMapping("/api/user/addresses")
+@RequestMapping({"/api/addresses", "/api/user/addresses"})
 @RequiredArgsConstructor
 public class AddressController {
 
@@ -64,5 +67,12 @@ public class AddressController {
         Integer userId = userContextUtil.getCurrentUserId();
         addressService.deleteAddress(userId, id);
         return ResponseEntity.ok(ApiResponse.ok("Address deleted successfully", null));
+    }
+
+    @PatchMapping("/{id}/default")
+    public ResponseEntity<ApiResponse<AddressResponse>> setDefaultAddress(@PathVariable Integer id) {
+        Integer userId = userContextUtil.getCurrentUserId();
+        AddressResponse updated = addressService.setDefaultAddress(userId, id);
+        return ResponseEntity.ok(ApiResponse.ok("Default address updated successfully", updated));
     }
 }

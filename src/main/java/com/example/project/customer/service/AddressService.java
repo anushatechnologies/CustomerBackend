@@ -11,4 +11,5 @@ public interface AddressService {
     AddressResponse createAddress(Integer userId, AddressRequest request);
     AddressResponse updateAddress(Integer userId, Integer id, AddressRequest request);
     void deleteAddress(Integer userId, Integer id);
+    AddressResponse setDefaultAddress(Integer userId, Integer id);
 }
