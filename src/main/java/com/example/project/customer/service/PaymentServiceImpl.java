@@ -149,7 +149,30 @@ public class PaymentServiceImpl implements PaymentService {
             }
             rzpOptions.put("notes", notes);
 
-            com.razorpay.Order rzpOrder = razorpayClient.orders.create(rzpOptions);
+            com.razorpay.Order rzpOrder = null;
+            RazorpayException lastException = null;
+            for (int attempt = 1; attempt <= 3; attempt++) {
+                try {
+                    rzpOrder = razorpayClient.orders.create(rzpOptions);
+                    break;
+                } catch (RazorpayException e) {
+                    lastException = e;
+                    log.warn("Attempt {} to connect to Razorpay failed: {}", attempt, e.getMessage());
+                    if (attempt < 3) {
+                        try {
+                            Thread.sleep(500);
+                        } catch (InterruptedException ignored) {}
+                    }
+                }
+            }
+
+            if (rzpOrder == null) {
+                if (lastException != null && lastException.getMessage() != null && lastException.getMessage().contains("No such host is known")) {
+                    throw new RuntimeException("Unable to connect to Razorpay (Network/DNS error). Please check your internet connection and try again.");
+                }
+                throw lastException;
+            }
+
             String razorpayOrderId = rzpOrder.get("id");
 
             // Persist payment attempt in database
@@ -209,16 +232,31 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // Step 2: Fetch live payment status directly from Razorpay
-        com.razorpay.Payment rzpPayment;
-        try {
-            rzpPayment = razorpayClient.payments.fetch(request.getRazorpayPaymentId());
-        } catch (RazorpayException e) {
-            log.error("Failed to fetch payment {} from Razorpay: {}", request.getRazorpayPaymentId(), e.getMessage());
-            throw new RuntimeException("Failed to verify payment with Razorpay gateway: " + e.getMessage(), e);
+        com.razorpay.Payment rzpPayment = null;
+        RazorpayException lastFetchEx = null;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                rzpPayment = razorpayClient.payments.fetch(request.getRazorpayPaymentId());
+                break;
+            } catch (RazorpayException e) {
+                lastFetchEx = e;
+                log.warn("Attempt {} to fetch Razorpay payment {} failed: {}", attempt, request.getRazorpayPaymentId(), e.getMessage());
+                if (attempt < 3) {
+                    try {
+                        Thread.sleep(500);
+                    } catch (InterruptedException ignored) {}
+                }
+            }
+        }
+        if (rzpPayment == null) {
+            log.error("Failed to fetch payment {} from Razorpay after retries: {}", request.getRazorpayPaymentId(), lastFetchEx != null ? lastFetchEx.getMessage() : "Unknown error");
+            throw new RuntimeException("Failed to verify payment with Razorpay gateway (network error): " + (lastFetchEx != null ? lastFetchEx.getMessage() : ""), lastFetchEx);
         }
 
         String rzpStatus = rzpPayment.get("status"); // "captured", "authorized", "failed"
         log.info("Razorpay payment {} status: {}", request.getRazorpayPaymentId(), rzpStatus);
+
+        BigDecimal verifiedAmount = BigDecimal.valueOf(((Number) rzpPayment.get("amount")).doubleValue() / 100.0);
 
         // Step 3: Find or update local Payment record
         Payment payment = paymentRepository.findByRazorpayOrderId(request.getRazorpayOrderId())
@@ -230,7 +268,7 @@ public class PaymentServiceImpl implements PaymentService {
                             .customer(c)
                             .order(o)
                             .razorpayOrderId(request.getRazorpayOrderId())
-                            .amount(BigDecimal.valueOf(((Number) rzpPayment.get("amount")).doubleValue() / 100.0))
+                            .amount(verifiedAmount)
                             .currency("INR")
                             .purpose("ORDER_PAYMENT")
                             .build();
