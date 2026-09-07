@@ -13,6 +13,6 @@ import java.util.Optional;
 public interface RewardVoucherRepository extends JpaRepository<RewardVoucher, Integer> {
     Optional<RewardVoucher> findByCodeIgnoreCase(String code);
 
-    @Query("SELECT r FROM RewardVoucher r WHERE (r.userId = :userId OR r.userId IS NULL) AND r.active = true AND r.redeemed = false ORDER BY r.createdAt DESC")
+    @Query("SELECT r FROM RewardVoucher r WHERE (r.customer.customerId = :userId OR r.customer IS NULL) AND r.active = true AND r.redeemed = false ORDER BY r.createdAt DESC")
     List<RewardVoucher> findAvailableForUser(@Param("userId") Integer userId);
 }

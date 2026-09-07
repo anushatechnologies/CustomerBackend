@@ -22,13 +22,17 @@ public interface ProductRepository
     @Query("select p from Product p where p.productId = :productId")
     Optional<Product> findByIdForStockUpdate(@Param("productId") Integer productId);
 
-    List<Product> findBySellerId(Integer sellerId);
+    @Query("SELECT p FROM Product p WHERE p.seller.sellerId = :sellerId")
+    List<Product> findBySellerId(@Param("sellerId") Integer sellerId);
 
-    Optional<Product> findByProductIdAndSellerId(Integer productId, Integer sellerId);
+    @Query("SELECT p FROM Product p WHERE p.productId = :productId AND p.seller.sellerId = :sellerId")
+    Optional<Product> findByProductIdAndSellerId(@Param("productId") Integer productId, @Param("sellerId") Integer sellerId);
 
-    List<Product> findBySellerIdAndBrand_BrandId(Integer sellerId, Integer brandId);
+    @Query("SELECT p FROM Product p WHERE p.seller.sellerId = :sellerId AND p.brand.brandId = :brandId")
+    List<Product> findBySellerIdAndBrand_BrandId(@Param("sellerId") Integer sellerId, @Param("brandId") Integer brandId);
 
-    List<Product> findBySellerIdAndBrand_Subcategory_Category_CategoryId(Integer sellerId, Integer categoryId);
+    @Query("SELECT p FROM Product p WHERE p.seller.sellerId = :sellerId AND p.brand.subcategory.category.categoryId = :categoryId")
+    List<Product> findBySellerIdAndBrand_Subcategory_Category_CategoryId(@Param("sellerId") Integer sellerId, @Param("categoryId") Integer categoryId);
 
     // Product approval workflow
     List<Product> findByApprovalStatusAndActive(

@@ -15,6 +15,6 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
     List<Order> findByCustomer_CustomerIdOrderByCreatedAtDesc(Integer userId);
     List<Order> findByCustomer_CustomerIdAndOrderStatusIgnoreCaseOrderByCreatedAtDesc(Integer userId, String orderStatus);
     Page<Order> findByCustomer_CustomerIdOrderByCreatedAtDesc(Integer userId, Pageable pageable);
-    Page<Order> findByCustomer_CustomerIdAndOrderStatusIgnoreCaseOrderByCreatedAtDesc(Integer userId, String orderStatus, Pageable pageable);
-    int countByUserId(Integer userId);
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(o) FROM Order o WHERE o.customer.customerId = :userId")
+    int countByUserId(@org.springframework.data.repository.query.Param("userId") Integer userId);
 }

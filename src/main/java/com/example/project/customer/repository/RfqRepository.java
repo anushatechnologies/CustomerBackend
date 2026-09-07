@@ -15,5 +15,7 @@ public interface RfqRepository extends JpaRepository<Rfq, Integer> {
     List<Rfq> findByCustomer_CustomerIdOrderByCreatedAtDesc(Integer userId);
     List<Rfq> findByCustomer_CustomerIdAndStatusIgnoreCaseOrderByCreatedAtDesc(Integer userId, String status);
     Page<Rfq> findByCustomer_CustomerIdOrderByCreatedAtDesc(Integer userId, Pageable pageable);
-    int countByUserId(Integer userId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(r) FROM Rfq r WHERE r.customer.customerId = :userId")
+    int countByUserId(@org.springframework.data.repository.query.Param("userId") Integer userId);
 }
