@@ -89,6 +89,11 @@ jobs:
             FORMAT_SQL=false
             EOF
 
+            # Ensure safe Hibernate DDL mode in production (Flyway manages schema migrations)
+            if [ "$DB_DDL_AUTO" = "update" ] || [ -z "$DB_DDL_AUTO" ]; then
+              DB_DDL_AUTO="validate"
+            fi
+
             cat << EOF >> .env
             DB_HOST=$DB_HOST
             DB_PORT=$DB_PORT
