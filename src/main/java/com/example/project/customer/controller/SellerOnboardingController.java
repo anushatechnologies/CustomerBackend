@@ -14,6 +14,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -43,12 +44,14 @@ public class SellerOnboardingController {
     }
 
     @PostMapping(value = "/step1-personal", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Seller> submitPersonalKycJson(@Valid @RequestBody PersonalKycRequest request) {
         Seller saved = onboardingService.savePersonalKyc(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 
     @PostMapping(value = "/step1-personal", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Seller> submitPersonalKycMultipart(
             @RequestParam("name") String name,
             @RequestParam("email") String email,
@@ -67,6 +70,7 @@ public class SellerOnboardingController {
     }
 
     @PostMapping("/{sellerId}/step2-business")
+    @PreAuthorize("hasRole('ADMIN') or @authorizationService.isCurrentSeller(#sellerId)")
     public ResponseEntity<Seller> submitBusinessTax(
             @PathVariable Integer sellerId,
             @Valid @RequestBody BusinessTaxRequest request) {
@@ -75,6 +79,7 @@ public class SellerOnboardingController {
     }
 
     @PostMapping("/{sellerId}/step3-bank")
+    @PreAuthorize("hasRole('ADMIN') or @authorizationService.isCurrentSeller(#sellerId)")
     public ResponseEntity<Seller> submitBankDetails(
             @PathVariable Integer sellerId,
             @Valid @RequestBody BankDetailsRequest request) {
@@ -83,6 +88,7 @@ public class SellerOnboardingController {
     }
 
     @PostMapping(value = "/{sellerId}/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN') or @authorizationService.isCurrentSeller(#sellerId)")
     public ResponseEntity<SellerDocument> uploadDocument(
             @PathVariable Integer sellerId,
             @RequestParam("documentType") DocumentType documentType,
@@ -92,11 +98,13 @@ public class SellerOnboardingController {
     }
 
     @GetMapping("/{sellerId}/documents")
+    @PreAuthorize("hasRole('ADMIN') or @authorizationService.isCurrentSeller(#sellerId)")
     public ResponseEntity<List<SellerDocument>> getDocuments(@PathVariable Integer sellerId) {
         return ResponseEntity.ok(onboardingService.getDocumentsBySellerId(sellerId));
     }
 
     @GetMapping("/{sellerId}/documents/{documentType}")
+    @PreAuthorize("hasRole('ADMIN') or @authorizationService.isCurrentSeller(#sellerId)")
     public ResponseEntity<SellerDocument> getDocumentByType(
             @PathVariable Integer sellerId,
             @PathVariable DocumentType documentType) {
@@ -104,6 +112,7 @@ public class SellerOnboardingController {
     }
 
     @GetMapping("/{sellerId}/summary")
+    @PreAuthorize("hasRole('ADMIN') or @authorizationService.isCurrentSeller(#sellerId)")
     public ResponseEntity<SellerOnboardingSummaryResponse> getSummary(@PathVariable Integer sellerId) {
         return ResponseEntity.ok(onboardingService.getSummary(sellerId));
     }
@@ -113,17 +122,20 @@ public class SellerOnboardingController {
             "/{sellerId}/document-vault",
             "/{sellerId}/compliance"
     })
+    @PreAuthorize("hasRole('ADMIN') or @authorizationService.isCurrentSeller(#sellerId)")
     public ResponseEntity<SellerDocumentVaultResponse> getDocumentVault(@PathVariable Integer sellerId) {
         return ResponseEntity.ok(onboardingService.getDocumentVault(sellerId));
     }
 
     @PostMapping("/{sellerId}/final-submit")
+    @PreAuthorize("hasRole('ADMIN') or @authorizationService.isCurrentSeller(#sellerId)")
     public ResponseEntity<Seller> finalSubmit(@PathVariable Integer sellerId) {
         Seller saved = onboardingService.finalSubmit(sellerId);
         return ResponseEntity.ok(saved);
     }
 
     @PostMapping("/{sellerId}/admin/approve")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Seller> approveSellerByAdmin(
             @PathVariable Integer sellerId,
             @RequestParam(value = "remarks", required = false) String remarks) {
@@ -132,6 +144,7 @@ public class SellerOnboardingController {
     }
 
     @PostMapping("/{sellerId}/admin/reject")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Seller> rejectSellerByAdmin(
             @PathVariable Integer sellerId,
             @RequestParam(value = "remarks", required = false) String remarks) {
@@ -140,6 +153,7 @@ public class SellerOnboardingController {
     }
 
     @PutMapping("/{sellerId}/documents/{documentType}/verify")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<SellerDocument> verifyDocument(
             @PathVariable Integer sellerId,
             @PathVariable DocumentType documentType,

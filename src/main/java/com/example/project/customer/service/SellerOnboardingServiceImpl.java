@@ -5,26 +5,32 @@ import com.example.project.customer.dto.BusinessTaxRequest;
 import com.example.project.customer.dto.PersonalKycRequest;
 import com.example.project.customer.dto.SellerDocumentVaultResponse;
 import com.example.project.customer.dto.SellerOnboardingSummaryResponse;
+import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.DocumentType;
 import com.example.project.customer.entity.OnboardingStatus;
+import com.example.project.customer.entity.Role;
 import com.example.project.customer.entity.Seller;
 import com.example.project.customer.entity.SellerDocument;
 import com.example.project.customer.entity.VerificationStatus;
 import com.example.project.customer.exception.ResourceConflictException;
 import com.example.project.customer.exception.ResourceNotFoundException;
+import com.example.project.customer.repository.CustomerRepository;
 import com.example.project.customer.repository.SellerDocumentRepository;
 import com.example.project.customer.repository.SellerRepository;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Validator;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
+@Slf4j
 @Service
 @Transactional
 @SuppressWarnings("null")
@@ -32,17 +38,35 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
 
     private final SellerRepository sellerRepository;
     private final SellerDocumentRepository documentRepository;
+    private final CustomerRepository customerRepository;
     private final S3ImageService s3ImageService;
+    private final FirebaseAuthService firebaseAuthService;
     private final Validator validator;
 
-    public SellerOnboardingServiceImpl(SellerRepository sellerRepository,
-                                       SellerDocumentRepository documentRepository,
-                                       @Autowired(required = false) S3ImageService s3ImageService,
-                                       Validator validator) {
+    @Autowired
+    public SellerOnboardingServiceImpl(
+            SellerRepository sellerRepository,
+            SellerDocumentRepository documentRepository,
+            CustomerRepository customerRepository,
+            @Autowired(required = false) S3ImageService s3ImageService,
+            @Autowired(required = false) FirebaseAuthService firebaseAuthService,
+            Validator validator
+    ) {
         this.sellerRepository = sellerRepository;
         this.documentRepository = documentRepository;
+        this.customerRepository = customerRepository;
         this.s3ImageService = s3ImageService;
+        this.firebaseAuthService = firebaseAuthService;
         this.validator = validator;
+    }
+
+    public SellerOnboardingServiceImpl(
+            SellerRepository sellerRepository,
+            SellerDocumentRepository documentRepository,
+            S3ImageService s3ImageService,
+            Validator validator
+    ) {
+        this(sellerRepository, documentRepository, null, s3ImageService, null, validator);
     }
 
     @Override
@@ -269,15 +293,15 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
                 bankComplete
         );
 
-        var docSummaries = docs.stream()
+        List<SellerOnboardingSummaryResponse.DocumentSummary> documentSummaries = docs.stream()
                 .map(d -> new SellerOnboardingSummaryResponse.DocumentSummary(
-                d.getId(),
-                d.getDocumentType() != null ? d.getDocumentType().name() : null,
-                d.getTitle() != null ? d.getTitle() : d.getFileName(),
-                d.getFileName(),
-                d.getFileUrl(),
-                d.getVerificationStatus() != null ? d.getVerificationStatus().name() : null
-        ))
+                        d.getId(),
+                        d.getDocumentType() != null ? d.getDocumentType().name() : null,
+                        d.getTitle(),
+                        d.getFileName(),
+                        d.getFileUrl(),
+                        d.getVerificationStatus() != null ? d.getVerificationStatus().name() : "PENDING"
+                ))
                 .toList();
 
         return new SellerOnboardingSummaryResponse(
@@ -286,7 +310,7 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
                 personalSummary,
                 businessSummary,
                 bankSummary,
-                docSummaries,
+                documentSummaries,
                 isReady
         );
     }
@@ -326,8 +350,8 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
                         spec.type.name(),
                         spec.title,
                         spec.description,
-                        status.getDisplayName(), // "Pending", "Verified", "Rejected"
-                        status.name(),           // "PENDING", "VERIFIED", "REJECTED"
+                        status.getDisplayName(),
+                        status.name(),
                         true,
                         matchingDoc.getFileName(),
                         matchingDoc.getFileUrl(),
@@ -343,8 +367,8 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
                         spec.type.name(),
                         spec.title,
                         spec.description,
-                        VerificationStatus.NOT_UPLOADED.getDisplayName(), // "Not Uploaded"
-                        VerificationStatus.NOT_UPLOADED.name(),           // "NOT_UPLOADED"
+                        VerificationStatus.NOT_UPLOADED.getDisplayName(),
+                        VerificationStatus.NOT_UPLOADED.name(),
                         false,
                         null,
                         null,
@@ -365,13 +389,13 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
 
         String overallStatus;
         if (hasRejected) {
-            overallStatus = VerificationStatus.REJECTED.getDisplayName(); // "Rejected"
+            overallStatus = VerificationStatus.REJECTED.getDisplayName();
         } else if (isAllVerified) {
-            overallStatus = VerificationStatus.VERIFIED.getDisplayName(); // "Verified"
+            overallStatus = VerificationStatus.VERIFIED.getDisplayName();
         } else if (submittedCount > 0) {
-            overallStatus = VerificationStatus.PENDING.getDisplayName();  // "Pending"
+            overallStatus = VerificationStatus.PENDING.getDisplayName();
         } else {
-            overallStatus = VerificationStatus.NOT_UPLOADED.getDisplayName(); // "Not Uploaded"
+            overallStatus = VerificationStatus.NOT_UPLOADED.getDisplayName();
         }
 
         return new SellerDocumentVaultResponse(
@@ -469,6 +493,8 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
             for (SellerDocument doc : documents) {
                 doc.setVerificationStatus(VerificationStatus.VERIFIED);
             }
+            // Upgrade role to SELLER in MySQL database & Firebase Custom Claims
+            upgradeUserToSellerRole(seller.getEmail());
         } else {
             seller.setOnboardingStatus(OnboardingStatus.REJECTED);
             seller.setVerificationStatus(VerificationStatus.REJECTED);
@@ -503,12 +529,33 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
         } else if (allVerified) {
             seller.setVerificationStatus(VerificationStatus.VERIFIED);
             seller.setOnboardingStatus(OnboardingStatus.VERIFIED);
+            upgradeUserToSellerRole(seller.getEmail());
         } else {
             seller.setVerificationStatus(VerificationStatus.PENDING);
         }
         sellerRepository.save(seller);
 
         return saved;
+    }
+
+    private void upgradeUserToSellerRole(String email) {
+        if (email == null || email.isBlank()) return;
+        Optional<Customer> customerOpt = customerRepository.findByEmailIgnoreCase(email.trim());
+        if (customerOpt.isPresent()) {
+            Customer customer = customerOpt.get();
+            customer.setRole(Role.SELLER.name());
+            customerRepository.save(customer);
+            log.info("Upgraded Customer (ID: {}) to ROLE_SELLER in database", customer.getCustomerId());
+
+            if (firebaseAuthService != null && customer.getFirebaseUid() != null) {
+                try {
+                    firebaseAuthService.setUserRoleClaim(customer.getFirebaseUid(), Role.SELLER);
+                    log.info("Set Firebase custom claim role=SELLER for UID: {}", customer.getFirebaseUid());
+                } catch (Exception e) {
+                    log.warn("Failed to set Firebase custom claim during seller approval: {}", e.getMessage());
+                }
+            }
+        }
     }
 
     private <T> void validateRequest(T request) {
