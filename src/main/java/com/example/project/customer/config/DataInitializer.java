@@ -118,7 +118,10 @@ public class DataInitializer implements CommandLineRunner {
 
     private void initAddresses() {
         if (addressRepository.count() == 0) {
+            Customer primaryCustomer = customerRepository.findById(101).orElse(null);
+
             Address site1 = Address.builder()
+                    .customer(primaryCustomer)
                     .siteName("Tower B Project Site")
                     .recipientName("Site Eng. Vikram Reddy")
                     .phone("9849112233")
@@ -132,6 +135,7 @@ public class DataInitializer implements CommandLineRunner {
                     .build();
 
             Address site2 = Address.builder()
+                    .customer(primaryCustomer)
                     .siteName("Highway Expansion Yard - Outer Ring Road")
                     .recipientName("Store Mgr. Anil Kumar")
                     .phone("9849223344")
@@ -145,6 +149,7 @@ public class DataInitializer implements CommandLineRunner {
                     .build();
 
             Address site3 = Address.builder()
+                    .customer(primaryCustomer)
                     .siteName("Gachibowli Metro Depot Project")
                     .recipientName("Procurement Officer Ramesh")
                     .phone("9849334455")
@@ -158,6 +163,7 @@ public class DataInitializer implements CommandLineRunner {
                     .build();
 
             Address site4 = Address.builder()
+                    .customer(primaryCustomer)
                     .siteName("Commercial Warehouse 4")
                     .recipientName("Logistics Lead Suresh")
                     .phone("9849445566")

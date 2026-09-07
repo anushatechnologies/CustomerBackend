@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hinchmart - Razorpay Live Payment & UPI QR Test</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0a0f1d;
+            --bg-card: rgba(18, 24, 38, 0.85);
+            --border-card: rgba(255, 255, 255, 0.08);
+            --accent: #6366f1;
+            --accent-hover: #4f46e5;
+            --accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            background-image: 
+                radial-gradient(circle at 15% 20%, rgba(99, 102, 241, 0.15) 0%, transparent 40%),
+                radial-gradient(circle at 85% 80%, rgba(236, 72, 153, 0.12) 0%, transparent 40%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px 16px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 580px;
+        }
+
+        .card {
+            background: var(--bg-card);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--border-card);
+            border-radius: 20px;
+            padding: 32px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--accent-gradient);
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-card);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: var(--accent-gradient);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+        }
+
+        .brand-text h1 {
+            font-size: 19px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+
+        .brand-text p {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .live-badge {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.35);
+            color: #34d399;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 5px 12px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .live-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #10b981;
+            box-shadow: 0 0 8px #10b981;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.85); }
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #cbd5e1;
+            margin-bottom: 8px;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        input, select {
+            width: 100%;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 12px;
+            padding: 13px 16px;
+            font-size: 15px;
+            color: #fff;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        input:focus, select:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+            background: rgba(15, 23, 42, 0.85);
+        }
+
+        .quick-amounts {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .amount-btn {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-card);
+            color: #cbd5e1;
+            padding: 8px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .amount-btn:hover, .amount-btn.active {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: var(--accent);
+            color: #fff;
+        }
+
+        .btn-pay {
+            width: 100%;
+            background: var(--accent-gradient);
+            border: none;
+            color: white;
+            padding: 15px 24px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: all 0.25s ease;
+            box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.4);
+            margin-top: 10px;
+        }
+
+        .btn-pay:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 30px -5px rgba(99, 102, 241, 0.55);
+        }
+
+        .btn-pay:active {
+            transform: translateY(0);
+        }
+
+        .btn-pay:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .result-box {
+            margin-top: 24px;
+            padding: 18px;
+            border-radius: 14px;
+            font-size: 13px;
+            display: none;
+            line-height: 1.6;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .result-box.success {
+            background: rgba(16, 185, 129, 0.12);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #6ee7b7;
+        }
+
+        .result-box.error {
+            background: rgba(239, 68, 68, 0.12);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+        }
+
+        .result-header {
+            font-weight: 700;
+            font-size: 15px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        pre {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 12px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 12px;
+            color: #cbd5e1;
+            margin-top: 8px;
+        }
+
+        .footer-note {
+            margin-top: 24px;
+            text-align: center;
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <div class="brand">
+                    <div class="brand-icon">⚡</div>
+                    <div class="brand-text">
+                        <h1>Hinchmart Payments</h1>
+                        <p>Razorpay Gateway Test Runner</p>
+                    </div>
+                </div>
+                <div class="live-badge">
+                    <div class="live-dot"></div>
+                    Live Mode
+                </div>
+            </div>
+
+            <form id="paymentForm" onsubmit="event.preventDefault(); startPayment();">
+                <div class="form-group">
+                    <label for="customerId">Customer ID</label>
+                    <input type="number" id="customerId" value="101" required onchange="onCustomerChange()">
+                </div>
+
+                <div class="form-group">
+                    <label for="purpose">Payment Purpose</label>
+                    <select id="purpose" onchange="toggleOrderField()">
+                        <option value="WALLET_TOPUP">Wallet Top-Up (Custom Amount, e.g. ₹1)</option>
+                        <option value="ORDER">Order Payment (Auto-fetch price from Order ID)</option>
+                        <option value="CART_PAYMENT">Cart Payment (Auto-fetch price from Active Cart)</option>
+                        <option value="CHECKOUT" selected>Checkout Payment (Auto-fetch price with Address & Delivery)</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="orderFieldGroup" style="display: none;">
+                    <label for="orderId">Order ID</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="number" id="orderId" placeholder="Enter Order ID (e.g. 1)" onchange="loadOrderPreview()">
+                        <button type="button" class="amount-btn" onclick="loadOrderPreview()" style="width: auto; padding: 0 16px;">Fetch</button>
+                    </div>
+                </div>
+
+                <div class="form-group" id="addressFieldGroup" style="display: none;">
+                    <label for="addressSelect">Select Delivery Address / Site</label>
+                    <select id="addressSelect" onchange="loadCheckoutPreview()">
+                        <option value="1">Loading addresses...</option>
+                    </select>
+                    <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="craneUnloading" onchange="loadCheckoutPreview()" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent);">
+                        <label for="craneUnloading" style="margin: 0; font-size: 13px; cursor: pointer; color: #cbd5e1;">Require Crane Unloading (+₹2,500.00)</label>
+                    </div>
+                </div>
+
+                <div id="previewGroup" style="display: none; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: 12px; padding: 14px; margin-bottom: 20px; font-size: 13px;">
+                    <div id="previewTitle" style="font-weight: 700; margin-bottom: 8px; color: #a5b4fc;">📦 Summary</div>
+                    <div id="previewDetails">Loading...</div>
+                </div>
+
+                <div class="form-group" id="amountGroup">
+                    <label for="amount">Amount (INR ₹) <span id="amountNote" style="font-size: 11px; color: #818cf8; margin-left: 8px;"></span></label>
+                    <input type="number" id="amount" step="0.01" min="1.00" value="1.00" required>
+                    <div class="quick-amounts" id="quickAmounts">
+                        <button type="button" class="amount-btn active" onclick="setAmount(1)">₹1 (Test)</button>
+                        <button type="button" class="amount-btn" onclick="setAmount(10)">₹10</button>
+                        <button type="button" class="amount-btn" onclick="setAmount(50)">₹50</button>
+                        <button type="button" class="amount-btn" onclick="setAmount(100)">₹100</button>
+                    </div>
+                </div>
+
+                <button type="submit" id="payBtn" class="btn-pay">
+                    <span>Pay with UPI QR / Razorpay</span>
+                    <span id="btnAmount">₹1.00</span>
+                </button>
+            </form>
+
+            <div id="resultBox" class="result-box"></div>
+
+            <div class="footer-note">
+                🔒 Secured by Razorpay 256-bit HMAC-SHA256 verification.<br>
+                Price is automatically retrieved from Order / Cart / Checkout on backend.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let cachedAddresses = [];
+
+        function setAmount(val) {
+            document.getElementById('amount').value = val.toFixed(2);
+            document.getElementById('btnAmount').textContent = '₹' + val.toFixed(2);
+            document.querySelectorAll('.amount-btn').forEach(b => b.classList.remove('active'));
+            if (event && event.target) event.target.classList.add('active');
+        }
+
+        document.getElementById('amount').addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value) || 0;
+            document.getElementById('btnAmount').textContent = '₹' + val.toFixed(2);
+        });
+
+        async function onCustomerChange() {
+            await loadAddresses();
+            await toggleOrderField();
+        }
+
+        async function loadAddresses() {
+            const customerId = document.getElementById('customerId').value;
+            const select = document.getElementById('addressSelect');
+            try {
+                const resp = await fetch('/api/addresses', {
+                    headers: { 'X-User-Id': customerId }
+                });
+                const json = await resp.json();
+                if (json.success && json.data && json.data.length > 0) {
+                    cachedAddresses = json.data;
+                    select.innerHTML = json.data.map(a => `
+                        <option value="${a.addressId}" ${a.isDefault ? 'selected' : ''}>
+                            ${a.siteName || a.recipientName} - ${a.addressLine1}, ${a.city} (${a.state}) ${a.isDefault ? '★ Default' : ''}
+                        </option>
+                    `).join('');
+                } else {
+                    select.innerHTML = '<option value="1">Address #1 (Default)</option>';
+                }
+            } catch (err) {
+                console.warn('Could not fetch addresses:', err);
+                select.innerHTML = '<option value="1">Address #1</option>';
+            }
+        }
+
+        async function toggleOrderField() {
+            const purpose = document.getElementById('purpose').value;
+            const orderGroup = document.getElementById('orderFieldGroup');
+            const addressGroup = document.getElementById('addressFieldGroup');
+            const previewGroup = document.getElementById('previewGroup');
+            const previewTitle = document.getElementById('previewTitle');
+            const quickAmounts = document.getElementById('quickAmounts');
+            const amountInput = document.getElementById('amount');
+            const amountNote = document.getElementById('amountNote');
+
+            orderGroup.style.display = purpose === 'ORDER' ? 'block' : 'none';
+            addressGroup.style.display = purpose === 'CHECKOUT' ? 'block' : 'none';
+            previewGroup.style.display = (purpose !== 'WALLET_TOPUP') ? 'block' : 'none';
+
+            if (purpose === 'CHECKOUT') {
+                quickAmounts.style.display = 'none';
+                amountInput.readOnly = true;
+                amountNote.textContent = '⚡ Fetched automatically from Checkout Preview (GST + Freight)!';
+                previewTitle.textContent = '🚚 Checkout Breakdown (Items + Freight + GST)';
+                if (cachedAddresses.length === 0) {
+                    await loadAddresses();
+                }
+                await loadCheckoutPreview();
+            } else if (purpose === 'CART_PAYMENT') {
+                quickAmounts.style.display = 'none';
+                amountInput.readOnly = true;
+                amountNote.textContent = '⚡ Fetched automatically from Active Cart!';
+                previewTitle.textContent = '🛒 Active Cart Summary';
+                await loadCartPreview();
+            } else if (purpose === 'ORDER') {
+                quickAmounts.style.display = 'none';
+                amountInput.readOnly = true;
+                amountNote.textContent = '⚡ Fetched automatically from Order ID!';
+                previewTitle.textContent = '📦 Order Details';
+                await loadOrderPreview();
+            } else {
+                quickAmounts.style.display = 'grid';
+                amountInput.readOnly = false;
+                amountNote.textContent = '';
+                previewGroup.style.display = 'none';
+            }
+        }
+
+        async function loadCartPreview() {
+            const details = document.getElementById('previewDetails');
+            const customerId = document.getElementById('customerId').value;
+            details.innerHTML = 'Fetching cart from server...';
+            try {
+                const resp = await fetch('/api/cart', {
+                    headers: { 'X-User-Id': customerId }
+                });
+                const json = await resp.json();
+                const cart = json.data;
+                if (!cart || !cart.items || cart.items.length === 0) {
+                    details.innerHTML = '<span style="color: #fca5a5;">Your cart is empty! Add items or select another mode.</span>';
+                } else {
+                    const total = cart.grandTotal || cart.subtotal || 0;
+                    document.getElementById('amount').value = total.toFixed(2);
+                    document.getElementById('btnAmount').textContent = '₹' + total.toFixed(2);
+                    
+                    const itemRows = cart.items.map(it => `
+                        <div style="display: flex; justify-content: space-between; padding: 2px 0; color: #94a3b8;">
+                            <span>• ${it.productName || 'Item #' + it.productId} (${it.quantity}x)</span>
+                            <span>₹${it.totalPrice}</span>
+                        </div>
+                    `).join('');
+
+                    details.innerHTML = `
+                        <div style="margin-bottom: 8px;">${itemRows}</div>
+                        <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 6px; display: flex; justify-content: space-between;">
+                            <span>Subtotal:</span><strong>₹${cart.subtotal || 0}</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>Total GST:</span><strong>₹${cart.totalGst || 0}</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; color: #34d399; font-weight: 700; font-size: 14px; margin-top: 4px;">
+                            <span>Cart Grand Total:</span><span>₹${total}</span>
+                        </div>
+                    `;
+                }
+            } catch (err) {
+                details.innerHTML = 'Failed to load cart: ' + err.message;
+            }
+        }
+
+        async function loadCheckoutPreview() {
+            const details = document.getElementById('previewDetails');
+            const customerId = document.getElementById('customerId').value;
+            const addressSelect = document.getElementById('addressSelect');
+            const addressId = parseInt(addressSelect.value) || 1;
+            const craneUnload = document.getElementById('craneUnloading').checked;
+
+            details.innerHTML = 'Calculating checkout preview with taxes & delivery...';
+            try {
+                const resp = await fetch('/api/checkout/preview', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-User-Id': customerId
+                    },
+                    body: JSON.stringify({
+                        addressId: addressId,
+                        deliverySlot: 'STANDARD',
+                        requiresCraneUnloading: craneUnload
+                    })
+                });
+
+                const json = await resp.json();
+                if (!json.success || !json.data) {
+                    details.innerHTML = '<span style="color: #fca5a5;">' + (json.message || 'Cart empty or address invalid') + '</span>';
+                    return;
+                }
+
+                const prev = json.data;
+                const total = prev.grandTotal || 0;
+                document.getElementById('amount').value = total.toFixed(2);
+                document.getElementById('btnAmount').textContent = '₹' + total.toFixed(2);
+
+                const taxDetail = prev.igst > 0 
+                    ? `IGST: ₹${prev.igst}` 
+                    : `CGST: ₹${prev.cgst} + SGST: ₹${prev.sgst}`;
+
+                details.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; padding: 2px 0;">
+                        <span style="color: #94a3b8;">Items Subtotal:</span><strong>₹${prev.subtotal}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 2px 0;">
+                        <span style="color: #94a3b8;">Delivery / Freight:</span><strong>₹${prev.freightCharge}</strong>
+                    </div>
+                    ${prev.craneUnloadingCharge > 0 ? `
+                    <div style="display: flex; justify-content: space-between; padding: 2px 0;">
+                        <span style="color: #94a3b8;">Crane Unloading:</span><strong>₹${prev.craneUnloadingCharge}</strong>
+                    </div>` : ''}
+                    <div style="display: flex; justify-content: space-between; padding: 2px 0;">
+                        <span style="color: #94a3b8;">Taxes (${taxDetail}):</span><strong>₹${prev.totalGst}</strong>
+                    </div>
+                    <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 6px; margin-top: 4px; display: flex; justify-content: space-between; color: #34d399; font-weight: 700; font-size: 14px;">
+                        <span>Checkout Total:</span><span>₹${total}</span>
+                    </div>
+                `;
+            } catch (err) {
+                details.innerHTML = 'Failed to calculate checkout preview: ' + err.message;
+            }
+        }
+
+        async function loadOrderPreview() {
+            const details = document.getElementById('previewDetails');
+            const orderIdVal = document.getElementById('orderId').value;
+            if (!orderIdVal) {
+                details.innerHTML = 'Enter an Order ID above to inspect.';
+                return;
+            }
+
+            details.innerHTML = 'Fetching order details...';
+            try {
+                const resp = await fetch('/api/orders/' + orderIdVal);
+                const json = await resp.json();
+                if (!json.success || !json.data) {
+                    details.innerHTML = '<span style="color: #fca5a5;">Order not found</span>';
+                    return;
+                }
+
+                const order = json.data;
+                const total = order.totalAmount || 0;
+                document.getElementById('amount').value = total.toFixed(2);
+                document.getElementById('btnAmount').textContent = '₹' + total.toFixed(2);
+
+                details.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; padding: 2px 0;">
+                        <span style="color: #94a3b8;">Order #:</span><strong>${order.orderNumber || order.orderId}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 2px 0;">
+                        <span style="color: #94a3b8;">Status:</span><span style="color: #fbbf24; font-weight: 600;">${order.orderStatus}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 2px 0;">
+                        <span style="color: #94a3b8;">Payment Status:</span><span style="color: #38bdf8;">${order.paymentStatus || 'PENDING'}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 2px 0;">
+                        <span style="color: #94a3b8;">Items:</span><strong>${order.items ? order.items.length : 'N/A'}</strong>
+                    </div>
+                    <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 6px; margin-top: 4px; display: flex; justify-content: space-between; color: #34d399; font-weight: 700; font-size: 14px;">
+                        <span>Order Total Amount:</span><span>₹${total}</span>
+                    </div>
+                `;
+            } catch (err) {
+                details.innerHTML = 'Failed to fetch order: ' + err.message;
+            }
+        }
+
+        // Initialize view on load
+        window.addEventListener('DOMContentLoaded', async () => {
+            await loadAddresses();
+            await toggleOrderField();
+        });
+
+        async function startPayment() {
+            const payBtn = document.getElementById('payBtn');
+            const resultBox = document.getElementById('resultBox');
+            resultBox.style.display = 'none';
+
+            const customerId = parseInt(document.getElementById('customerId').value);
+            const purpose = document.getElementById('purpose').value;
+            const orderIdVal = document.getElementById('orderId').value;
+            const orderId = (purpose === 'ORDER' && orderIdVal) ? parseInt(orderIdVal) : null;
+            const addressSelect = document.getElementById('addressSelect');
+            const addressId = (purpose === 'CHECKOUT' && addressSelect) ? parseInt(addressSelect.value) : null;
+            const craneUnload = document.getElementById('craneUnloading').checked;
+            const amount = parseFloat(document.getElementById('amount').value) || 0;
+
+            payBtn.disabled = true;
+            payBtn.innerHTML = '<span>Creating Razorpay Order...</span>';
+
+            try {
+                // Step 1: Call Backend to Create Razorpay Order (Backend calculates exact price for Order/Cart/Checkout)
+                const payload = {
+                    customerId: customerId,
+                    purpose: purpose
+                };
+                if (orderId) payload.orderId = orderId;
+                if (addressId) {
+                    payload.addressId = addressId;
+                    payload.requiresCraneUnloading = craneUnload;
+                    payload.deliverySlot = 'STANDARD';
+                }
+                if (purpose === 'WALLET_TOPUP') payload.amount = amount;
+
+                const createResp = await fetch('/api/payments/create-order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!createResp.ok) {
+                    const err = await createResp.json();
+                    throw new Error(err.message || 'Failed to create payment order');
+                }
+
+                const jsonResp = await createResp.json();
+                const orderData = jsonResp.data || jsonResp;
+                console.log('Razorpay Order Created:', orderData);
+
+                // Step 2: Open Razorpay Standard Checkout Modal (contains UPI QR code)
+                const options = {
+                    key: orderData.keyId,
+                    amount: orderData.amountInPaise || Math.round(orderData.amount * 100), // in paise (e.g. 100 paise = 1 INR)
+                    currency: orderData.currency || 'INR',
+                    name: 'Hinchmart',
+                    description: purpose === 'WALLET_TOPUP' ? 'Wallet Top-Up' : 'Order Payment',
+                    order_id: orderData.razorpayOrderId,
+                    prefill: {
+                        name: orderData.customerName || 'Primary Customer',
+                        email: orderData.customerEmail || 'buyer@hinchmart.com',
+                        contact: orderData.customerPhone || '9876543210'
+                    },
+                    theme: {
+                        color: '#6366f1'
+                    },
+                    handler: async function (response) {
+                        // Step 3: Payment captured by Razorpay, verify signature on Backend
+                        payBtn.innerHTML = '<span>Verifying Payment...</span>';
+                        try {
+                            const verifyResp = await fetch('/api/payments/verify', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    razorpayOrderId: response.razorpay_order_id,
+                                    razorpayPaymentId: response.razorpay_payment_id,
+                                    razorpaySignature: response.razorpay_signature
+                                })
+                            });
+
+                            const vJson = await verifyResp.json();
+                            const verifyData = vJson.data || vJson;
+                            if (!verifyResp.ok) {
+                                throw new Error(vJson.message || verifyData.message || 'Verification failed');
+                            }
+
+                            // Step 4: Show Success details
+                            resultBox.className = 'result-box success';
+                            resultBox.style.display = 'block';
+                            resultBox.innerHTML = `
+                                <div class="result-header">✅ Payment Successful & Verified!</div>
+                                <div style="background: rgba(99, 102, 241, 0.15); padding: 10px 14px; border-radius: 10px; margin: 10px 0; border: 1px solid rgba(99, 102, 241, 0.3); color: #fff;">
+                                    <div><strong>👤 Customer:</strong> #${verifyData.customerId} - ${verifyData.customerName || 'Primary Customer'}</div>
+                                    <div><strong>📱 Phone / Contact:</strong> ${verifyData.customerPhone || verifyData.contact || 'N/A'}</div>
+                                    <div><strong>✉️ Email:</strong> ${verifyData.email || 'N/A'}</div>
+                                </div>
+                                <div><strong>Payment ID:</strong> ${verifyData.razorpayPaymentId}</div>
+                                <div><strong>Order ID:</strong> ${verifyData.razorpayOrderId}</div>
+                                <div><strong>Status:</strong> <span style="color: #34d399; font-weight: bold;">${verifyData.status}</span></div>
+                                <div><strong>Amount:</strong> ₹${verifyData.amount} (${verifyData.currency})</div>
+                                <div><strong>Method:</strong> ${verifyData.paymentMethod || 'UPI'} ${verifyData.vpa ? '(' + verifyData.vpa + ')' : ''}</div>
+                                <div><strong>Purpose:</strong> ${verifyData.purpose || 'WALLET_TOPUP'}</div>
+                                <pre>${JSON.stringify(verifyData, null, 2)}</pre>
+                            `;
+                        } catch (vErr) {
+                            resultBox.className = 'result-box error';
+                            resultBox.style.display = 'block';
+                            resultBox.innerHTML = `
+                                <div class="result-header">❌ Verification Failed</div>
+                                <div>${vErr.message}</div>
+                            `;
+                        } finally {
+                            payBtn.disabled = false;
+                            payBtn.innerHTML = '<span>Pay with UPI QR / Razorpay</span><span id="btnAmount">₹' + amount.toFixed(2) + '</span>';
+                        }
+                    },
+                    modal: {
+                        ondismiss: function () {
+                            payBtn.disabled = false;
+                            payBtn.innerHTML = '<span>Pay with UPI QR / Razorpay</span><span id="btnAmount">₹' + amount.toFixed(2) + '</span>';
+                        }
+                    }
+                };
+
+                const rzp = new Razorpay(options);
+                rzp.open();
+
+            } catch (err) {
+                console.error(err);
+                resultBox.className = 'result-box error';
+                resultBox.style.display = 'block';
+                resultBox.innerHTML = `
+                    <div class="result-header">❌ Error</div>
+                    <div>${err.message}</div>
+                `;
+                payBtn.disabled = false;
+                payBtn.innerHTML = '<span>Pay with UPI QR / Razorpay</span><span id="btnAmount">₹' + amount.toFixed(2) + '</span>';
+            }
+        }
+    </script>
+</body>
+</html>
