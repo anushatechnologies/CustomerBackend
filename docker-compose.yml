@@ -25,3 +25,8 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       LOCATION_PROVIDER: ${LOCATION_PROVIDER:-google}
       MAPS_API_KEY: ${MAPS_API_KEY:-}
+      RESEND_API_URL: ${RESEND_API_URL:-https://api.resend.com/emails}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@hinchmart.com}
+      RESEND_FROM_NAME: ${RESEND_FROM_NAME:-HinchMart}
+      RESEND_REPLY_TO: ${RESEND_REPLY_TO:-hinchmart@gmail.com}
