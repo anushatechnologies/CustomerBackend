@@ -50,7 +50,7 @@ public class WalletServiceImpl implements WalletService {
         int pageSize = limit > 0 ? limit : 20;
         Pageable pageable = PageRequest.of(pageNumber - 1, pageSize);
 
-        Page<WalletTransaction> pageResult = transactionRepository.findByWallet_UserIdOrderByTimestampDesc(userId, pageable);
+        Page<WalletTransaction> pageResult = transactionRepository.findByWallet_Customer_CustomerIdOrderByTimestampDesc(userId, pageable);
 
         List<WalletTransactionResponse> data = pageResult.getContent().stream()
                 .map(this::mapToTransactionResponse)
