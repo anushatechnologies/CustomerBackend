@@ -16,14 +16,16 @@ WORKDIR /app
 
 # Run as non-root user for security
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-USER appuser
 
-# Copy JAR from build stage
-COPY --from=build /app/target/*.jar app.jar
+# Copy JAR from build stage with correct permissions
+COPY --from=build --chown=appuser:appgroup /app/target/*.jar app.jar
+
+USER appuser
 
 # Configure port 9000
 ENV SERVER_PORT=9000
 EXPOSE 9000
 
-# Execute application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Execute application with container-aware JVM flags
+ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75.0", "-Duser.timezone=UTC", "-jar", "app.jar"]
+

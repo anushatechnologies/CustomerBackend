@@ -9,8 +9,10 @@ import com.example.project.customer.entity.BusinessType;
 import com.example.project.customer.entity.OnboardingStatus;
 import com.example.project.customer.entity.Seller;
 import com.example.project.customer.exception.GlobalExceptionHandler;
+import com.example.project.customer.service.AuthorizationService;
 import com.example.project.customer.service.SellerOnboardingService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +21,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -34,6 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(SellerOnboardingController.class)
 @Import({GlobalExceptionHandler.class, SecurityConfig.class})
+@WithMockUser(username = "seller@test.com", roles = {"SELLER", "ADMIN"})
 @SuppressWarnings("null")
 class SellerOnboardingControllerTest {
 
@@ -45,6 +49,14 @@ class SellerOnboardingControllerTest {
 
     @MockBean
     private SellerOnboardingService onboardingService;
+
+    @MockBean
+    private AuthorizationService authorizationService;
+
+    @BeforeEach
+    void setUp() {
+        when(authorizationService.isCurrentSeller(any())).thenReturn(true);
+    }
 
     @Test
     @DisplayName("POST /api/sellers/onboarding/step1-personal (JSON) - Success")

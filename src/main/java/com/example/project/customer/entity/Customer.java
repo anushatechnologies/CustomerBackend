@@ -30,13 +30,16 @@ public class Customer {
     @Column(name = "customer_id")
     private Integer customerId;
 
+    @Column(name = "firebase_uid", unique = true, length = 128)
+    private String firebaseUid;
+
     @Column(nullable = false)
     private String name;
 
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(nullable = false, unique = true)
+    @Column(name = "phone")
     private String phone;
 
     @Column(name = "password_hash")
@@ -44,7 +47,7 @@ public class Customer {
 
     @Column(nullable = false)
     @Builder.Default
-    private String role = "BUYER";  // BUYER | ADMIN
+    private String role = "CUSTOMER";  // CUSTOMER | SELLER | ADMIN | BUYER
 
     @Column(name = "is_active")
     @Builder.Default
@@ -62,10 +65,17 @@ public class Customer {
             this.createdAt = LocalDateTime.now();
         }
         this.updatedAt = LocalDateTime.now();
+        if (this.role == null || this.role.isBlank()) {
+            this.role = "CUSTOMER";
+        }
     }
 
     @PreUpdate
     void onUpdate() {
         this.updatedAt = LocalDateTime.now();
+    }
+
+    public Role getRoleEnum() {
+        return Role.fromString(this.role);
     }
 }

@@ -1,5 +1,6 @@
 package com.example.project.customer.config;
 
+import com.example.project.customer.security.FirebaseUserPrincipal;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -13,10 +14,29 @@ public class SellerContextUtil {
     public static final Integer DEFAULT_SELLER_ID = 1001;
 
     /**
-     * Resolves the current seller ID from the HTTP request headers, security context,
-     * or fallback default.
+     * Resolves the current seller ID from the SecurityContext (FirebaseUserPrincipal),
+     * HTTP request headers, query parameters, or fallback default.
      */
     public Integer getCurrentSellerId() {
+        // 1. Check SecurityContext for Firebase authenticated principal (Primary source of truth)
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
+            Object principal = auth.getPrincipal();
+            if (principal instanceof FirebaseUserPrincipal fup) {
+                if (fup.getSellerId() != null) {
+                    return fup.getSellerId();
+                }
+            } else if (principal instanceof Number num) {
+                return num.intValue();
+            } else if (principal instanceof String str) {
+                try {
+                    return parseSellerId(str);
+                } catch (Exception ignored) {
+                }
+            }
+        }
+
+        // 2. Check HTTP attributes (for backward compatibility in existing tests)
         ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
         if (attributes != null) {
             HttpServletRequest request = attributes.getRequest();
@@ -32,20 +52,6 @@ public class SellerContextUtil {
             if (paramSellerId != null && !paramSellerId.trim().isEmpty()) {
                 try {
                     return parseSellerId(paramSellerId.trim());
-                } catch (Exception ignored) {
-                }
-            }
-        }
-
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
-            Object principal = auth.getPrincipal();
-            if (principal instanceof Number) {
-                return ((Number) principal).intValue();
-            }
-            if (principal instanceof String) {
-                try {
-                    return parseSellerId((String) principal);
                 } catch (Exception ignored) {
                 }
             }

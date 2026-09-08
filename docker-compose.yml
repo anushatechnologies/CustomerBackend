@@ -11,6 +11,7 @@ services:
       - .env
     environment:
       SERVER_PORT: ${SERVER_PORT:-9000}
+      # Database Configuration
       DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT:-3306}
       DB_NAME: ${DB_NAME}
@@ -19,12 +20,28 @@ services:
       DB_DDL_AUTO: ${DB_DDL_AUTO:-update}
       SHOW_SQL: ${SHOW_SQL:-false}
       FORMAT_SQL: ${FORMAT_SQL:-false}
+      # AWS S3 Storage
       AWS_REGION: ${AWS_REGION:-ap-south-2}
       AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME:-hinchmart-storage-191481838776-ap-south-2-an}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      # Location & Maps Configuration
       LOCATION_PROVIDER: ${LOCATION_PROVIDER:-google}
       MAPS_API_KEY: ${MAPS_API_KEY:-}
+      # Razorpay Payment Gateway
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
       RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      # Resend Email Configuration
+      RESEND_API_URL: ${RESEND_API_URL:-https://api.resend.com/emails}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@hinchmart.com}
+      RESEND_FROM_NAME: ${RESEND_FROM_NAME:-HinchMart}
+      RESEND_REPLY_TO: ${RESEND_REPLY_TO:-hinchmart@gmail.com}
+      # Firebase / JWT Authentication & Authorization Credentials
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
+      FIREBASE_CREDENTIALS_JSON: ${FIREBASE_CREDENTIALS_JSON:-}
+      FIREBASE_CREDENTIALS_BASE64: ${FIREBASE_CREDENTIALS_BASE64:-}
+      FIREBASE_CONFIG_PATH: ${FIREBASE_CONFIG_PATH:-}

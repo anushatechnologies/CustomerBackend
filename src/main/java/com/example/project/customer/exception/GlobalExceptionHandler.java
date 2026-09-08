@@ -5,6 +5,8 @@ import com.example.project.customer.dto.ErrorDetail;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -17,6 +19,30 @@ import java.util.List;
 @RestControllerAdvice
 @SuppressWarnings("null")
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnauthorized(UnauthorizedException exception) {
+        log.warn("Unauthorized access: {}", exception.getMessage());
+        return response(HttpStatus.UNAUTHORIZED, exception.getMessage());
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAuthenticationException(AuthenticationException exception) {
+        log.warn("Authentication failed: {}", exception.getMessage());
+        return response(HttpStatus.UNAUTHORIZED, "Authentication failed: " + exception.getMessage());
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ApiResponse<Void>> handleForbidden(ForbiddenException exception) {
+        log.warn("Forbidden access: {}", exception.getMessage());
+        return response(HttpStatus.FORBIDDEN, exception.getMessage());
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException exception) {
+        log.warn("Access denied: {}", exception.getMessage());
+        return response(HttpStatus.FORBIDDEN, "Access denied: You do not have permission to access this resource.");
+    }
 
     @ExceptionHandler(CustomerNotFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleNotFound(CustomerNotFoundException exception) {

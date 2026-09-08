@@ -99,14 +99,12 @@ public class DataInitializer implements CommandLineRunner {
     private void initCustomers() {
         if (customerRepository.count() == 0) {
             Customer customer1 = Customer.builder()
-                    .customerId(101)
                     .name("Rajesh Sharma")
                     .email("rajesh@apexbldrs.com")
                     .phone("9876543210")
                     .role("BUYER")
                     .build();
             Customer customer2 = Customer.builder()
-                    .customerId(102)
                     .name("Ananya Reddy")
                     .email("ananya@infrahyderabad.in")
                     .phone("9849012345")
@@ -118,7 +116,14 @@ public class DataInitializer implements CommandLineRunner {
 
     private void initAddresses() {
         if (addressRepository.count() == 0) {
-            Customer primaryCustomer = customerRepository.findById(101).orElse(null);
+            Customer primaryCustomer = customerRepository.findAll().stream().findFirst().orElseGet(() ->
+                    customerRepository.save(Customer.builder()
+                            .name("Rajesh Sharma")
+                            .email("rajesh@apexbldrs.com")
+                            .phone("9876543210")
+                            .role("BUYER")
+                            .build())
+            );
 
             Address site1 = Address.builder()
                     .customer(primaryCustomer)
@@ -528,14 +533,13 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private void initSampleReviewsAndOrders(Product p1, Product p2, Product p3, Product p4) {
-        Customer c1 = customerRepository.findById(101).orElse(null);
-        Customer c2 = customerRepository.findById(102).orElse(null);
+        Customer c1 = customerRepository.findAll().stream().findFirst().orElse(null);
         if (c1 == null) return;
 
         // Create a delivered order for verified purchase
         Order deliveredOrder = Order.builder()
                 .orderNumber("ORD-20260815-101")
-                .customer(Customer.builder().customerId(c1.getCustomerId()).build())
+                .customer(c1)
                 .deliveryLocation("Plot 42, Financial District, Hyderabad")
                 .subtotal(BigDecimal.valueOf(542000.0))
                 .discount(BigDecimal.ZERO)
@@ -639,9 +643,12 @@ public class DataInitializer implements CommandLineRunner {
 
     private void initSampleRfq() {
         if (rfqRepository.count() == 0) {
+            Customer primaryCustomer = customerRepository.findAll().stream().findFirst().orElse(null);
+            if (primaryCustomer == null) return;
+
             Rfq rfq = Rfq.builder()
                     .rfqNumber("RFQ-2026-000601")
-                    .customer(Customer.builder().customerId(101).build())
+                    .customer(primaryCustomer)
                     .title("Bulk Procurement for G+14 Commercial Tower Project")
                     .category("Civil & Structural")
                     .productMaterial("TMT Rebars Fe 550D")
@@ -693,6 +700,10 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private void initExtendedModules() {
+        Customer primaryCustomer = customerRepository.findAll().stream().findFirst().orElse(null);
+        if (primaryCustomer == null) return;
+        Integer primaryCustomerId = primaryCustomer.getCustomerId();
+
         // 1. Reward Vouchers & Wallet
         if (rewardVoucherRepository.count() == 0) {
             rewardVoucherRepository.saveAll(List.of(
@@ -735,9 +746,9 @@ public class DataInitializer implements CommandLineRunner {
             ));
         }
 
-        if (walletRepository.findByCustomer_CustomerId(101).isEmpty()) {
+        if (walletRepository.findByCustomer_CustomerId(primaryCustomerId).isEmpty()) {
             com.example.project.customer.entity.Wallet wallet = com.example.project.customer.entity.Wallet.builder()
-                    .customer(Customer.builder().customerId(101).build())
+                    .customer(primaryCustomer)
                     .balance(new BigDecimal("75000.00"))
                     .currency("INR")
                     .loyaltyPoints(1850)
@@ -828,7 +839,7 @@ public class DataInitializer implements CommandLineRunner {
         if (purchaseOrderRepository.count() == 0) {
             com.example.project.customer.entity.PurchaseOrder po1 = com.example.project.customer.entity.PurchaseOrder.builder()
                     .poNumber("PO-20260818-001")
-                    .customer(Customer.builder().customerId(101).build())
+                    .customer(primaryCustomer)
                     .sellerId(1001)
                     .totalAmount(new BigDecimal("330400.00"))
                     .status("APPROVED")
@@ -858,7 +869,7 @@ public class DataInitializer implements CommandLineRunner {
         // 4. Chat Conversation
         if (conversationRepository.count() == 0) {
             com.example.project.customer.entity.Conversation conv = com.example.project.customer.entity.Conversation.builder()
-                    .buyerId(101)
+                    .buyerId(primaryCustomerId)
                     .sellerId(1001)
                     .topic("PRODUCT")
                     .referenceId("PROD-1")
@@ -873,7 +884,7 @@ public class DataInitializer implements CommandLineRunner {
             chatMessageRepository.saveAll(List.of(
                     com.example.project.customer.entity.ChatMessage.builder()
                             .conversation(savedConv)
-                            .senderId(101)
+                            .senderId(primaryCustomerId)
                             .senderRole("BUYER")
                             .content("Hello, we are planning a 20 MT order for Tata Tiscon Fe550D 16mm. Can you confirm the dispatch timeline to Gachibowli?")
                             .messageType("TEXT")
@@ -963,7 +974,7 @@ public class DataInitializer implements CommandLineRunner {
         if (supportTicketRepository.count() == 0) {
             com.example.project.customer.entity.SupportTicket tkt = com.example.project.customer.entity.SupportTicket.builder()
                     .ticketNumber("TKT-20260825-001")
-                    .customer(Customer.builder().customerId(101).build())
+                    .customer(primaryCustomer)
                     .subject("Crane Unloading Request & Slot Confirmation for Site Delivery")
                     .category("DELIVERY")
                     .priority("HIGH")
@@ -975,7 +986,7 @@ public class DataInitializer implements CommandLineRunner {
             ticketMessageRepository.saveAll(List.of(
                     com.example.project.customer.entity.TicketMessage.builder()
                             .ticket(savedTkt)
-                            .senderId(101)
+                            .senderId(primaryCustomerId)
                             .senderRole("USER")
                             .senderName("Customer")
                             .content("Hello, our site gate requires an articulated 25-Ton hydraulic crane for unloading the 16mm rebar trailer. Please confirm the operator arrival time.")
