@@ -28,6 +28,10 @@ services:
       # Location & Maps Configuration
       LOCATION_PROVIDER: ${LOCATION_PROVIDER:-google}
       MAPS_API_KEY: ${MAPS_API_KEY:-}
+      # Razorpay Payment Gateway
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
       # Resend Email Configuration
       RESEND_API_URL: ${RESEND_API_URL:-https://api.resend.com/emails}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
