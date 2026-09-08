@@ -61,7 +61,25 @@ public class Address {
     @Column(nullable = false)
     private String pincode;
 
+    @Column(name = "house_flat_no")
+    private String houseFlatNo;
+
+    @Column(name = "area_locality")
+    private String areaLocality;
+
     private String landmark;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private String country = "India";
+
+    private Double latitude;
+
+    private Double longitude;
+
+    @Column(name = "address_type")
+    @Builder.Default
+    private String addressType = "OTHER";
 
     // Using Boolean (wrapper) so Lombok generates getIsDefault()/setIsDefault()
     // instead of the confusing isDefault()/setDefault() from primitive boolean
@@ -78,10 +96,19 @@ public class Address {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    @PrePersist
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+    @jakarta.persistence.PrePersist
     void onCreate() {
         if (this.createdAt == null) {
             this.createdAt = LocalDateTime.now();
         }
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    @jakarta.persistence.PreUpdate
+    void onUpdate() {
+        this.updatedAt = LocalDateTime.now();
     }
 }

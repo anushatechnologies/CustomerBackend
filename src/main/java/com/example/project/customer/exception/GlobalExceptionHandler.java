@@ -129,6 +129,12 @@ public class GlobalExceptionHandler {
         return response(HttpStatus.INTERNAL_SERVER_ERROR, "Image storage error: " + exception.getMessage());
     }
 
+    @ExceptionHandler(GeocodingException.class)
+    public ResponseEntity<ApiResponse<Void>> handleGeocoding(GeocodingException exception) {
+        log.warn("Geocoding service unavailable or failed: {}", exception.getMessage());
+        return response(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
+    }
+
     @ExceptionHandler({
             org.springframework.web.multipart.support.MissingServletRequestPartException.class,
             org.springframework.web.bind.MissingServletRequestParameterException.class

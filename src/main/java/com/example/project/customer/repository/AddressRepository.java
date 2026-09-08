@@ -17,6 +17,8 @@ public interface AddressRepository extends JpaRepository<Address, Integer> {
 
     Optional<Address> findByCustomer_CustomerIdAndId(Integer userId, Integer id);
 
+    Optional<Address> findFirstByCustomer_CustomerIdOrderByCreatedAtDesc(Integer userId);
+
     // --- Legacy (kept for backward compat, prefer user-scoped) ---
     List<Address> findAllByOrderByIsDefaultDescCreatedAtDesc();
 

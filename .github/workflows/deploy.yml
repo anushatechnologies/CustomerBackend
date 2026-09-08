@@ -72,6 +72,12 @@ jobs:
           AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME || 'hinchmart-storage-191481838776-ap-south-2-an' }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          LOCATION_PROVIDER: ${{ secrets.LOCATION_PROVIDER || 'google' }}
+          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL || 'noreply@hinchmart.com' }}
+          RESEND_FROM_NAME: ${{ secrets.RESEND_FROM_NAME || 'HinchMart' }}
+          RESEND_REPLY_TO: ${{ secrets.RESEND_REPLY_TO || 'hinchmart@gmail.com' }}
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
           FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
           FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
@@ -82,7 +88,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: AWS_REGION,ECR_REGISTRY,DB_HOST,DB_PORT,DB_NAME,DB_USERNAME,DB_PASSWORD,DB_DDL_AUTO,AWS_S3_BUCKET_NAME,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,FIREBASE_PROJECT_ID,FIREBASE_CLIENT_EMAIL,FIREBASE_PRIVATE_KEY,FIREBASE_CREDENTIALS_JSON,FIREBASE_CREDENTIALS_BASE64,FIREBASE_CONFIG_PATH
+          envs: AWS_REGION,ECR_REGISTRY,DB_HOST,DB_PORT,DB_NAME,DB_USERNAME,DB_PASSWORD,DB_DDL_AUTO,AWS_S3_BUCKET_NAME,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,LOCATION_PROVIDER,MAPS_API_KEY,RESEND_API_KEY,RESEND_FROM_EMAIL,RESEND_FROM_NAME,RESEND_REPLY_TO,FIREBASE_PROJECT_ID,FIREBASE_CLIENT_EMAIL,FIREBASE_PRIVATE_KEY,FIREBASE_CREDENTIALS_JSON,FIREBASE_CREDENTIALS_BASE64,FIREBASE_CONFIG_PATH
           script: |
             set -e
             mkdir -p ~/customer-backend
@@ -111,6 +117,12 @@ jobs:
             AWS_S3_BUCKET_NAME=$AWS_S3_BUCKET_NAME
             AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
             AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
+            LOCATION_PROVIDER=$LOCATION_PROVIDER
+            MAPS_API_KEY=$MAPS_API_KEY
+            RESEND_API_KEY=$RESEND_API_KEY
+            RESEND_FROM_EMAIL=$RESEND_FROM_EMAIL
+            RESEND_FROM_NAME=$RESEND_FROM_NAME
+            RESEND_REPLY_TO=$RESEND_REPLY_TO
             FIREBASE_PROJECT_ID=$FIREBASE_PROJECT_ID
             FIREBASE_CLIENT_EMAIL=$FIREBASE_CLIENT_EMAIL
             FIREBASE_PRIVATE_KEY=$FIREBASE_PRIVATE_KEY
@@ -124,7 +136,6 @@ jobs:
 
             # Authenticate with Amazon ECR
             aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
-
 
             # Pull latest image and recreate container
             docker compose pull

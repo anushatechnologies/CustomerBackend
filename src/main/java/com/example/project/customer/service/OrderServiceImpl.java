@@ -63,7 +63,7 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalStateException("Cannot place order with an empty cart");
         }
 
-        Address address = addressRepository.findById(request.getAddressId())
+        Address address = addressRepository.findByCustomer_CustomerIdAndId(uid, request.getAddressId())
                 .orElseThrow(() -> new ResourceNotFoundException("Address not found with id: " + request.getAddressId()));
 
         CheckoutPreviewRequest previewReq = CheckoutPreviewRequest.builder()
@@ -78,8 +78,29 @@ public class OrderServiceImpl implements OrderService {
         long randomSuffix = (long) (Math.random() * 900) + 100;
         String orderNumber = "ORD-" + dateStr + "-" + randomSuffix;
 
-        String formattedAddress = address.getSiteName() + ", " + address.getAddressLine1() + ", "
-                + address.getCity() + ", " + address.getState() + " - " + address.getPincode();
+        StringBuilder sb = new StringBuilder();
+        if (address.getSiteName() != null && !address.getSiteName().isBlank()) {
+            sb.append(address.getSiteName()).append(", ");
+        }
+        if (address.getHouseFlatNo() != null && !address.getHouseFlatNo().isBlank()) {
+            sb.append(address.getHouseFlatNo()).append(", ");
+        }
+        sb.append(address.getAddressLine1());
+        if (address.getAddressLine2() != null && !address.getAddressLine2().isBlank()) {
+            sb.append(", ").append(address.getAddressLine2());
+        }
+        if (address.getAreaLocality() != null && !address.getAreaLocality().isBlank()) {
+            sb.append(", ").append(address.getAreaLocality());
+        }
+        sb.append(", ").append(address.getCity()).append(", ").append(address.getState()).append(" - ").append(address.getPincode());
+        if (address.getRecipientName() != null && !address.getRecipientName().isBlank()) {
+            sb.append(" (Contact: ").append(address.getRecipientName());
+            if (address.getPhone() != null && !address.getPhone().isBlank()) {
+                sb.append(" / ").append(address.getPhone());
+            }
+            sb.append(")");
+        }
+        String formattedAddress = sb.toString();
 
         Order order = Order.builder()
                 .orderNumber(orderNumber)

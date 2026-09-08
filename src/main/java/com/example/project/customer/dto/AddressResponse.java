@@ -24,10 +24,17 @@ public class AddressResponse {
     private String phone;
     private String addressLine1;
     private String addressLine2;
+    private String houseFlatNo;
+    private String areaLocality;
     private String city;
     private String state;
+    private String country;
     private String pincode;
     private String landmark;
+
+    private Double latitude;
+    private Double longitude;
+    private String addressType;
 
     @JsonProperty("isDefault")
     private boolean isDefault;
@@ -36,4 +43,5 @@ public class AddressResponse {
     private boolean hasHeavyVehicleAccess;
 
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

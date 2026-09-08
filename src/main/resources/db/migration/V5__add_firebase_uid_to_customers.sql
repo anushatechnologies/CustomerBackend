@@ -1,5 +1,5 @@
 -- ========================================================
--- Flyway Database Migration: V4__add_firebase_uid_to_customers.sql
+-- Flyway Database Migration: V5__add_firebase_uid_to_customers.sql
 -- Add firebase_uid to customers table for Firebase Authentication
 -- ========================================================
 
