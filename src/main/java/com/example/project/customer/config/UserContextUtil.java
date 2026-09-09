@@ -1,24 +1,30 @@
 package com.example.project.customer.config;
 
+import com.example.project.customer.exception.UnauthorizedException;
 import com.example.project.customer.security.FirebaseUserPrincipal;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 
 @Component
 public class UserContextUtil {
 
-    public static final Integer DEFAULT_USER_ID = 101;
-
     /**
-     * Resolves the current internal user ID from the SecurityContext (FirebaseUserPrincipal),
-     * HTTP request headers, query parameters, or fallback default.
+     * Resolves the current internal user ID strictly from the authenticated SecurityContext (FirebaseUserPrincipal).
+     * Header-based or request-parameter fallbacks are completely eliminated for security.
      */
     public Integer getCurrentUserId() {
-        // 1. Check SecurityContext for Firebase authenticated principal (Primary source of truth)
+        Integer userId = getOptionalCurrentUserId();
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: No valid authenticated principal in SecurityContext.");
+        }
+        return userId;
+    }
+
+    /**
+     * Returns the current internal user ID if authenticated, or null if unauthenticated.
+     */
+    public Integer getOptionalCurrentUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
             Object principal = auth.getPrincipal();
@@ -35,29 +41,7 @@ public class UserContextUtil {
                 }
             }
         }
-
-        // 2. Check HTTP attributes (for backward compatibility in existing integration tests)
-        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-        if (attributes != null) {
-            HttpServletRequest request = attributes.getRequest();
-            String headerUserId = request.getHeader("X-User-Id");
-            if (headerUserId != null && !headerUserId.trim().isEmpty()) {
-                try {
-                    return parseUserId(headerUserId.trim());
-                } catch (Exception ignored) {
-                }
-            }
-
-            String paramUserId = request.getParameter("userId");
-            if (paramUserId != null && !paramUserId.trim().isEmpty()) {
-                try {
-                    return parseUserId(paramUserId.trim());
-                } catch (Exception ignored) {
-                }
-            }
-        }
-
-        return DEFAULT_USER_ID;
+        return null;
     }
 
     private Integer parseUserId(String value) {

@@ -271,6 +271,19 @@ public class S3ImageServiceImpl implements S3ImageService {
         return cleaned.isEmpty() ? ImageFolder.OTHER.getFolderName() : cleaned;
     }
 
+    @Override
+    public String getStoreScopedFolderName(Integer storeId, String subFolder) {
+        String cleanSub = (subFolder != null && !subFolder.isBlank()) ? subFolder.trim().replaceAll("^/+|/+$", "") : "general";
+        int validStoreId = (storeId != null && storeId > 0) ? storeId : 1;
+        return "stores/store_" + validStoreId + "/" + cleanSub;
+    }
+
+    @Override
+    public String getPlatformScopedFolderName(String subFolder) {
+        String cleanSub = (subFolder != null && !subFolder.isBlank()) ? subFolder.trim().replaceAll("^/+|/+$", "") : "general";
+        return "platform/" + cleanSub;
+    }
+
     private String buildImageUrl(String s3Key) {
         return String.format("https://%s.s3.%s.amazonaws.com/%s", bucketName, region, s3Key);
     }

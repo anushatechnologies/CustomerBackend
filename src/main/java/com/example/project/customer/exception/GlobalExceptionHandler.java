@@ -62,6 +62,29 @@ public class GlobalExceptionHandler {
         return response(HttpStatus.NOT_FOUND, exception.getMessage());
     }
 
+    @ExceptionHandler(StoreMismatchException.class)
+    public ResponseEntity<java.util.Map<String, Object>> handleStoreMismatch(StoreMismatchException exception) {
+        log.warn("Store mismatch conflict: {}", exception.getMessage());
+        java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("status", HttpStatus.CONFLICT.value());
+        body.put("error", "STORE_MISMATCH");
+        body.put("message", exception.getMessage());
+
+        java.util.Map<String, Object> currentStore = new java.util.LinkedHashMap<>();
+        currentStore.put("id", exception.getCurrentStoreId());
+        currentStore.put("name", exception.getCurrentStoreName());
+        currentStore.put("slug", exception.getCurrentStoreSlug());
+        body.put("currentStore", currentStore);
+
+        java.util.Map<String, Object> newStore = new java.util.LinkedHashMap<>();
+        newStore.put("id", exception.getNewStoreId());
+        newStore.put("name", exception.getNewStoreName());
+        newStore.put("slug", exception.getNewStoreSlug());
+        body.put("newStore", newStore);
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
     @ExceptionHandler(CustomerConflictException.class)
     public ResponseEntity<ApiResponse<Void>> handleConflict(CustomerConflictException exception) {
         log.warn("Customer conflict: {}", exception.getMessage());

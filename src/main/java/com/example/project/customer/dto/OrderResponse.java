@@ -18,6 +18,12 @@ import java.util.List;
 public class OrderResponse {
     private Integer orderId;
     private String orderNumber;
+    private Integer storeId;
+    private String storeName;
+    private String storeSlug;
+    private String storeInvoiceNumber;
+    private BigDecimal commissionRate;
+    private BigDecimal commissionAmount;
     private BigDecimal totalAmount;
     private BigDecimal subtotal;
     private BigDecimal discount;

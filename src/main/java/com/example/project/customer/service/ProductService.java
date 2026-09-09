@@ -73,4 +73,6 @@ public interface ProductService {
 
     // Search
     SearchSuggestionResponse getSearchSuggestions(String query);
+
+    ProductResponse mapToResponse(com.example.project.customer.entity.Product product);
 }

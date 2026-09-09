@@ -11,12 +11,15 @@ import com.example.project.customer.entity.OnboardingStatus;
 import com.example.project.customer.entity.Role;
 import com.example.project.customer.entity.Seller;
 import com.example.project.customer.entity.SellerDocument;
+import com.example.project.customer.entity.Store;
+import com.example.project.customer.entity.StoreStatus;
 import com.example.project.customer.entity.VerificationStatus;
 import com.example.project.customer.exception.ResourceConflictException;
 import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.repository.CustomerRepository;
 import com.example.project.customer.repository.SellerDocumentRepository;
 import com.example.project.customer.repository.SellerRepository;
+import com.example.project.customer.repository.StoreRepository;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Validator;
@@ -39,6 +42,7 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
     private final SellerRepository sellerRepository;
     private final SellerDocumentRepository documentRepository;
     private final CustomerRepository customerRepository;
+    private final StoreRepository storeRepository;
     private final S3ImageService s3ImageService;
     private final FirebaseAuthService firebaseAuthService;
     private final Validator validator;
@@ -48,6 +52,7 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
             SellerRepository sellerRepository,
             SellerDocumentRepository documentRepository,
             CustomerRepository customerRepository,
+            @Autowired(required = false) StoreRepository storeRepository,
             @Autowired(required = false) S3ImageService s3ImageService,
             @Autowired(required = false) FirebaseAuthService firebaseAuthService,
             Validator validator
@@ -55,6 +60,7 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
         this.sellerRepository = sellerRepository;
         this.documentRepository = documentRepository;
         this.customerRepository = customerRepository;
+        this.storeRepository = storeRepository;
         this.s3ImageService = s3ImageService;
         this.firebaseAuthService = firebaseAuthService;
         this.validator = validator;
@@ -66,7 +72,7 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
             S3ImageService s3ImageService,
             Validator validator
     ) {
-        this(sellerRepository, documentRepository, null, s3ImageService, null, validator);
+        this(sellerRepository, documentRepository, null, null, s3ImageService, null, validator);
     }
 
     @Override
@@ -495,6 +501,7 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
             }
             // Upgrade role to SELLER in MySQL database & Firebase Custom Claims
             upgradeUserToSellerRole(seller.getEmail());
+            autoCreateStoreForSeller(seller);
         } else {
             seller.setOnboardingStatus(OnboardingStatus.REJECTED);
             seller.setVerificationStatus(VerificationStatus.REJECTED);
@@ -530,6 +537,7 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
             seller.setVerificationStatus(VerificationStatus.VERIFIED);
             seller.setOnboardingStatus(OnboardingStatus.VERIFIED);
             upgradeUserToSellerRole(seller.getEmail());
+            autoCreateStoreForSeller(seller);
         } else {
             seller.setVerificationStatus(VerificationStatus.PENDING);
         }
@@ -623,5 +631,49 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
         }
 
         return fileUrl;
+    }
+
+    private void autoCreateStoreForSeller(Seller seller) {
+        if (seller == null || seller.getSellerId() == null || storeRepository == null) return;
+        if (storeRepository.findBySeller_SellerId(seller.getSellerId()).isPresent()) {
+            return;
+        }
+
+        String storeName = seller.getCompanyName() != null && !seller.getCompanyName().isBlank()
+                ? seller.getCompanyName().trim()
+                : seller.getName().trim();
+
+        String baseSlug = slugify(storeName);
+        String uniqueSlug = baseSlug;
+        int counter = 1;
+        while (storeRepository.existsBySlugIgnoreCase(uniqueSlug)) {
+            uniqueSlug = baseSlug + "-" + counter++;
+        }
+
+        Store store = Store.builder()
+                .seller(seller)
+                .name(storeName)
+                .slug(uniqueSlug)
+                .status(StoreStatus.ACTIVE)
+                .commissionRate(java.math.BigDecimal.valueOf(5.00))
+                .description("Official Store of " + storeName)
+                .rating(4.8)
+                .reviewCount(0)
+                .serviceRadiusKm(50)
+                .minOrderValue(java.math.BigDecimal.ZERO)
+                .build();
+
+        storeRepository.save(store);
+        log.info("Auto-created active marketplace Store #{} ('{}', slug: '{}') for approved Seller #{}",
+                store.getStoreId(), store.getName(), store.getSlug(), seller.getSellerId());
+    }
+
+    private String slugify(String input) {
+        if (input == null) return "store";
+        String nonLatin = "[^\\w\\s-]";
+        String whitespace = "[\\s+]";
+        String normalized = java.text.Normalizer.normalize(input, java.text.Normalizer.Form.NFD);
+        String slug = normalized.replaceAll(nonLatin, "").replaceAll(whitespace, "-").toLowerCase();
+        return slug.replaceAll("-+", "-").replaceAll("^-|-$", "");
     }
 }

@@ -132,6 +132,10 @@ private List<BulkPricingTier> bulkPricingTiers = new ArrayList<>();
     @JoinColumn(name = "seller_id", referencedColumnName = "seller_id")
     private Seller seller;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "store_id", referencedColumnName = "store_id")
+    private Store store;
+
     @Column(name = "selling_price", precision = 12, scale = 2)
     private BigDecimal sellingPrice;
 

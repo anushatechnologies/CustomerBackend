@@ -49,6 +49,12 @@ class ProductServiceTest {
     private SubcategoryRepository subcategoryRepository;
 
     @Mock
+    private com.example.project.customer.repository.CategoryRepository categoryRepository;
+
+    @Mock
+    private com.example.project.customer.repository.StoreRepository storeRepository;
+
+    @Mock
     private S3ImageService s3ImageService;
 
     @InjectMocks

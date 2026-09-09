@@ -37,7 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(SellerProductController.class)
-@Import({GlobalExceptionHandler.class, SecurityConfig.class, SellerContextUtil.class})
+@Import({GlobalExceptionHandler.class, SecurityConfig.class})
 class SellerProductControllerTest {
 
     @Autowired
@@ -48,6 +48,14 @@ class SellerProductControllerTest {
 
     @MockBean
     private SellerProductService sellerProductService;
+
+    @MockBean
+    private SellerContextUtil sellerContextUtil;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        when(sellerContextUtil.getCurrentSellerId()).thenReturn(1001);
+    }
 
     @Test
     @DisplayName("GET /api/seller/products - Should return paginated seller products")

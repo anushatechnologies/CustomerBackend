@@ -47,6 +47,21 @@ public class Order {
     @JoinColumn(name = "customer_id", referencedColumnName = "customer_id")
     private Customer customer;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "store_id", referencedColumnName = "store_id")
+    private Store store;
+
+    @Column(name = "store_invoice_number", length = 100)
+    private String storeInvoiceNumber;
+
+    @Column(name = "commission_rate", precision = 5, scale = 2)
+    @Builder.Default
+    private BigDecimal commissionRate = BigDecimal.valueOf(5.00);
+
+    @Column(name = "commission_amount", precision = 14, scale = 2)
+    @Builder.Default
+    private BigDecimal commissionAmount = BigDecimal.ZERO;
+
     @Column(name = "address_id")
     private Integer addressId;
 

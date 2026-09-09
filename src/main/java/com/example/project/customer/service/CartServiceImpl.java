@@ -4,15 +4,20 @@ import com.example.project.customer.dto.CartItemRequest;
 import com.example.project.customer.dto.CartItemResponse;
 import com.example.project.customer.dto.CartResponse;
 import com.example.project.customer.dto.CouponResponse;
+import com.example.project.customer.dto.SwitchStoreRequest;
 import com.example.project.customer.entity.BulkPricingTier;
 import com.example.project.customer.entity.Cart;
 import com.example.project.customer.entity.CartItem;
 import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.Product;
+import com.example.project.customer.entity.Store;
+import com.example.project.customer.entity.StoreStatus;
 import com.example.project.customer.exception.ResourceNotFoundException;
+import com.example.project.customer.exception.StoreMismatchException;
 import com.example.project.customer.repository.CartItemRepository;
 import com.example.project.customer.repository.CartRepository;
 import com.example.project.customer.repository.ProductRepository;
+import com.example.project.customer.repository.StoreRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,41 +39,125 @@ public class CartServiceImpl implements CartService {
     private final CartRepository cartRepository;
     private final CartItemRepository cartItemRepository;
     private final ProductRepository productRepository;
+    private final StoreRepository storeRepository;
 
     @Override
     @Transactional(readOnly = true)
     public CartResponse getCart(Integer userId) {
-        Cart cart = getOrCreateCart(userId);
+        Cart cart = getOrCreateActiveCart(userId);
         return calculateCartResponse(cart);
     }
 
     @Override
     public CartResponse addItem(Integer userId, CartItemRequest request) {
-        Cart cart = getOrCreateCart(userId);
+        int uid = userId != null ? userId : 101;
         Product product = productRepository.findById(request.getProductId())
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + request.getProductId()));
 
-        Optional<CartItem> existingItem = cartItemRepository.findByCart_CartIdAndProduct_ProductId(cart.getCartId(), product.getProductId());
+        Store productStore = resolveProductStore(product);
+        if (productStore.getStatus() != StoreStatus.ACTIVE) {
+            throw new IllegalStateException("Store '" + productStore.getName() + "' is currently not accepting new orders (status: " + productStore.getStatus() + ").");
+        }
 
+        Optional<Cart> activeCartOpt = cartRepository.findByCustomer_CustomerIdAndIsActiveTrue(uid);
+        Cart activeCart;
+
+        if (activeCartOpt.isPresent()) {
+            activeCart = activeCartOpt.get();
+            List<CartItem> currentItems = cartItemRepository.findByCart_CartId(activeCart.getCartId());
+
+            if (currentItems.isEmpty()) {
+                // Empty cart adopted by the new item's store
+                activeCart.setStore(productStore);
+                cartRepository.save(activeCart);
+            } else if (!activeCart.getStore().getStoreId().equals(productStore.getStoreId())) {
+                // Different store -> Return 409 Store Mismatch Conflict
+                log.warn("Customer #{} attempted adding item from Store #{} ('{}') to active cart locked to Store #{} ('{}')",
+                        uid, productStore.getStoreId(), productStore.getName(),
+                        activeCart.getStore().getStoreId(), activeCart.getStore().getName());
+                throw new StoreMismatchException(activeCart.getStore(), productStore);
+            }
+        } else {
+            // Activate or create cart for this product's store
+            activeCart = getOrCreateCartForStore(uid, productStore);
+        }
+
+        Optional<CartItem> existingItem = cartItemRepository.findByCart_CartIdAndProduct_ProductId(activeCart.getCartId(), product.getProductId());
         if (existingItem.isPresent()) {
             CartItem item = existingItem.get();
             item.setQuantity(request.getQuantity());
             cartItemRepository.save(item);
         } else {
             CartItem newItem = CartItem.builder()
-                    .cart(cart)
+                    .cart(activeCart)
                     .product(product)
                     .quantity(request.getQuantity())
                     .build();
             cartItemRepository.save(newItem);
         }
 
-        return calculateCartResponse(cart);
+        return calculateCartResponse(activeCart);
+    }
+
+    @Override
+    public CartResponse switchStore(Integer userId, SwitchStoreRequest request) {
+        int uid = userId != null ? userId : 101;
+        Store targetStore;
+
+        if (request.getStoreId() != null) {
+            targetStore = storeRepository.findById(request.getStoreId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Target store not found with id: " + request.getStoreId()));
+        } else if (request.getStoreSlug() != null && !request.getStoreSlug().isBlank()) {
+            targetStore = storeRepository.findBySlugIgnoreCase(request.getStoreSlug().trim())
+                    .orElseThrow(() -> new ResourceNotFoundException("Target store not found with slug: " + request.getStoreSlug()));
+        } else {
+            throw new IllegalArgumentException("Either storeId or storeSlug must be provided to switch active store.");
+        }
+
+        if (targetStore.getStatus() != StoreStatus.ACTIVE) {
+            throw new IllegalStateException("Cannot switch to store '" + targetStore.getName() + "': Store is currently " + targetStore.getStatus());
+        }
+
+        // Deactivate all current active carts for this customer
+        List<Cart> customerCarts = cartRepository.findByCustomer_CustomerId(uid);
+        for (Cart c : customerCarts) {
+            if (Boolean.TRUE.equals(c.getIsActive())) {
+                c.setIsActive(false);
+                cartRepository.save(c);
+            }
+        }
+
+        // Activate or create cart for target store
+        Cart newActiveCart = getOrCreateCartForStore(uid, targetStore);
+
+        // Optionally add the pending item that prompted the switch
+        if (request.getPendingProductId() != null) {
+            Product pendingProduct = productRepository.findById(request.getPendingProductId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Pending product not found with id: " + request.getPendingProductId()));
+
+            int qty = (request.getPendingQuantity() != null && request.getPendingQuantity() > 0) ? request.getPendingQuantity() : 1;
+            Optional<CartItem> existing = cartItemRepository.findByCart_CartIdAndProduct_ProductId(newActiveCart.getCartId(), pendingProduct.getProductId());
+            if (existing.isPresent()) {
+                CartItem item = existing.get();
+                item.setQuantity(qty);
+                cartItemRepository.save(item);
+            } else {
+                CartItem newItem = CartItem.builder()
+                        .cart(newActiveCart)
+                        .product(pendingProduct)
+                        .quantity(qty)
+                        .build();
+                cartItemRepository.save(newItem);
+            }
+        }
+
+        log.info("Customer #{} switched active cart to Store #{} ('{}')", uid, targetStore.getStoreId(), targetStore.getName());
+        return calculateCartResponse(newActiveCart);
     }
 
     @Override
     public CartResponse removeItem(Integer userId, Integer productId) {
-        Cart cart = getOrCreateCart(userId);
+        Cart cart = getOrCreateActiveCart(userId);
         cartItemRepository.findByCart_CartIdAndProduct_ProductId(cart.getCartId(), productId)
                 .ifPresent(cartItemRepository::delete);
         return calculateCartResponse(cart);
@@ -76,19 +165,14 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public void clearCart(Integer userId) {
-        Cart cart = getOrCreateCart(userId);
-
-        // The cart and its items are managed in this transaction. Removing the
-        // children from the association lets orphanRemoval delete them safely;
-        // deleting them through the repository first leaves stale deleted items
-        // in the Cart entity and causes ObjectDeletedException on merge.
+        Cart cart = getOrCreateActiveCart(userId);
         cart.getItems().clear();
         cart.setAppliedCoupon(null);
     }
 
     @Override
     public CouponResponse applyCoupon(Integer userId, String couponCode) {
-        Cart cart = getOrCreateCart(userId);
+        Cart cart = getOrCreateActiveCart(userId);
         String code = couponCode != null ? couponCode.trim().toUpperCase() : "";
 
         BigDecimal discount;
@@ -116,16 +200,46 @@ public class CartServiceImpl implements CartService {
                 .build();
     }
 
-    public Cart getOrCreateCart(Integer userId) {
+    public Cart getOrCreateActiveCart(Integer userId) {
         int uid = userId != null ? userId : 101;
-        return cartRepository.findByCustomer_CustomerId(uid)
+        return cartRepository.findByCustomer_CustomerIdAndIsActiveTrue(uid)
                 .orElseGet(() -> {
-                    Cart newCart = Cart.builder()
-                            .customer(Customer.builder().customerId(uid).build())
-                            .deliveryCharge(BigDecimal.valueOf(4500.0))
-                            .build();
-                    return cartRepository.save(newCart);
+                    Store defaultStore = getDefaultStore();
+                    return getOrCreateCartForStore(uid, defaultStore);
                 });
+    }
+
+    private Cart getOrCreateCartForStore(Integer customerId, Store store) {
+        // First deactivate any currently active cart
+        cartRepository.findByCustomer_CustomerIdAndIsActiveTrue(customerId).ifPresent(active -> {
+            active.setIsActive(false);
+            cartRepository.save(active);
+        });
+
+        // Find or create cart for this store
+        Cart cart = cartRepository.findByCustomer_CustomerIdAndStore_StoreId(customerId, store.getStoreId())
+                .orElseGet(() -> Cart.builder()
+                        .customer(Customer.builder().customerId(customerId).build())
+                        .store(store)
+                        .deliveryCharge(BigDecimal.valueOf(4500.0))
+                        .isActive(true)
+                        .build());
+
+        cart.setIsActive(true);
+        return cartRepository.save(cart);
+    }
+
+    private Store resolveProductStore(Product product) {
+        if (product.getStore() != null) {
+            return product.getStore();
+        }
+        return getDefaultStore();
+    }
+
+    private Store getDefaultStore() {
+        return storeRepository.findById(1)
+                .orElseGet(() -> storeRepository.findAll().stream().findFirst()
+                        .orElseThrow(() -> new ResourceNotFoundException("No default marketplace store available.")));
     }
 
     public CartResponse calculateCartResponse(Cart cart) {
@@ -203,8 +317,13 @@ public class CartServiceImpl implements CartService {
             grandTotal = BigDecimal.ZERO;
         }
 
+        Store store = cart.getStore() != null ? cart.getStore() : getDefaultStore();
+
         return CartResponse.builder()
                 .cartId(cart.getCartId())
+                .storeId(store.getStoreId())
+                .storeName(store.getName())
+                .storeSlug(store.getSlug())
                 .items(itemResponses)
                 .subtotal(subtotal)
                 .couponDiscount(couponDiscount)

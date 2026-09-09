@@ -71,6 +71,7 @@ public class SellerPortalIntegrationFlowsTest {
     @Mock private ProductRepository productRepository;
     @Mock private BrandRepository brandRepository;
     @Mock private SellerRepository sellerRepository;
+    @Mock private com.example.project.customer.repository.StoreRepository storeRepository;
     @Mock private WarehouseRepository warehouseRepository;
     @Mock private InventoryAdjustmentRepository inventoryAdjustmentRepository;
     @Mock private SellerDocumentRepository sellerDocumentRepository;
@@ -90,7 +91,7 @@ public class SellerPortalIntegrationFlowsTest {
 
     @BeforeEach
     void setUp() {
-        sellerProductService = new SellerProductServiceImpl(productRepository, brandRepository, sellerRepository);
+        sellerProductService = new SellerProductServiceImpl(productRepository, brandRepository, sellerRepository, storeRepository);
         sellerWarehouseService = new SellerWarehouseServiceImpl(warehouseRepository, productRepository, inventoryAdjustmentRepository);
         sellerPricingService = new SellerPricingServiceImpl(productRepository);
         sellerDocumentVaultService = new SellerDocumentVaultServiceImpl(sellerOnboardingService, sellerDocumentRepository);

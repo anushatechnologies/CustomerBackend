@@ -6,6 +6,7 @@ import com.example.project.customer.dto.CartItemRequest;
 import com.example.project.customer.dto.CartResponse;
 import com.example.project.customer.dto.CouponRequest;
 import com.example.project.customer.dto.CouponResponse;
+import com.example.project.customer.dto.SwitchStoreRequest;
 import com.example.project.customer.service.CartService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +39,13 @@ public class CartController {
         Integer userId = userContextUtil.getCurrentUserId();
         CartResponse updated = cartService.addItem(userId, request);
         return ResponseEntity.ok(ApiResponse.ok("Cart updated successfully", updated));
+    }
+
+    @PostMapping(value = {"/switch-store", "/switch"})
+    public ResponseEntity<ApiResponse<CartResponse>> switchStore(@RequestBody SwitchStoreRequest request) {
+        Integer userId = userContextUtil.getCurrentUserId();
+        CartResponse updated = cartService.switchStore(userId, request);
+        return ResponseEntity.ok(ApiResponse.ok("Switched active store cart successfully", updated));
     }
 
     @DeleteMapping("/items/{productId}")

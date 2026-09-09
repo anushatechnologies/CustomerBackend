@@ -68,6 +68,15 @@ class OrderAddressIntegrationTest {
     @Mock
     private PdfInvoiceGeneratorService pdfInvoiceGeneratorService;
 
+    @Mock
+    private com.example.project.customer.service.StoreInvoiceSequenceService storeInvoiceSequenceService;
+
+    @Mock
+    private com.example.project.customer.repository.SellerPayoutLedgerRepository sellerPayoutLedgerRepository;
+
+    @Mock
+    private com.example.project.customer.repository.StoreRepository storeRepository;
+
     private OrderServiceImpl orderService;
     private CheckoutServiceImpl checkoutServiceImpl;
 
@@ -84,7 +93,10 @@ class OrderAddressIntegrationTest {
                 customerRepository,
                 cartService,
                 checkoutService,
-                pdfInvoiceGeneratorService
+                pdfInvoiceGeneratorService,
+                storeInvoiceSequenceService,
+                sellerPayoutLedgerRepository,
+                storeRepository
         );
 
         checkoutServiceImpl = new CheckoutServiceImpl(cartService, addressRepository);
@@ -106,6 +118,15 @@ class OrderAddressIntegrationTest {
                 .country("India")
                 .isDefault(true)
                 .build();
+
+        com.example.project.customer.entity.Store mockStore = com.example.project.customer.entity.Store.builder()
+                .storeId(1)
+                .name("HinchStore")
+                .slug("hinchstore")
+                .status(com.example.project.customer.entity.StoreStatus.ACTIVE)
+                .commissionRate(BigDecimal.valueOf(5.0))
+                .build();
+        org.mockito.Mockito.lenient().when(storeRepository.findById(any())).thenReturn(Optional.of(mockStore));
     }
 
     @Test
@@ -139,7 +160,8 @@ class OrderAddressIntegrationTest {
 
         when(checkoutService.previewCheckout(eq(101), any(CheckoutPreviewRequest.class))).thenReturn(preview);
 
-        Product product = Product.builder().productId(1).stockQty(100).build();
+        Product product = Product.builder().productId(1).title("Steel Rebar").stockQty(100).build();
+        when(productRepository.findById(1)).thenReturn(Optional.of(product));
         when(productRepository.findByIdForStockUpdate(1)).thenReturn(Optional.of(product));
 
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -176,8 +198,11 @@ class OrderAddressIntegrationTest {
     @Test
     @DisplayName("Order Checkout: Rejects order placement when address belongs to another customer")
     void testOrderCreation_RejectsUnauthorizedAddress() {
-        CartItemResponse item = CartItemResponse.builder().productId(1).quantity(2).build();
+        CartItemResponse item = CartItemResponse.builder().productId(1).title("Steel Rebar").quantity(2).build();
         CartResponse cart = CartResponse.builder().items(List.of(item)).build();
+
+        Product product = Product.builder().productId(1).title("Steel Rebar").stockQty(100).build();
+        when(productRepository.findById(1)).thenReturn(Optional.of(product));
 
         when(cartService.getCart(101)).thenReturn(cart);
         // Address 99 does NOT belong to customer 101

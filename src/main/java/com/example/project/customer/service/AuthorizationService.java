@@ -1,9 +1,10 @@
 package com.example.project.customer.service;
 
-import com.example.project.customer.entity.Role;
 import com.example.project.customer.entity.Seller;
+import com.example.project.customer.entity.Store;
 import com.example.project.customer.exception.ForbiddenException;
 import com.example.project.customer.repository.SellerRepository;
+import com.example.project.customer.repository.StoreRepository;
 import com.example.project.customer.security.FirebaseUserPrincipal;
 import com.example.project.customer.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ import java.util.Optional;
 public class AuthorizationService {
 
     private final SellerRepository sellerRepository;
+    private final StoreRepository storeRepository;
 
     /**
      * Checks if the currently authenticated user owns the specified sellerId, or is an ADMIN.
@@ -61,6 +63,28 @@ public class AuthorizationService {
     }
 
     /**
+     * Checks if the currently authenticated user owns the specified storeId, or is an ADMIN.
+     */
+    @Transactional(readOnly = true)
+    public boolean isCurrentStore(Integer storeId) {
+        if (storeId == null) {
+            return false;
+        }
+
+        if (SecurityUtils.isAdmin()) {
+            return true;
+        }
+
+        Optional<Store> storeOpt = storeRepository.findById(storeId);
+        if (storeOpt.isEmpty()) {
+            return false;
+        }
+
+        Integer sellerId = storeOpt.get().getSeller().getSellerId();
+        return isCurrentSeller(sellerId);
+    }
+
+    /**
      * Checks if the currently authenticated user matches the specified internal userId, or is an ADMIN.
      */
     public boolean isCurrentUser(Integer userId) {
@@ -87,6 +111,15 @@ public class AuthorizationService {
     public void validateSellerOwnership(Integer sellerId) {
         if (!isCurrentSeller(sellerId)) {
             throw new ForbiddenException("Access Denied: You do not own the requested seller resource (sellerId=" + sellerId + ").");
+        }
+    }
+
+    /**
+     * Programmatic assertion of store ownership; throws ForbiddenException if unauthorized.
+     */
+    public void validateStoreOwnership(Integer storeId) {
+        if (!isCurrentStore(storeId)) {
+            throw new ForbiddenException("Access Denied: You do not have permission to manage store ID: " + storeId);
         }
     }
 

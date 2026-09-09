@@ -50,7 +50,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         SellerDocumentController.class,
         SellerQuotationController.class
 })
-@Import({GlobalExceptionHandler.class, SecurityConfig.class, SellerContextUtil.class})
+@Import({GlobalExceptionHandler.class, SecurityConfig.class})
 class SellerWarehouseAndInventoryControllerTest {
 
     @Autowired
@@ -70,6 +70,14 @@ class SellerWarehouseAndInventoryControllerTest {
 
     @MockBean
     private SellerQuotationManagementService quotationService;
+
+    @MockBean
+    private SellerContextUtil sellerContextUtil;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        when(sellerContextUtil.getCurrentSellerId()).thenReturn(1001);
+    }
 
     @Test
     @DisplayName("GET & POST /api/seller/warehouses - Warehouse Operations")

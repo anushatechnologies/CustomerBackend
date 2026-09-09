@@ -80,6 +80,12 @@ public class ProductResponse {
 
     private String sellerName;
 
+    private Integer storeId;
+
+    private String storeName;
+
+    private String storeSlug;
+
     private BigDecimal sellingPrice;
 
     // Admin approval information

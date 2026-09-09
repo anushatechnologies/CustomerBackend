@@ -17,6 +17,9 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class CartResponse {
     private Integer cartId;
+    private Integer storeId;
+    private String storeName;
+    private String storeSlug;
 
     @Builder.Default
     private List<CartItemResponse> items = new ArrayList<>();

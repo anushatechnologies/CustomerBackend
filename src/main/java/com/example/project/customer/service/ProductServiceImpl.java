@@ -17,6 +17,7 @@ import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.repository.BrandRepository;
 import com.example.project.customer.repository.CategoryRepository;
 import com.example.project.customer.repository.ProductRepository;
+import com.example.project.customer.repository.StoreRepository;
 import com.example.project.customer.repository.SubcategoryRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,7 @@ public class ProductServiceImpl implements ProductService {
     private final BrandRepository brandRepository;
     private final SubcategoryRepository subcategoryRepository;
     private final CategoryRepository categoryRepository;
+    private final StoreRepository storeRepository;
     private final S3ImageService s3ImageService;
 
     @Override
@@ -77,6 +79,10 @@ public class ProductServiceImpl implements ProductService {
         product.setSlug(slug);
         if (request.getSku() != null && !request.getSku().isBlank()) {
             product.setSku(request.getSku().trim().toUpperCase());
+        }
+
+        if (product.getStore() == null) {
+            storeRepository.findById(1).ifPresent(product::setStore);
         }
 
         // IMPORTANT:
@@ -806,7 +812,8 @@ public class ProductServiceImpl implements ProductService {
         );
     }
 
-    private ProductResponse mapToResponse(
+    @Override
+    public ProductResponse mapToResponse(
             Product p
     ) {
 
@@ -855,8 +862,15 @@ public class ProductServiceImpl implements ProductService {
                     : "INACTIVE";
         }
 
+        Integer storeId = p.getStore() != null ? p.getStore().getStoreId() : null;
+        String storeName = p.getStore() != null ? p.getStore().getStoreName() : null;
+        String storeSlug = p.getStore() != null ? p.getStore().getSlug() : null;
+
         return ProductResponse.builder()
                 .productId(p.getProductId())
+                .storeId(storeId)
+                .storeName(storeName)
+                .storeSlug(storeSlug)
                 .brandId(brandId)
                 .brand(brandName)
                 .brandName(brandName)

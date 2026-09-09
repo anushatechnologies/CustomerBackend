@@ -18,7 +18,7 @@ WORKDIR /app
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 # Copy JAR from build stage with correct permissions
-COPY --from=build --chown=appuser:appgroup /app/target/*.jar app.jar
+COPY --from=build --chown=appuser:appgroup /app/target/app.jar app.jar
 
 USER appuser
 

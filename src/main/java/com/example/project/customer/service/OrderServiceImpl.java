@@ -12,11 +12,15 @@ import com.example.project.customer.dto.OrderSummaryResponse;
 import com.example.project.customer.dto.OrderTrackingResponse;
 import com.example.project.customer.dto.PaginationMeta;
 import com.example.project.customer.entity.Address;
+import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.Order;
 import com.example.project.customer.entity.OrderItem;
+import com.example.project.customer.entity.PayoutLedgerStatus;
 import com.example.project.customer.entity.Product;
+import com.example.project.customer.entity.SellerPayoutLedger;
+import com.example.project.customer.entity.Store;
+import com.example.project.customer.entity.StoreStatus;
 import com.example.project.customer.entity.TrackingCheckpoint;
-import com.example.project.customer.entity.Customer;
 import com.example.project.customer.exception.ResourceConflictException;
 import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.repository.AddressRepository;
@@ -24,6 +28,8 @@ import com.example.project.customer.repository.CustomerRepository;
 import com.example.project.customer.repository.OrderItemRepository;
 import com.example.project.customer.repository.OrderRepository;
 import com.example.project.customer.repository.ProductRepository;
+import com.example.project.customer.repository.SellerPayoutLedgerRepository;
+import com.example.project.customer.repository.StoreRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -32,6 +38,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -53,6 +61,9 @@ public class OrderServiceImpl implements OrderService {
     private final CartService cartService;
     private final CheckoutService checkoutService;
     private final PdfInvoiceGeneratorService pdfInvoiceGeneratorService;
+    private final StoreInvoiceSequenceService storeInvoiceSequenceService;
+    private final SellerPayoutLedgerRepository sellerPayoutLedgerRepository;
+    private final StoreRepository storeRepository;
 
     @Override
     public OrderResponse createOrder(Integer userId, OrderCreateRequest request) {
@@ -61,6 +72,30 @@ public class OrderServiceImpl implements OrderService {
 
         if (cart.getItems() == null || cart.getItems().isEmpty()) {
             throw new IllegalStateException("Cannot place order with an empty cart");
+        }
+
+        // 1. Resolve and validate store
+        Integer storeId = cart.getStoreId() != null ? cart.getStoreId() : 1;
+        Store store = storeRepository.findById(storeId)
+                .orElseGet(() -> storeRepository.findById(1)
+                        .orElseThrow(() -> new ResourceNotFoundException("Store not found with id: " + storeId)));
+
+        if (store.getStatus() != StoreStatus.ACTIVE) {
+            throw new IllegalStateException("Cannot checkout: Store '" + store.getName() + "' is currently " + store.getStatus() + " and not accepting orders.");
+        }
+
+        // 2. Pre-checkout stock & price re-validation
+        for (CartItemResponse ci : cart.getItems()) {
+            Product p = productRepository.findById(ci.getProductId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Product not found: " + ci.getTitle() + " (ID: " + ci.getProductId() + ")"));
+
+            if (!p.isActive()) {
+                throw new IllegalStateException("Product '" + p.getTitle() + "' is no longer active in the catalog.");
+            }
+            int availableStock = p.getStockQty() != null ? p.getStockQty() : 0;
+            if (availableStock < ci.getQuantity()) {
+                throw new ResourceConflictException("Insufficient stock for '" + p.getTitle() + "'. Requested: " + ci.getQuantity() + ", Available: " + availableStock);
+            }
         }
 
         Address address = addressRepository.findByCustomer_CustomerIdAndId(uid, request.getAddressId())
@@ -102,9 +137,21 @@ public class OrderServiceImpl implements OrderService {
         }
         String formattedAddress = sb.toString();
 
+        // 3. Compute Commission snapshot
+        BigDecimal commissionRate = store.getCommissionRate() != null ? store.getCommissionRate() : BigDecimal.valueOf(5.00);
+        BigDecimal commissionAmount = preview.getTaxableAmount().multiply(commissionRate)
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+        // 4. Generate sequential GST Invoice Number per-store
+        String storeInvoiceNumber = storeInvoiceSequenceService.generateNextInvoiceNumber(store);
+
         Order order = Order.builder()
                 .orderNumber(orderNumber)
                 .customer(Customer.builder().customerId(uid).build())
+                .store(store)
+                .storeInvoiceNumber(storeInvoiceNumber)
+                .commissionRate(commissionRate)
+                .commissionAmount(commissionAmount)
                 .addressId(address.getId())
                 .deliveryLocation(formattedAddress)
                 .subtotal(preview.getSubtotal())
@@ -156,13 +203,29 @@ public class OrderServiceImpl implements OrderService {
         }
         savedOrder.setItems(orderItems);
 
+        // 5. Create SellerPayoutLedger entry (Gross - Commission - 1% TCS = Net Payout)
+        BigDecimal tcsAmount = preview.getTaxableAmount().multiply(BigDecimal.valueOf(0.01)).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal grossAmount = savedOrder.getTotalAmount();
+        BigDecimal netPayout = grossAmount.subtract(commissionAmount).subtract(tcsAmount);
+
+        SellerPayoutLedger ledger = SellerPayoutLedger.builder()
+                .store(store)
+                .order(savedOrder)
+                .grossAmount(grossAmount)
+                .commissionAmount(commissionAmount)
+                .tcsAmount(tcsAmount)
+                .netPayoutAmount(netPayout)
+                .status(PayoutLedgerStatus.PENDING)
+                .build();
+        sellerPayoutLedgerRepository.save(ledger);
+
         // Initial tracking checkpoint
         TrackingCheckpoint initialCheckpoint = TrackingCheckpoint.builder()
                 .order(savedOrder)
                 .status("ORDER_PLACED")
                 .title("Order Placed & Verified")
-                .location("HinchMart Hyderabad Central Ops")
-                .description("Order confirmed and routed to Tata Steel Distribution Hub.")
+                .location(store.getName() + " Logistics Hub")
+                .description("Order confirmed and assigned to " + store.getName() + " fulfillment team.")
                 .timestamp(LocalDateTime.now())
                 .build();
         savedOrder.getCheckpoints().add(initialCheckpoint);
@@ -171,54 +234,46 @@ public class OrderServiceImpl implements OrderService {
         // Clear active cart
         cartService.clearCart(uid);
 
+        log.info("Successfully created Order #{} (Invoice: {}) for Customer #{} from Store #{} ('{}')",
+                savedOrder.getOrderId(), storeInvoiceNumber, uid, store.getStoreId(), store.getName());
+
         return mapToOrderResponse(savedOrder);
     }
 
-    /**
-     * Uses a database lock so simultaneous checkouts cannot oversell a product.
-     * Cancellation deliberately does not restore stock: stock changes only when
-     * the order is placed.
-     */
-    private void decrementStock(CartItemResponse cartItem) {
-        if (cartItem.getQuantity() == null || cartItem.getQuantity() <= 0) {
-            throw new IllegalStateException("Order item quantity must be greater than zero");
-        }
-
+    private synchronized void decrementStock(CartItemResponse cartItem) {
         Product product = productRepository.findByIdForStockUpdate(cartItem.getProductId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Product not found with id: " + cartItem.getProductId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + cartItem.getProductId()));
 
-        int availableStock = product.getStockQty() != null ? product.getStockQty() : 0;
-        if (availableStock < cartItem.getQuantity()) {
-            throw new ResourceConflictException(
-                    "Insufficient stock for product id " + cartItem.getProductId()
-                            + ". Available: " + availableStock);
+        int currentStock = product.getStockQty() != null ? product.getStockQty() : 0;
+        int requestedQty = cartItem.getQuantity();
+
+        if (currentStock < requestedQty) {
+            throw new ResourceConflictException("Insufficient stock for product '" + product.getTitle()
+                    + "'. Available: " + currentStock + ", Requested: " + requestedQty);
         }
 
-        product.setStockQty(availableStock - cartItem.getQuantity());
+        product.setStockQty(currentStock - requestedQty);
         productRepository.save(product);
     }
 
     @Override
     @Transactional(readOnly = true)
     public ApiResponse<List<OrderSummaryResponse>> getOrders(Integer userId, String status, int page, int limit) {
-        int uid = userId != null ? userId : 101;
-        int pageNumber = Math.max(page - 1, 0);
+        int pageNumber = page > 0 ? page : 1;
         int pageSize = limit > 0 ? limit : 20;
-        Pageable pageable = PageRequest.of(pageNumber, pageSize);
+        Pageable pageable = PageRequest.of(pageNumber - 1, pageSize);
 
-        Page<Order> orderPage;
-        if (status != null && !status.isBlank()) {
-            orderPage = orderRepository.findByCustomer_CustomerIdAndOrderStatusIgnoreCaseOrderByCreatedAtDesc(uid, status.trim(), pageable);
-        } else {
-            orderPage = orderRepository.findByCustomer_CustomerIdOrderByCreatedAtDesc(uid, pageable);
-        }
+        int uid = userId != null ? userId : 101;
+        Page<Order> orderPage = (status != null && !status.trim().isEmpty())
+                ? orderRepository.findByCustomer_CustomerIdAndOrderStatusIgnoreCaseOrderByCreatedAtDesc(uid, status.trim().toUpperCase(), pageable)
+                : orderRepository.findByCustomer_CustomerIdOrderByCreatedAtDesc(uid, pageable);
 
-        List<OrderSummaryResponse> summaries = orderPage.getContent().stream()
-                .map(this::mapToSummaryResponse).toList();
+        List<OrderSummaryResponse> summaryList = orderPage.getContent().stream()
+                .map(this::mapToSummaryResponse)
+                .toList();
 
-        PaginationMeta pagination = PaginationMeta.of(page > 0 ? page : 1, pageSize, orderPage.getTotalElements());
-        return ApiResponse.paginated(summaries, pagination);
+        PaginationMeta meta = PaginationMeta.of(pageNumber, pageSize, orderPage.getTotalElements());
+        return ApiResponse.paginated("Orders retrieved successfully", summaryList, meta);
     }
 
     @Override
@@ -232,27 +287,27 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public OrderTrackingResponse getOrderTracking(Integer id) {
         Order order = findOrder(id);
-
-        List<OrderTrackingResponse.TrackingCheckpointDto> dtoList = order.getCheckpoints().stream()
-                .map(cp -> OrderTrackingResponse.TrackingCheckpointDto.builder()
-                        .status(cp.getStatus())
-                        .title(cp.getTitle())
-                        .location(cp.getLocation())
-                        .timestamp(cp.getTimestamp())
-                        .description(cp.getDescription())
+        List<OrderTrackingResponse.TrackingEvent> events = order.getCheckpoints().stream()
+                .map(c -> OrderTrackingResponse.TrackingEvent.builder()
+                        .checkpointId(c.getCheckpointId())
+                        .status(c.getStatus())
+                        .title(c.getTitle())
+                        .location(c.getLocation())
+                        .description(c.getDescription())
+                        .timestamp(c.getTimestamp())
                         .build())
                 .toList();
 
         return OrderTrackingResponse.builder()
                 .orderId(order.getOrderId())
                 .orderNumber(order.getOrderNumber())
-                .carrierName(order.getCarrierName() != null ? order.getCarrierName() : "VRL Logistics Heavy Freight Fleet")
-                .vehicleNumber(order.getVehicleNumber() != null ? order.getVehicleNumber() : "TS 09 UB 4412 (22-Wheel Flatbed)")
-                .driverName(order.getDriverName() != null ? order.getDriverName() : "Ramesh Yadav (+91 9849012345)")
-                .trackingNumber(order.getTrackingNumber() != null ? order.getTrackingNumber() : "VRL-HYD-" + order.getOrderId())
-                .currentStatus(order.getOrderStatus())
-                .estimatedDelivery(order.getEstimatedDelivery() != null ? order.getEstimatedDelivery() : order.getCreatedAt().plusDays(1))
-                .checkpoints(dtoList)
+                .orderStatus(order.getOrderStatus())
+                .trackingNumber(order.getTrackingNumber())
+                .carrierName(order.getCarrierName())
+                .vehicleNumber(order.getVehicleNumber())
+                .driverName(order.getDriverName())
+                .estimatedDelivery(order.getEstimatedDelivery())
+                .checkpoints(events)
                 .build();
     }
 
@@ -260,27 +315,56 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public InvoiceResponse getOrderInvoice(Integer id) {
         Order order = findOrder(id);
-        Customer user = order.getCustomer();
+        Customer customer = order.getCustomer();
 
-        String buyerGstin = "36AAACT2727Q1ZW";
-        String buyerLegalName = user != null && user.getName() != null ? user.getName() : "Apex Infra Projects Pvt Ltd";
+        Store store = order.getStore();
+        String sellerCompanyName = (store != null && store.getSeller() != null && store.getSeller().getCompanyName() != null)
+                ? store.getSeller().getCompanyName()
+                : (store != null ? store.getName() : "HinchMart B2B Commerce Pvt Ltd");
+        String sellerGstin = (store != null && store.getSeller() != null && store.getSeller().getGstin() != null)
+                ? store.getSeller().getGstin() : "36AAACH2026Q1Z1";
 
-        String invoiceNum = "INV-" + LocalDate.now().getYear() + "-" + String.format("%06d", order.getOrderId());
+        List<InvoiceResponse.InvoiceItem> invoiceItems = order.getItems().stream()
+                .map(item -> InvoiceResponse.InvoiceItem.builder()
+                        .itemId(item.getOrderItemId())
+                        .description(item.getTitle())
+                        .hsnCode("721420")
+                        .quantity(item.getQuantity())
+                        .unit(item.getUnit())
+                        .unitPrice(item.getUnitPrice())
+                        .lineTotal(item.getLineTotal())
+                        .gstRate(item.getGstRate())
+                        .gstAmount(item.getLineGst())
+                        .build())
+                .toList();
+
+        String invNum = (order.getStoreInvoiceNumber() != null && !order.getStoreInvoiceNumber().isBlank())
+                ? order.getStoreInvoiceNumber() : "INV-" + String.format("%06d", order.getOrderId());
 
         return InvoiceResponse.builder()
-                .invoiceNumber(invoiceNum)
+                .invoiceNumber(invNum)
+                .invoiceDate(order.getCreatedAt().format(DateTimeFormatter.ofPattern("dd-MMM-yyyy")))
+                .orderId(order.getOrderId())
                 .orderNumber(order.getOrderNumber())
-                .invoiceDate(order.getCreatedAt() != null ? order.getCreatedAt().toLocalDate() : LocalDate.now())
-                .sellerGstin("36AAACH2026Q1Z1")
-                .sellerLegalName("HinchMart B2B Commerce Pvt Ltd")
-                .buyerGstin(buyerGstin)
-                .buyerLegalName(buyerLegalName)
+                .supplierName(sellerCompanyName)
+                .supplierGstin(sellerGstin)
+                .supplierAddress("HITEC City, Hyderabad, Telangana - 500081")
+                .recipientName(customer != null && customer.getName() != null ? customer.getName() : "Enterprise Customer")
+                .recipientAddress(order.getDeliveryLocation())
+                .recipientGstin("36AAACT2727Q1ZW")
+                .placeOfSupply("Telangana (36)")
+                .paymentMethod(order.getPaymentMethod())
+                .subtotal(order.getSubtotal())
+                .discount(order.getDiscount())
                 .taxableAmount(order.getTaxableAmount())
                 .cgst(order.getCgst())
                 .sgst(order.getSgst())
                 .igst(order.getIgst())
+                .totalGst(order.getTotalGst())
+                .freightCharge(order.getFreightCharge())
+                .craneUnloadingCharge(order.getCraneUnloadingCharge())
                 .grandTotal(order.getTotalAmount())
-                .pdfUrl("/api/orders/" + order.getOrderId() + "/invoice/download")
+                .items(invoiceItems)
                 .build();
     }
 
@@ -288,65 +372,82 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public byte[] generateInvoicePdf(Integer id) {
         Order order = findOrder(id);
-        Customer user = order.getCustomer();
-        String invoiceNum = "INV-" + LocalDate.now().getYear() + "-" + String.format("%06d", order.getOrderId());
-        return pdfInvoiceGeneratorService.generateInvoicePdf(order, user, invoiceNum);
+        Customer customer = order.getCustomer();
+        String invoiceNumber = (order.getStoreInvoiceNumber() != null && !order.getStoreInvoiceNumber().isBlank())
+                ? order.getStoreInvoiceNumber() : "INV-" + String.format("%06d", order.getOrderId());
+        return pdfInvoiceGeneratorService.generateInvoicePdf(order, customer, invoiceNumber);
     }
 
     @Override
     public OrderResponse updateOrderStatus(Integer id, String status, String location, String description) {
-        if ("CANCELLED".equalsIgnoreCase(status)) {
-            return cancelOrder(id, location, description);
-        }
-
         Order order = findOrder(id);
-        order.setOrderStatus(status);
+        String upperStatus = status.trim().toUpperCase();
+        order.setOrderStatus(upperStatus);
 
-        TrackingCheckpoint checkpoint = TrackingCheckpoint.builder()
+        TrackingCheckpoint cp = TrackingCheckpoint.builder()
                 .order(order)
-                .status(status)
-                .title(formatCheckpointTitle(status))
-                .location(location != null ? location : "Outer Ring Road (ORR) Exit 11")
-                .description(description != null ? description : "Trailer status updated to " + status)
+                .status(upperStatus)
+                .title(formatCheckpointTitle(upperStatus))
+                .location(location != null ? location : "In Transit Hub")
+                .description(description != null ? description : "Status updated to " + upperStatus)
                 .timestamp(LocalDateTime.now())
                 .build();
 
-        order.getCheckpoints().add(checkpoint);
-        return mapToOrderResponse(orderRepository.save(order));
+        order.getCheckpoints().add(cp);
+        Order updated = orderRepository.save(order);
+
+        if ("DELIVERED".equalsIgnoreCase(upperStatus)) {
+            sellerPayoutLedgerRepository.findByOrder_OrderId(order.getOrderId()).ifPresent(ledger -> {
+                ledger.setStatus(PayoutLedgerStatus.PENDING);
+                ledger.setSettlementDate(LocalDateTime.now().plusDays(7)); // T+7 days settlement
+                sellerPayoutLedgerRepository.save(ledger);
+            });
+        }
+
+        return mapToOrderResponse(updated);
     }
 
     @Override
     public OrderResponse cancelOrder(Integer id, String location, String description) {
         Order order = findOrder(id);
-
-        // A repeated request must be idempotent: do not restore the same stock twice.
-        if ("CANCELLED".equalsIgnoreCase(order.getOrderStatus())) {
-            return mapToOrderResponse(order);
-        }
-
-        for (OrderItem item : order.getItems()) {
-            restoreStock(item);
+        if ("DELIVERED".equalsIgnoreCase(order.getOrderStatus())) {
+            throw new IllegalStateException("Delivered orders cannot be cancelled directly. Please raise a return/dispute.");
         }
 
         order.setOrderStatus("CANCELLED");
-        TrackingCheckpoint checkpoint = TrackingCheckpoint.builder()
+        order.setPaymentStatus("REFUND_PENDING");
+
+        TrackingCheckpoint cp = TrackingCheckpoint.builder()
                 .order(order)
                 .status("CANCELLED")
                 .title("Order Cancelled")
-                .location(location != null ? location : "HinchMart Hyderabad Central Ops")
-                .description(description != null ? description : "Order cancelled and product stock restored")
+                .location(location != null ? location : "Customer Request")
+                .description(description != null ? description : "Order cancelled before dispatch.")
                 .timestamp(LocalDateTime.now())
                 .build();
-        order.getCheckpoints().add(checkpoint);
 
-        return mapToOrderResponse(orderRepository.save(order));
-    }
+        order.getCheckpoints().add(cp);
+        Order updated = orderRepository.save(order);
 
-    private void restoreStock(OrderItem orderItem) {
-        if (orderItem.getQuantity() == null || orderItem.getQuantity() <= 0) {
-            throw new IllegalStateException("Order item quantity must be greater than zero");
+        // Restore stock
+        if (order.getItems() != null) {
+            for (OrderItem item : order.getItems()) {
+                restoreStock(item);
+            }
         }
 
+        // Mark payout ledger as REVERSED
+        sellerPayoutLedgerRepository.findByOrder_OrderId(order.getOrderId()).ifPresent(ledger -> {
+            ledger.setStatus(PayoutLedgerStatus.REVERSED);
+            ledger.setClawbackReason("Pre-dispatch order cancellation by customer");
+            sellerPayoutLedgerRepository.save(ledger);
+            log.info("Payout ledger for Order #{} marked as REVERSED", order.getOrderId());
+        });
+
+        return mapToOrderResponse(updated);
+    }
+
+    private synchronized void restoreStock(OrderItem orderItem) {
         Product product = productRepository.findByIdForStockUpdate(orderItem.getProductId())
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Product not found with id: " + orderItem.getProductId()));
@@ -383,9 +484,14 @@ public class OrderServiceImpl implements OrderService {
             firstImage = first.getImageUrl();
         }
 
+        Store store = o.getStore();
         return OrderSummaryResponse.builder()
                 .orderId(o.getOrderId())
                 .orderNumber(o.getOrderNumber())
+                .storeId(store != null ? store.getStoreId() : null)
+                .storeName(store != null ? store.getName() : null)
+                .storeSlug(store != null ? store.getSlug() : null)
+                .storeInvoiceNumber(o.getStoreInvoiceNumber())
                 .totalAmount(o.getTotalAmount())
                 .orderStatus(o.getOrderStatus())
                 .paymentStatus(o.getPaymentStatus())
@@ -417,10 +523,17 @@ public class OrderServiceImpl implements OrderService {
 
         String firstTitle = itemDtos.isEmpty() ? null : itemDtos.get(0).getTitle();
         String firstImage = itemDtos.isEmpty() ? null : itemDtos.get(0).getImageUrl();
+        Store store = o.getStore();
 
         return OrderResponse.builder()
                 .orderId(o.getOrderId())
                 .orderNumber(o.getOrderNumber())
+                .storeId(store != null ? store.getStoreId() : null)
+                .storeName(store != null ? store.getName() : null)
+                .storeSlug(store != null ? store.getSlug() : null)
+                .storeInvoiceNumber(o.getStoreInvoiceNumber())
+                .commissionRate(o.getCommissionRate())
+                .commissionAmount(o.getCommissionAmount())
                 .totalAmount(o.getTotalAmount())
                 .subtotal(o.getSubtotal())
                 .discount(o.getDiscount())

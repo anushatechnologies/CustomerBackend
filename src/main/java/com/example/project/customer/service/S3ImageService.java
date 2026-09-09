@@ -29,4 +29,8 @@ public interface S3ImageService {
     String extractKeyFromUrl(String imageKeyOrUrl);
 
     boolean imageExists(String imageKey);
+
+    String getStoreScopedFolderName(Integer storeId, String subFolder);
+
+    String getPlatformScopedFolderName(String subFolder);
 }

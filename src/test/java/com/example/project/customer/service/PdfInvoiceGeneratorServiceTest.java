@@ -79,7 +79,7 @@ class PdfInvoiceGeneratorServiceTest {
         assertThat(pdfString).contains("36AAACT2727Q1ZW"); // Buyer GSTIN
         assertThat(pdfString).contains("INV-2026-000001"); // Invoice Number
         assertThat(pdfString).contains("ORD-20260904-001"); // Order Number
-        assertThat(pdfString).contains("HINCH MART");
+        assertThat(pdfString).contains("HinchStore");
         assertThat(pdfString).contains("TAX INVOICE");
     }
 }

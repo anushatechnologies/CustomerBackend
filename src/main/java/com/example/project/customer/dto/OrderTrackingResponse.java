@@ -23,20 +23,24 @@ public class OrderTrackingResponse {
     private String driverName;
     private String trackingNumber;
     private String currentStatus;
+    private String orderStatus;
     private LocalDateTime estimatedDelivery;
 
     @Builder.Default
-    private List<TrackingCheckpointDto> checkpoints = new ArrayList<>();
+    private List<TrackingEvent> checkpoints = new ArrayList<>();
 
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class TrackingCheckpointDto {
+    public static class TrackingEvent {
+        private Integer checkpointId;
         private String status;
         private String title;
         private String location;
         private LocalDateTime timestamp;
         private String description;
     }
+
+    public static class TrackingCheckpointDto extends TrackingEvent {}
 }

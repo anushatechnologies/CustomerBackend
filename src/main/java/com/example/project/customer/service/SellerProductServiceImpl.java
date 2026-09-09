@@ -10,9 +10,11 @@ import com.example.project.customer.entity.Brand;
 import com.example.project.customer.entity.Product;
 import com.example.project.customer.entity.Seller;
 import com.example.project.customer.exception.ResourceNotFoundException;
+import com.example.project.customer.entity.Store;
 import com.example.project.customer.repository.BrandRepository;
 import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.repository.SellerRepository;
+import com.example.project.customer.repository.StoreRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +40,7 @@ public class SellerProductServiceImpl implements SellerProductService {
     private final ProductRepository productRepository;
     private final BrandRepository brandRepository;
     private final SellerRepository sellerRepository;
+    private final StoreRepository storeRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -159,8 +162,12 @@ public class SellerProductServiceImpl implements SellerProductService {
         Seller seller = sellerRepository.findById(sellerId)
                 .orElseGet(() -> Seller.builder().sellerId(sellerId).name("Seller #" + sellerId).build());
 
+        Store store = storeRepository.findBySellerSellerId(sellerId)
+                .orElseGet(() -> storeRepository.findById(1).orElse(null));
+
         Product product = Product.builder()
                 .seller(seller)
+                .store(store)
                 .brand(brand)
                 .title(request.getTitle())
                 .slug(slug)
@@ -184,7 +191,7 @@ public class SellerProductServiceImpl implements SellerProductService {
                 .build();
 
         Product saved = productRepository.save(product);
-        log.info("Created new seller product id={} for sellerId={}", saved.getProductId(), sellerId);
+        log.info("Created new seller product id={} for sellerId={} in storeId={}", saved.getProductId(), sellerId, store != null ? store.getStoreId() : null);
         return mapToResponse(saved);
     }
 
@@ -349,8 +356,15 @@ public class SellerProductServiceImpl implements SellerProductService {
 
         String status = p.getApprovalStatus() != null ? p.getApprovalStatus().name() : "PENDING";
 
+        Integer storeId = p.getStore() != null ? p.getStore().getStoreId() : null;
+        String storeName = p.getStore() != null ? p.getStore().getStoreName() : null;
+        String storeSlug = p.getStore() != null ? p.getStore().getSlug() : null;
+
         return ProductResponse.builder()
                 .productId(p.getProductId())
+                .storeId(storeId)
+                .storeName(storeName)
+                .storeSlug(storeSlug)
                 .brandId(brandId)
                 .brand(brandName)
                 .brandName(brandName)
