@@ -2,6 +2,7 @@ package com.example.project.customer.controller;
 
 import com.example.project.customer.config.SellerContextUtil;
 import com.example.project.customer.dto.ApiResponse;
+import com.example.project.customer.dto.CategoryResponse;
 import com.example.project.customer.dto.ProductResponse;
 import com.example.project.customer.dto.StoreResponse;
 import com.example.project.customer.dto.StoreStatusUpdateRequest;
@@ -36,9 +37,12 @@ public class StoreController {
 
     @GetMapping("/stores")
     public ResponseEntity<ApiResponse<List<StoreResponse>>> getActiveStores(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String name,
             @RequestParam(required = false, defaultValue = "1") int page,
             @RequestParam(required = false, defaultValue = "20") int limit) {
-        return ResponseEntity.ok(storeService.getActiveStores(page, limit));
+        String query = search != null && !search.isBlank() ? search : name;
+        return ResponseEntity.ok(storeService.getActiveStores(query, page, limit));
     }
 
     @GetMapping("/stores/{slugOrId}")
@@ -53,15 +57,21 @@ public class StoreController {
         return ResponseEntity.ok(ApiResponse.ok("Store details retrieved successfully", response));
     }
 
+    @GetMapping("/stores/{slugOrId}/categories")
+    public ResponseEntity<ApiResponse<List<CategoryResponse>>> getStoreCategories(@PathVariable String slugOrId) {
+        return ResponseEntity.ok(storeService.getStoreCategories(slugOrId));
+    }
+
     @GetMapping("/stores/{slugOrId}/products")
     public ResponseEntity<ApiResponse<List<ProductResponse>>> getStoreProducts(
             @PathVariable String slugOrId,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Integer categoryId,
+            @RequestParam(required = false) Integer subcategoryId,
             @RequestParam(required = false, defaultValue = "1") int page,
             @RequestParam(required = false, defaultValue = "20") int limit,
             @RequestParam(required = false, defaultValue = "featured") String sortBy) {
-        return ResponseEntity.ok(storeService.getStoreProducts(slugOrId, search, categoryId, page, limit, sortBy));
+        return ResponseEntity.ok(storeService.getStoreProducts(slugOrId, search, categoryId, subcategoryId, page, limit, sortBy));
     }
 
     // -------------------------------------------------------------------------

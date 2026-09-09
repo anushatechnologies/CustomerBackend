@@ -162,8 +162,18 @@ public class SellerProductServiceImpl implements SellerProductService {
         Seller seller = sellerRepository.findById(sellerId)
                 .orElseGet(() -> Seller.builder().sellerId(sellerId).name("Seller #" + sellerId).build());
 
-        Store store = storeRepository.findBySellerSellerId(sellerId)
-                .orElseGet(() -> storeRepository.findById(1).orElse(null));
+        Store store = null;
+        if (request.getStoreId() != null) {
+            store = storeRepository.findById(request.getStoreId()).orElse(null);
+        }
+        if (store == null) {
+            store = storeRepository.findBySellerSellerId(sellerId)
+                    .orElseGet(() -> storeRepository.findById(1).orElse(null));
+        }
+
+        ApprovalStatus initialStatus = com.example.project.customer.security.SecurityUtils.isAdmin() 
+                ? ApprovalStatus.APPROVED 
+                : ApprovalStatus.PENDING;
 
         Product product = Product.builder()
                 .seller(seller)
@@ -184,14 +194,14 @@ public class SellerProductServiceImpl implements SellerProductService {
                 .imageUrl(request.getImages() != null && !request.getImages().isEmpty() ? request.getImages().get(0) : null)
                 .bulkPricingTiers(request.getBulkPricingTiers() != null ? request.getBulkPricingTiers() : new ArrayList<>())
                 .specifications(request.getSpecifications() != null ? request.getSpecifications() : new java.util.LinkedHashMap<>())
-                .approvalStatus(ApprovalStatus.PENDING)
+                .approvalStatus(initialStatus)
                 .active(true)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
 
         Product saved = productRepository.save(product);
-        log.info("Created new seller product id={} for sellerId={} in storeId={}", saved.getProductId(), sellerId, store != null ? store.getStoreId() : null);
+        log.info("Created new seller product id={} for sellerId={} in storeId={} (status={})", saved.getProductId(), sellerId, store != null ? store.getStoreId() : null, initialStatus);
         return mapToResponse(saved);
     }
 

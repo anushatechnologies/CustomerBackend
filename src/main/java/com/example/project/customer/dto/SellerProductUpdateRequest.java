@@ -17,6 +17,8 @@ import java.util.Map;
 @AllArgsConstructor
 public class SellerProductUpdateRequest {
 
+    private Integer sellerId;
+    private Integer storeId;
     private String title;
     private String sku;
     private String description;

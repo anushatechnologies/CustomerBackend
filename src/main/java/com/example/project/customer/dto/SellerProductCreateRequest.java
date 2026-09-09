@@ -22,6 +22,9 @@ import java.util.Map;
 @AllArgsConstructor
 public class SellerProductCreateRequest {
 
+    private Integer sellerId;
+    private Integer storeId;
+
     @NotBlank(message = "Title is required")
     private String title;
 

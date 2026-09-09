@@ -1,20 +1,24 @@
 package com.example.project.customer.service;
 
 import com.example.project.customer.dto.ApiResponse;
+import com.example.project.customer.dto.CategoryResponse;
 import com.example.project.customer.dto.PaginationMeta;
 import com.example.project.customer.dto.ProductResponse;
 import com.example.project.customer.dto.StoreResponse;
 import com.example.project.customer.dto.StoreStatusUpdateRequest;
 import com.example.project.customer.dto.StoreUpdateRequest;
+import com.example.project.customer.dto.SubcategoryResponse;
+import com.example.project.customer.entity.Category;
 import com.example.project.customer.entity.Product;
 import com.example.project.customer.entity.Seller;
 import com.example.project.customer.entity.Store;
 import com.example.project.customer.entity.StoreStatus;
-import com.example.project.customer.exception.ResourceConflictException;
+import com.example.project.customer.entity.Subcategory;
 import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.repository.SellerRepository;
 import com.example.project.customer.repository.StoreRepository;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -25,7 +29,13 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -40,12 +50,28 @@ public class StoreServiceImpl implements StoreService {
 
     @Override
     @Transactional(readOnly = true)
-    public ApiResponse<List<StoreResponse>> getActiveStores(int page, int limit) {
+    public ApiResponse<List<StoreResponse>> getActiveStores(String search, int page, int limit) {
         int pageNumber = page > 0 ? page : 1;
         int pageSize = limit > 0 ? limit : 20;
         Pageable pageable = PageRequest.of(pageNumber - 1, pageSize, Sort.by(Sort.Direction.DESC, "rating"));
 
-        Page<Store> pageResult = storeRepository.findByStatus(StoreStatus.ACTIVE, pageable);
+        Specification<Store> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.equal(root.get("status"), StoreStatus.ACTIVE));
+
+            if (search != null && !search.isBlank()) {
+                String term = "%" + search.trim().toLowerCase() + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("name")), term),
+                        cb.like(cb.lower(root.get("slug")), term),
+                        cb.like(cb.lower(root.get("description")), term)
+                ));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        Page<Store> pageResult = storeRepository.findAll(spec, pageable);
         List<StoreResponse> responses = pageResult.getContent().stream()
                 .map(this::mapToResponse)
                 .toList();
@@ -120,18 +146,78 @@ public class StoreServiceImpl implements StoreService {
 
     @Override
     @Transactional(readOnly = true)
-    public ApiResponse<List<ProductResponse>> getStoreProducts(String slugOrId, String search, Integer categoryId, int page, int limit, String sortBy) {
-        Store store;
-        try {
-            int storeId = Integer.parseInt(slugOrId);
-            store = storeRepository.findById(storeId)
-                    .orElseGet(() -> storeRepository.findBySlugIgnoreCase(slugOrId)
-                            .orElseThrow(() -> new ResourceNotFoundException("Store not found: " + slugOrId)));
-        } catch (NumberFormatException e) {
-            store = storeRepository.findBySlugIgnoreCase(slugOrId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Store not found: " + slugOrId));
+    public ApiResponse<List<CategoryResponse>> getStoreCategories(String slugOrId) {
+        Store store = resolveStore(slugOrId);
+        Integer storeId = store.getStoreId();
+
+        List<Product> products = productRepository.findAll((root, query, cb) -> cb.and(
+                cb.equal(root.get("store").get("storeId"), storeId),
+                cb.equal(root.get("active"), true)
+        ));
+
+        Map<Integer, Category> categoryMap = new LinkedHashMap<>();
+        Map<Integer, Integer> categoryProductCounts = new HashMap<>();
+        Map<Integer, Map<Integer, Subcategory>> subcategoryMap = new HashMap<>();
+        Map<Integer, Integer> subcategoryProductCounts = new HashMap<>();
+
+        for (Product product : products) {
+            if (product.getBrand() != null && product.getBrand().getSubcategory() != null) {
+                Subcategory subcategory = product.getBrand().getSubcategory();
+                Category category = subcategory.getCategory();
+
+                if (category != null) {
+                    categoryMap.putIfAbsent(category.getCategoryId(), category);
+                    categoryProductCounts.merge(category.getCategoryId(), 1, Integer::sum);
+
+                    subcategoryMap.computeIfAbsent(category.getCategoryId(), k -> new LinkedHashMap<>())
+                            .putIfAbsent(subcategory.getSubcategoryId(), subcategory);
+                    subcategoryProductCounts.merge(subcategory.getSubcategoryId(), 1, Integer::sum);
+                }
+            }
         }
 
+        List<CategoryResponse> responses = categoryMap.values().stream()
+                .map(cat -> {
+                    Map<Integer, Subcategory> subs = subcategoryMap.getOrDefault(cat.getCategoryId(), Collections.emptyMap());
+                    List<SubcategoryResponse> subResponses = subs.values().stream()
+                            .map(sub -> SubcategoryResponse.builder()
+                                    .subcategoryId(sub.getSubcategoryId())
+                                    .categoryId(cat.getCategoryId())
+                                    .name(sub.getName())
+                                    .slug(sub.getSlug())
+                                    .imageUrl(sub.getImageUrl())
+                                    .active(sub.isActive())
+                                    .sortOrder(sub.getSortOrder())
+                                    .productCount(subcategoryProductCounts.getOrDefault(sub.getSubcategoryId(), 0))
+                                    .createdAt(sub.getCreatedAt())
+                                    .build())
+                            .sorted(Comparator.comparing(SubcategoryResponse::getSortOrder, Comparator.nullsLast(Integer::compareTo))
+                                    .thenComparing(SubcategoryResponse::getName))
+                            .toList();
+
+                    return CategoryResponse.builder()
+                            .categoryId(cat.getCategoryId())
+                            .name(cat.getName())
+                            .slug(cat.getSlug())
+                            .imageUrl(cat.getImageUrl())
+                            .active(cat.isActive())
+                            .sortOrder(cat.getSortOrder())
+                            .productCount(categoryProductCounts.getOrDefault(cat.getCategoryId(), 0))
+                            .subcategories(subResponses)
+                            .createdAt(cat.getCreatedAt())
+                            .build();
+                })
+                .sorted(Comparator.comparing(CategoryResponse::getSortOrder, Comparator.nullsLast(Integer::compareTo))
+                        .thenComparing(CategoryResponse::getName))
+                .toList();
+
+        return ApiResponse.ok("Store categories retrieved successfully for " + store.getName(), responses);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ApiResponse<List<ProductResponse>> getStoreProducts(String slugOrId, String search, Integer categoryId, Integer subcategoryId, int page, int limit, String sortBy) {
+        Store store = resolveStore(slugOrId);
         final Integer targetStoreId = store.getStoreId();
         int pageNumber = page > 0 ? page : 1;
         int pageSize = limit > 0 ? limit : 20;
@@ -147,12 +233,16 @@ public class StoreServiceImpl implements StoreService {
         Pageable pageable = PageRequest.of(pageNumber - 1, pageSize, sort);
 
         Specification<Product> spec = (root, query, cb) -> {
-            var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+            List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("store").get("storeId"), targetStoreId));
             predicates.add(cb.equal(root.get("active"), true));
 
             if (categoryId != null) {
                 predicates.add(cb.equal(root.get("brand").get("subcategory").get("category").get("categoryId"), categoryId));
+            }
+
+            if (subcategoryId != null) {
+                predicates.add(cb.equal(root.get("brand").get("subcategory").get("subcategoryId"), subcategoryId));
             }
 
             if (search != null && !search.isBlank()) {
@@ -164,7 +254,7 @@ public class StoreServiceImpl implements StoreService {
                 ));
             }
 
-            return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            return cb.and(predicates.toArray(new Predicate[0]));
         };
 
         Page<Product> pageResult = productRepository.findAll(spec, pageable);
@@ -174,6 +264,18 @@ public class StoreServiceImpl implements StoreService {
 
         PaginationMeta meta = PaginationMeta.of(pageNumber, pageSize, pageResult.getTotalElements());
         return ApiResponse.paginated("Store products retrieved successfully for " + store.getName(), products, meta);
+    }
+
+    private Store resolveStore(String slugOrId) {
+        try {
+            int storeId = Integer.parseInt(slugOrId);
+            return storeRepository.findById(storeId)
+                    .orElseGet(() -> storeRepository.findBySlugIgnoreCase(slugOrId)
+                            .orElseThrow(() -> new ResourceNotFoundException("Store not found: " + slugOrId)));
+        } catch (NumberFormatException e) {
+            return storeRepository.findBySlugIgnoreCase(slugOrId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Store not found: " + slugOrId));
+        }
     }
 
     private StoreResponse mapToResponse(Store s) {

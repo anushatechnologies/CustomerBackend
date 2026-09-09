@@ -37,6 +37,7 @@ public class SellerProductController {
 
     @GetMapping
     public ResponseEntity<SellerProductPageResponse> listSellerProducts(
+            @RequestParam(required = false) Integer sellerId,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Object category,
             @RequestParam(required = false) Object brand,
@@ -46,30 +47,33 @@ public class SellerProductController {
             @RequestParam(required = false, defaultValue = "1") int page,
             @RequestParam(required = false, defaultValue = "12") int limit
     ) {
-        Integer sellerId = sellerContextUtil.getCurrentSellerId();
+        Integer effectiveSellerId = resolveEffectiveSellerId(sellerId);
         SellerProductPageResponse response = sellerProductService.getSellerProducts(
-                sellerId, search, category, brand, status, stockStatus, sortBy, page, limit
+                effectiveSellerId, search, category, brand, status, stockStatus, sortBy, page, limit
         );
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<ProductResponse>> getSellerProductById(@PathVariable String id) {
-        Integer sellerId = sellerContextUtil.getCurrentSellerId();
+    public ResponseEntity<ApiResponse<ProductResponse>> getSellerProductById(
+            @PathVariable String id,
+            @RequestParam(required = false) Integer sellerId
+    ) {
+        Integer effectiveSellerId = resolveEffectiveSellerId(sellerId);
         Integer productId = parseProductId(id);
-        ProductResponse response = sellerProductService.getSellerProductById(sellerId, productId);
+        ProductResponse response = sellerProductService.getSellerProductById(effectiveSellerId, productId);
         return ResponseEntity.ok(ApiResponse.ok("Product retrieved successfully", response));
     }
 
     @PostMapping
     public ResponseEntity<Map<String, Object>> createSellerProduct(@Valid @RequestBody SellerProductCreateRequest request) {
-        Integer sellerId = sellerContextUtil.getCurrentSellerId();
-        ProductResponse created = sellerProductService.createSellerProduct(sellerId, request);
+        Integer effectiveSellerId = resolveEffectiveSellerId(request.getSellerId());
+        ProductResponse created = sellerProductService.createSellerProduct(effectiveSellerId, request);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("id", "sp_" + created.getProductId());
         data.put("productId", "sp_" + created.getProductId());
-        data.put("sellerId", "seller_" + sellerId);
+        data.put("sellerId", "seller_" + effectiveSellerId);
         data.put("title", created.getTitle());
         data.put("sku", created.getSku());
         data.put("status", created.getStatus());
@@ -77,7 +81,7 @@ public class SellerProductController {
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("success", true);
-        response.put("message", "Product submitted successfully for admin review.");
+        response.put("message", "Product submitted successfully.");
         response.put("data", data);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -88,9 +92,9 @@ public class SellerProductController {
             @PathVariable String id,
             @RequestBody SellerProductUpdateRequest request
     ) {
-        Integer sellerId = sellerContextUtil.getCurrentSellerId();
+        Integer effectiveSellerId = resolveEffectiveSellerId(request != null ? request.getSellerId() : null);
         Integer productId = parseProductId(id);
-        ProductResponse updated = sellerProductService.updateSellerProduct(sellerId, productId, request);
+        ProductResponse updated = sellerProductService.updateSellerProduct(effectiveSellerId, productId, request);
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("success", true);
@@ -105,9 +109,9 @@ public class SellerProductController {
             @PathVariable String id,
             @Valid @RequestBody SellerStockUpdateRequest request
     ) {
-        Integer sellerId = sellerContextUtil.getCurrentSellerId();
+        Integer effectiveSellerId = resolveEffectiveSellerId(request != null ? request.getSellerId() : null);
         Integer productId = parseProductId(id);
-        ProductResponse updated = sellerProductService.updateSellerStock(sellerId, productId, request.getStockQty());
+        ProductResponse updated = sellerProductService.updateSellerStock(effectiveSellerId, productId, request.getStockQty());
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("id", "sp_" + updated.getProductId());
@@ -124,11 +128,12 @@ public class SellerProductController {
     @PatchMapping("/{id}/pricing")
     public ResponseEntity<Map<String, Object>> updateSellerPricing(
             @PathVariable String id,
+            @RequestParam(required = false) Integer sellerId,
             @RequestBody SellerPricingUpdateRequest request
     ) {
-        Integer sellerId = sellerContextUtil.getCurrentSellerId();
+        Integer effectiveSellerId = resolveEffectiveSellerId(sellerId);
         Integer productId = parseProductId(id);
-        sellerProductService.updateSellerPricing(sellerId, productId, request);
+        sellerProductService.updateSellerPricing(effectiveSellerId, productId, request);
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("success", true);
@@ -138,16 +143,26 @@ public class SellerProductController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Map<String, Object>> deleteSellerProduct(@PathVariable String id) {
-        Integer sellerId = sellerContextUtil.getCurrentSellerId();
+    public ResponseEntity<Map<String, Object>> deleteSellerProduct(
+            @PathVariable String id,
+            @RequestParam(required = false) Integer sellerId
+    ) {
+        Integer effectiveSellerId = resolveEffectiveSellerId(sellerId);
         Integer productId = parseProductId(id);
-        sellerProductService.deleteSellerProduct(sellerId, productId);
+        sellerProductService.deleteSellerProduct(effectiveSellerId, productId);
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("success", true);
         response.put("message", "Product removed from inventory");
 
         return ResponseEntity.ok(response);
+    }
+
+    private Integer resolveEffectiveSellerId(Integer requestedSellerId) {
+        if (com.example.project.customer.security.SecurityUtils.isAdmin() && requestedSellerId != null) {
+            return requestedSellerId;
+        }
+        return sellerContextUtil.getCurrentSellerId();
     }
 
     private Integer parseProductId(String id) {

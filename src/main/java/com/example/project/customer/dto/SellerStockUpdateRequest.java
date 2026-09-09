@@ -12,6 +12,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class SellerStockUpdateRequest {
 
+    private Integer sellerId;
+
     @NotNull(message = "stockQty is required")
     private Integer stockQty;
 }
