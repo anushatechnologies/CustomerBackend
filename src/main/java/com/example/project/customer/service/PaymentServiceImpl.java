@@ -23,12 +23,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import com.example.project.customer.security.SecurityUtils;
+import com.example.project.customer.config.UserContextUtil;
 import com.example.project.customer.dto.CartResponse;
 import com.example.project.customer.dto.CheckoutPreviewRequest;
 import com.example.project.customer.dto.CheckoutPreviewResponse;
 import com.example.project.customer.dto.OrderCreateRequest;
 import com.example.project.customer.dto.OrderResponse;
 import com.example.project.customer.entity.Address;
+import com.example.project.customer.exception.ForbiddenException;
+import com.example.project.customer.exception.UnauthorizedException;
 import com.example.project.customer.repository.AddressRepository;
 
 import java.util.List;
@@ -54,6 +58,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final CheckoutService checkoutService;
     private final OrderService orderService;
     private final AddressRepository addressRepository;
+    private final UserContextUtil userContextUtil;
 
     @Value("${razorpay.key-id}")
     private String keyId;
@@ -66,7 +71,10 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public PaymentOrderCreateResponse createPaymentOrder(Integer customerId, PaymentOrderCreateRequest request) {
-        int uid = customerId != null ? customerId : 101;
+        if (customerId == null) {
+            throw new UnauthorizedException("Authentication required: Customer ID must not be null.");
+        }
+        int uid = customerId;
         Customer customer = customerRepository.findById(uid)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found with id: " + uid));
 
@@ -261,8 +269,7 @@ public class PaymentServiceImpl implements PaymentService {
         // Step 3: Find or update local Payment record
         Payment payment = paymentRepository.findByRazorpayOrderId(request.getRazorpayOrderId())
                 .orElseGet(() -> {
-                    int uid = customerId != null ? customerId : 101;
-                    Customer c = customerRepository.findById(uid).orElse(null);
+                    Customer c = customerId != null ? customerRepository.findById(customerId).orElse(null) : null;
                     Order o = request.getOrderId() != null ? orderRepository.findById(request.getOrderId()).orElse(null) : null;
                     return Payment.builder()
                             .customer(c)
@@ -318,19 +325,15 @@ public class PaymentServiceImpl implements PaymentService {
                                 .paymentMethod(payment.getPaymentMethod() != null ? payment.getPaymentMethod() : "RAZORPAY")
                                 .deliveryInstructions("Auto-placed from Razorpay Payment " + payment.getRazorpayPaymentId())
                                 .build();
-                        OrderResponse created = orderService.createOrder(payment.getCustomer().getCustomerId(), oReq);
-                        order = orderRepository.findById(created.getOrderId()).orElse(null);
-                        if (order != null) {
-                            order.setPaymentStatus("PAID");
-                            order.setOrderStatus("CONFIRMED");
-                            orderRepository.save(order);
-                            payment.setOrder(order);
-                            paymentRepository.save(payment);
-                            log.info("Successfully converted Cart to confirmed Order #{} for customer {}", order.getOrderId(), payment.getCustomer().getCustomerId());
-                        }
+                        OrderResponse placed = orderService.createOrder(payment.getCustomer().getCustomerId(), oReq);
+                        order = orderRepository.findById(placed.getOrderId()).orElse(null);
+                        payment.setOrder(order);
+                        paymentRepository.save(payment);
+                        log.info("Auto-placed Order #{} for customer #{} from captured payment {}",
+                                placed.getOrderId(), payment.getCustomer().getCustomerId(), payment.getRazorpayPaymentId());
                     }
                 } catch (Exception e) {
-                    log.warn("Could not automatically convert cart to order on payment verify: {}", e.getMessage());
+                    log.error("Failed to auto-create order from payment {}: {}", payment.getRazorpayPaymentId(), e.getMessage(), e);
                 }
             }
 
@@ -374,8 +377,17 @@ public class PaymentServiceImpl implements PaymentService {
         Payment payment = paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("No payment record found for order id: " + orderId));
 
-        if (payment.getRazorpayPaymentId() != null && !payment.getRazorpayPaymentId().isBlank()) {
-            return getPaymentStatus(payment.getRazorpayPaymentId());
+        if (!SecurityUtils.isAdmin()) {
+            Integer currentUserId = userContextUtil.getCurrentUserId();
+            if (currentUserId == null) {
+                throw new UnauthorizedException("Authentication required: Please log in to view order payment status.");
+            }
+            Integer orderBuyerId = (payment.getOrder() != null && payment.getOrder().getCustomer() != null)
+                    ? payment.getOrder().getCustomer().getCustomerId()
+                    : (payment.getCustomer() != null ? payment.getCustomer().getCustomerId() : null);
+            if (orderBuyerId == null || !orderBuyerId.equals(currentUserId)) {
+                throw new ForbiddenException("Access denied: You do not own this order's payment.");
+            }
         }
 
         Customer cust = payment.getCustomer();
@@ -407,7 +419,19 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional(readOnly = true)
     public List<PaymentStatusResponse> getCustomerPayments(Integer customerId) {
-        int uid = customerId != null ? customerId : 101;
+        if (customerId == null) {
+            throw new UnauthorizedException("Authentication required: Customer ID must not be null.");
+        }
+        if (!SecurityUtils.isAdmin()) {
+            Integer currentUserId = userContextUtil.getCurrentUserId();
+            if (currentUserId == null) {
+                throw new UnauthorizedException("Authentication required: Please log in to view payment history.");
+            }
+            if (!currentUserId.equals(customerId)) {
+                throw new ForbiddenException("Access denied: You can only view your own payment records.");
+            }
+        }
+        int uid = customerId;
         return paymentRepository.findByCustomer_CustomerIdOrderByCreatedAtDesc(uid).stream()
                 .map(p -> mapToStatusResponse(p, null))
                 .toList();
@@ -417,17 +441,25 @@ public class PaymentServiceImpl implements PaymentService {
     public void handleWebhook(String payload, String signatureHeader) {
         log.info("Received Razorpay webhook event");
 
-        if (webhookSecret != null && !webhookSecret.isBlank() && !"placeholder_webhook_secret".equals(webhookSecret)) {
-            try {
-                boolean valid = Utils.verifyWebhookSignature(payload, signatureHeader, webhookSecret);
-                if (!valid) {
-                    log.warn("Invalid Razorpay webhook signature");
-                    throw new IllegalArgumentException("Invalid webhook signature");
-                }
-            } catch (RazorpayException e) {
-                log.error("Webhook signature check error: {}", e.getMessage());
-                throw new IllegalArgumentException("Webhook verification failed: " + e.getMessage());
+        if (webhookSecret == null || webhookSecret.isBlank() || "placeholder_webhook_secret".equals(webhookSecret)) {
+            log.error("Razorpay webhook secret is not configured on the server. Rejecting webhook request.");
+            throw new IllegalStateException("Razorpay webhook secret is not configured on the server.");
+        }
+
+        if (signatureHeader == null || signatureHeader.isBlank()) {
+            log.warn("Missing X-Razorpay-Signature header in webhook request");
+            throw new IllegalArgumentException("Missing X-Razorpay-Signature header.");
+        }
+
+        try {
+            boolean valid = Utils.verifyWebhookSignature(payload, signatureHeader, webhookSecret);
+            if (!valid) {
+                log.warn("Invalid Razorpay webhook signature");
+                throw new IllegalArgumentException("Invalid webhook signature");
             }
+        } catch (RazorpayException e) {
+            log.error("Webhook signature check error: {}", e.getMessage());
+            throw new IllegalArgumentException("Webhook verification failed: " + e.getMessage());
         }
 
         JSONObject event = new JSONObject(payload);
@@ -450,9 +482,15 @@ public class PaymentServiceImpl implements PaymentService {
                 }
                 paymentRepository.save(p);
 
-                if (p.getOrder() != null) {
+                // Branch by purpose: WALLET_TOPUP vs Order Payment
+                if ("WALLET_TOPUP".equalsIgnoreCase(p.getPurpose()) && p.getCustomer() != null) {
+                    creditCustomerWallet(p.getCustomer().getCustomerId(), p.getAmount(), rzpPaymentId);
+                } else if (p.getOrder() != null) {
                     Order o = p.getOrder();
                     o.setPaymentStatus("PAID");
+                    if (p.getPaymentMethod() != null) {
+                        o.setPaymentMethod(p.getPaymentMethod());
+                    }
                     if ("PLACED".equalsIgnoreCase(o.getOrderStatus()) || "PENDING".equalsIgnoreCase(o.getOrderStatus())) {
                         o.setOrderStatus("CONFIRMED");
                     }
@@ -479,7 +517,18 @@ public class PaymentServiceImpl implements PaymentService {
         }
     }
 
-    private void creditCustomerWallet(Integer customerId, BigDecimal amount, String paymentId) {
+    private synchronized void creditCustomerWallet(Integer customerId, BigDecimal amount, String paymentId) {
+        if (customerId == null || amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            log.warn("Invalid wallet credit parameters: customerId={}, amount={}", customerId, amount);
+            return;
+        }
+
+        // Idempotency guard: prevent duplicate credit if this paymentId was already processed
+        if (paymentId != null && walletTransactionRepository.existsByReferenceId(paymentId)) {
+            log.warn("Payment reference '{}' was already credited to customer {} wallet. Skipping duplicate credit.", paymentId, customerId);
+            return;
+        }
+
         Wallet wallet = walletRepository.findByCustomer_CustomerId(customerId)
                 .orElseGet(() -> {
                     Customer c = customerRepository.findById(customerId).orElse(null);
@@ -488,7 +537,7 @@ public class PaymentServiceImpl implements PaymentService {
                             .balance(BigDecimal.ZERO)
                             .currency("INR")
                             .loyaltyPoints(0)
-                            .tier("GOLD")
+                            .tier("STANDARD")
                             .active(true)
                             .build();
                     return walletRepository.save(w);

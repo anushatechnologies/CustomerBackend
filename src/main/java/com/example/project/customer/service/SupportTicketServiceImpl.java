@@ -10,6 +10,7 @@ import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.SupportTicket;
 import com.example.project.customer.entity.TicketMessage;
 import com.example.project.customer.exception.ResourceNotFoundException;
+import com.example.project.customer.exception.UnauthorizedException;
 import com.example.project.customer.repository.SupportTicketRepository;
 import com.example.project.customer.repository.TicketMessageRepository;
 import lombok.RequiredArgsConstructor;
@@ -37,10 +38,13 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     @Override
     @Transactional(readOnly = true)
     public ApiResponse<List<SupportTicketResponse>> getTickets(Integer userId, String status, int page, int limit) {
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
+        int uid = userId;
         int pageNumber = page > 0 ? page : 1;
         int pageSize = limit > 0 ? limit : 20;
         Pageable pageable = PageRequest.of(pageNumber - 1, pageSize);
-        int uid = userId != null ? userId : 101;
 
         Page<SupportTicket> pageResult;
         if (status != null && !status.isBlank()) {
@@ -66,7 +70,10 @@ public class SupportTicketServiceImpl implements SupportTicketService {
 
     @Override
     public SupportTicketResponse createTicket(Integer userId, SupportTicketRequest request) {
-        int uid = userId != null ? userId : 101;
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
+        int uid = userId;
         String tktNum = "TKT-" + System.currentTimeMillis();
 
         SupportTicket ticket = SupportTicket.builder()
@@ -98,8 +105,11 @@ public class SupportTicketServiceImpl implements SupportTicketService {
 
     @Override
     public TicketMessageResponse addMessage(Integer ticketId, Integer senderId, String senderRole, String senderName, TicketMessageRequest request) {
+        if (senderId == null) {
+            throw new UnauthorizedException("Authentication required: Sender ID must not be null.");
+        }
         SupportTicket ticket = findTicket(ticketId);
-        int sid = senderId != null ? senderId : 101;
+        int sid = senderId;
         String role = senderRole != null ? senderRole : "USER";
 
         TicketMessage msg = TicketMessage.builder()

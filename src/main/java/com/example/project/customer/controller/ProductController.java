@@ -9,6 +9,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -31,6 +32,7 @@ public class ProductController {
     private final ProductService service;
 
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<ProductResponse>> create(
             @Valid @RequestBody ProductRequest request) {
 
@@ -99,6 +101,7 @@ public class ProductController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<ProductResponse>> update(
             @PathVariable Integer id,
             @Valid @RequestBody ProductRequest request) {
@@ -112,6 +115,7 @@ public class ProductController {
     }
 
     @PatchMapping("/{id}/stock")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<ProductResponse>> updateStockQuantity(
             @PathVariable Integer id,
             @Valid @RequestBody StockQuantityUpdateRequest request) {
@@ -125,6 +129,7 @@ public class ProductController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Void>> delete(
             @PathVariable Integer id) {
 
@@ -139,6 +144,7 @@ public class ProductController {
     }
 
     @PatchMapping("/{id}/activate")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<ProductResponse>> activate(
             @PathVariable Integer id) {
 
@@ -151,6 +157,7 @@ public class ProductController {
     }
 
     @PatchMapping("/{id}/deactivate")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<ProductResponse>> deactivate(
             @PathVariable Integer id) {
 

@@ -16,6 +16,7 @@ import com.example.project.customer.entity.ReviewImage;
 import com.example.project.customer.entity.ReviewStatus;
 import com.example.project.customer.exception.ResourceConflictException;
 import com.example.project.customer.exception.ResourceNotFoundException;
+import com.example.project.customer.exception.UnauthorizedException;
 import com.example.project.customer.repository.CustomerRepository;
 import com.example.project.customer.repository.OrderItemRepository;
 import com.example.project.customer.repository.ProductRepository;
@@ -44,15 +45,18 @@ import java.util.Set;
 public class ReviewServiceImpl implements ReviewService {
 
     private final ProductReviewRepository reviewRepository;
-    private final ReviewImageRepository reviewImageRepository;
-    private final ReviewHelpfulVoteRepository helpfulVoteRepository;
     private final ProductRepository productRepository;
+    private final ReviewHelpfulVoteRepository helpfulVoteRepository;
+    private final ReviewImageRepository reviewImageRepository;
     private final CustomerRepository customerRepository;
     private final OrderItemRepository orderItemRepository;
 
     @Override
     public ReviewResponse submitReview(Integer customerId, CreateReviewRequest request) {
-        int uid = customerId != null ? customerId : 101;
+        if (customerId == null) {
+            throw new UnauthorizedException("Authentication required: Customer ID must not be null.");
+        }
+        int uid = customerId;
 
         // 1. Verify OrderItem exists
         OrderItem orderItem = orderItemRepository.findById(request.getOrderItemId())
@@ -125,8 +129,11 @@ public class ReviewServiceImpl implements ReviewService {
 
     @Override
     public ReviewResponse updateReview(Integer customerId, Long reviewId, UpdateReviewRequest request) {
+        if (customerId == null) {
+            throw new UnauthorizedException("Authentication required: Customer ID must not be null.");
+        }
         ProductReview review = findReview(reviewId);
-        int uid = customerId != null ? customerId : 101;
+        int uid = customerId;
 
         if (!review.getCustomer().getCustomerId().equals(uid)) {
             throw new IllegalArgumentException("You are not authorized to edit this review");
@@ -157,8 +164,11 @@ public class ReviewServiceImpl implements ReviewService {
 
     @Override
     public void deleteReview(Integer customerId, Long reviewId) {
+        if (customerId == null) {
+            throw new UnauthorizedException("Authentication required: Customer ID must not be null.");
+        }
         ProductReview review = findReview(reviewId);
-        int uid = customerId != null ? customerId : 101;
+        int uid = customerId;
 
         if (!review.getCustomer().getCustomerId().equals(uid)) {
             throw new IllegalArgumentException("You are not authorized to delete this review");
@@ -173,8 +183,11 @@ public class ReviewServiceImpl implements ReviewService {
 
     @Override
     public ReviewResponse voteHelpful(Integer customerId, Long reviewId) {
+        if (customerId == null) {
+            throw new UnauthorizedException("Authentication required: Customer ID must not be null.");
+        }
         ProductReview review = findReview(reviewId);
-        int uid = customerId != null ? customerId : 101;
+        int uid = customerId;
 
         if (helpfulVoteRepository.existsByReview_IdAndCustomer_CustomerId(reviewId, uid)) {
             throw new ResourceConflictException("You have already voted this review as helpful");

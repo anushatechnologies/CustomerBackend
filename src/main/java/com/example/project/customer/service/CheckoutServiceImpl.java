@@ -14,6 +14,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
+import com.example.project.customer.entity.Store;
+import com.example.project.customer.repository.StoreRepository;
+
 @Slf4j
 @Service
 @Transactional(readOnly = true)
@@ -23,6 +26,7 @@ public class CheckoutServiceImpl implements CheckoutService {
 
     private final CartService cartService;
     private final AddressRepository addressRepository;
+    private final StoreRepository storeRepository;
 
     @Override
     public CheckoutPreviewResponse previewCheckout(Integer userId, CheckoutPreviewRequest request) {
@@ -37,8 +41,17 @@ public class CheckoutServiceImpl implements CheckoutService {
             taxableAmount = BigDecimal.ZERO;
         }
 
-        // Split GST determination based on destination state (e.g. Telangana / intra-state vs interstate)
-        boolean isIntraState = address.getState() == null || "Telangana".equalsIgnoreCase(address.getState().trim());
+        // Pull store origin state from store.getSeller().getState() instead of hardcoded "Telangana"
+        String originState = "Telangana";
+        if (cart.getStoreId() != null) {
+            Store store = storeRepository.findById(cart.getStoreId()).orElse(null);
+            if (store != null && store.getSeller() != null && store.getSeller().getState() != null && !store.getSeller().getState().isBlank()) {
+                originState = store.getSeller().getState().trim();
+            }
+        }
+
+        String buyerState = address.getState() != null ? address.getState().trim() : "";
+        boolean isIntraState = buyerState.isBlank() || originState.equalsIgnoreCase(buyerState);
 
         BigDecimal cgst = BigDecimal.ZERO;
         BigDecimal sgst = BigDecimal.ZERO;

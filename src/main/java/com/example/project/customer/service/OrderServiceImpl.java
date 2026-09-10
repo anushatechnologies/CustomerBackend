@@ -21,8 +21,12 @@ import com.example.project.customer.entity.SellerPayoutLedger;
 import com.example.project.customer.entity.Store;
 import com.example.project.customer.entity.StoreStatus;
 import com.example.project.customer.entity.TrackingCheckpoint;
+import com.example.project.customer.config.SellerContextUtil;
+import com.example.project.customer.config.UserContextUtil;
+import com.example.project.customer.exception.ForbiddenException;
 import com.example.project.customer.exception.ResourceConflictException;
 import com.example.project.customer.exception.ResourceNotFoundException;
+import com.example.project.customer.exception.UnauthorizedException;
 import com.example.project.customer.repository.AddressRepository;
 import com.example.project.customer.repository.CustomerRepository;
 import com.example.project.customer.repository.OrderItemRepository;
@@ -30,6 +34,7 @@ import com.example.project.customer.repository.OrderRepository;
 import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.repository.SellerPayoutLedgerRepository;
 import com.example.project.customer.repository.StoreRepository;
+import com.example.project.customer.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -45,6 +50,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -64,10 +71,15 @@ public class OrderServiceImpl implements OrderService {
     private final StoreInvoiceSequenceService storeInvoiceSequenceService;
     private final SellerPayoutLedgerRepository sellerPayoutLedgerRepository;
     private final StoreRepository storeRepository;
+    private final UserContextUtil userContextUtil;
+    private final SellerContextUtil sellerContextUtil;
 
     @Override
     public OrderResponse createOrder(Integer userId, OrderCreateRequest request) {
-        int uid = userId != null ? userId : 101;
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
+        int uid = userId;
         CartResponse cart = cartService.getCart(uid);
 
         if (cart.getItems() == null || cart.getItems().isEmpty()) {
@@ -110,7 +122,7 @@ public class OrderServiceImpl implements OrderService {
         CheckoutPreviewResponse preview = checkoutService.previewCheckout(uid, previewReq);
 
         String dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        long randomSuffix = (long) (Math.random() * 900) + 100;
+        String randomSuffix = UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase();
         String orderNumber = "ORD-" + dateStr + "-" + randomSuffix;
 
         StringBuilder sb = new StringBuilder();
@@ -263,7 +275,10 @@ public class OrderServiceImpl implements OrderService {
         int pageSize = limit > 0 ? limit : 20;
         Pageable pageable = PageRequest.of(pageNumber - 1, pageSize);
 
-        int uid = userId != null ? userId : 101;
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
+        int uid = userId;
         Page<Order> orderPage = (status != null && !status.trim().isEmpty())
                 ? orderRepository.findByCustomer_CustomerIdAndOrderStatusIgnoreCaseOrderByCreatedAtDesc(uid, status.trim().toUpperCase(), pageable)
                 : orderRepository.findByCustomer_CustomerIdOrderByCreatedAtDesc(uid, pageable);
@@ -280,6 +295,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public OrderResponse getOrderById(Integer id) {
         Order order = findOrder(id);
+        validateOrderReadAccess(order);
         return mapToOrderResponse(order);
     }
 
@@ -287,6 +303,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public OrderTrackingResponse getOrderTracking(Integer id) {
         Order order = findOrder(id);
+        validateOrderReadAccess(order);
         List<OrderTrackingResponse.TrackingEvent> events = order.getCheckpoints().stream()
                 .map(c -> OrderTrackingResponse.TrackingEvent.builder()
                         .checkpointId(c.getCheckpointId())
@@ -315,6 +332,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public InvoiceResponse getOrderInvoice(Integer id) {
         Order order = findOrder(id);
+        validateOrderReadAccess(order);
         Customer customer = order.getCustomer();
 
         Store store = order.getStore();
@@ -372,6 +390,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public byte[] generateInvoicePdf(Integer id) {
         Order order = findOrder(id);
+        validateOrderReadAccess(order);
         Customer customer = order.getCustomer();
         String invoiceNumber = (order.getStoreInvoiceNumber() != null && !order.getStoreInvoiceNumber().isBlank())
                 ? order.getStoreInvoiceNumber() : "INV-" + String.format("%06d", order.getOrderId());
@@ -381,6 +400,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public OrderResponse updateOrderStatus(Integer id, String status, String location, String description) {
         Order order = findOrder(id);
+        validateOrderStatusUpdateAccess(order);
         String upperStatus = status.trim().toUpperCase();
         order.setOrderStatus(upperStatus);
 
@@ -410,6 +430,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public OrderResponse cancelOrder(Integer id, String location, String description) {
         Order order = findOrder(id);
+        validateOrderCancelAccess(order);
         if ("DELIVERED".equalsIgnoreCase(order.getOrderStatus())) {
             throw new IllegalStateException("Delivered orders cannot be cancelled directly. Please raise a return/dispute.");
         }
@@ -445,6 +466,58 @@ public class OrderServiceImpl implements OrderService {
         });
 
         return mapToOrderResponse(updated);
+    }
+
+    private void validateOrderReadAccess(Order order) {
+        if (SecurityUtils.isAdmin()) {
+            return;
+        }
+        Integer currentUserId = userContextUtil.getOptionalCurrentUserId();
+        if (currentUserId != null && order.getCustomer() != null && currentUserId.equals(order.getCustomer().getCustomerId())) {
+            return;
+        }
+        // Check if current user is the seller who owns the store of this order
+        Optional<Integer> currentSellerId = SecurityUtils.getCurrentSellerId();
+        if (currentSellerId.isEmpty()) {
+            try {
+                currentSellerId = Optional.ofNullable(sellerContextUtil.getCurrentSellerId());
+            } catch (Exception ignored) {}
+        }
+        if (currentSellerId.isPresent() && order.getStore() != null && order.getStore().getSeller() != null
+                && currentSellerId.get().equals(order.getStore().getSeller().getSellerId())) {
+            return;
+        }
+        throw new ForbiddenException("Access denied: You do not have permission to access Order #" + order.getOrderId());
+    }
+
+    private void validateOrderCancelAccess(Order order) {
+        if (SecurityUtils.isAdmin()) {
+            return;
+        }
+        Integer currentUserId = userContextUtil.getCurrentUserId();
+        if (order.getCustomer() != null && currentUserId.equals(order.getCustomer().getCustomerId())) {
+            return;
+        }
+        throw new ForbiddenException("Access denied: You can only cancel your own orders.");
+    }
+
+    private void validateOrderStatusUpdateAccess(Order order) {
+        if (SecurityUtils.isAdmin()) {
+            return;
+        }
+        if (SecurityUtils.isSeller()) {
+            Optional<Integer> currentSellerId = SecurityUtils.getCurrentSellerId();
+            if (currentSellerId.isEmpty()) {
+                try {
+                    currentSellerId = Optional.ofNullable(sellerContextUtil.getCurrentSellerId());
+                } catch (Exception ignored) {}
+            }
+            if (currentSellerId.isPresent() && order.getStore() != null && order.getStore().getSeller() != null
+                    && currentSellerId.get().equals(order.getStore().getSeller().getSellerId())) {
+                return;
+            }
+        }
+        throw new ForbiddenException("Access denied: Only administrators or the store owner can update order status.");
     }
 
     private synchronized void restoreStock(OrderItem orderItem) {

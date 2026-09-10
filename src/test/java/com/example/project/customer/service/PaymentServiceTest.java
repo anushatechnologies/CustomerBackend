@@ -71,6 +71,9 @@ class PaymentServiceTest {
     @Mock
     private AddressRepository addressRepository;
 
+    @Mock
+    private com.example.project.customer.config.UserContextUtil userContextUtil;
+
     @InjectMocks
     private PaymentServiceImpl paymentService;
 
@@ -79,6 +82,7 @@ class PaymentServiceTest {
 
     @BeforeEach
     void setUp() {
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
         ReflectionTestUtils.setField(paymentService, "keyId", "rzp_test_mockKey");
         ReflectionTestUtils.setField(paymentService, "keySecret", "mockSecretKey123");
         ReflectionTestUtils.setField(paymentService, "webhookSecret", "mockWebhookSecret");
@@ -181,6 +185,7 @@ class PaymentServiceTest {
 
         when(paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(5001))
                 .thenReturn(Optional.of(payment));
+        when(userContextUtil.getCurrentUserId()).thenReturn(101);
 
         PaymentStatusResponse response = paymentService.getLatestOrderPaymentStatus(5001);
 
@@ -189,6 +194,53 @@ class PaymentServiceTest {
         assertThat(response.getRazorpayOrderId()).isEqualTo("order_Mock12345");
         assertThat(response.getStatus()).isEqualTo("CREATED");
         assertThat(response.getAmount()).isEqualByComparingTo("1500.00");
+    }
+
+    @Test
+    @DisplayName("getLatestOrderPaymentStatus - throws ForbiddenException when caller is not order owner and not admin")
+    void testGetLatestOrderPaymentStatus_MismatchedUser() {
+        Payment payment = Payment.builder()
+                .paymentId(10)
+                .order(order)
+                .customer(customer) // customerId = 101
+                .status("CREATED")
+                .build();
+
+        when(paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(5001))
+                .thenReturn(Optional.of(payment));
+        when(userContextUtil.getCurrentUserId()).thenReturn(999); // Different user
+
+        assertThatThrownBy(() -> paymentService.getLatestOrderPaymentStatus(5001))
+                .isInstanceOf(com.example.project.customer.exception.ForbiddenException.class)
+                .hasMessageContaining("Access denied");
+    }
+
+    @Test
+    @DisplayName("getCustomerPayments - throws ForbiddenException when caller attempts to access another customer's payments")
+    void testGetCustomerPayments_MismatchedCaller() {
+        when(userContextUtil.getCurrentUserId()).thenReturn(202); // Caller is 202, asking for 101
+
+        assertThatThrownBy(() -> paymentService.getCustomerPayments(101))
+                .isInstanceOf(com.example.project.customer.exception.ForbiddenException.class)
+                .hasMessageContaining("Access denied");
+    }
+
+    @Test
+    @DisplayName("handleWebhook - throws IllegalStateException when webhookSecret is missing or placeholder")
+    void testHandleWebhook_PlaceholderSecret() {
+        ReflectionTestUtils.setField(paymentService, "webhookSecret", "placeholder_webhook_secret");
+
+        assertThatThrownBy(() -> paymentService.handleWebhook("{}", "sig"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("not configured");
+    }
+
+    @Test
+    @DisplayName("createPaymentOrder - throws UnauthorizedException when customerId is null")
+    void testCreatePaymentOrder_NullCustomerId() {
+        PaymentOrderCreateRequest request = PaymentOrderCreateRequest.builder().amount(BigDecimal.TEN).build();
+        assertThatThrownBy(() -> paymentService.createPaymentOrder(null, request))
+                .isInstanceOf(com.example.project.customer.exception.UnauthorizedException.class);
     }
 
     @Test

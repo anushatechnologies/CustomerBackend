@@ -9,6 +9,7 @@ import com.example.project.customer.dto.StartConversationRequest;
 import com.example.project.customer.entity.ChatMessage;
 import com.example.project.customer.entity.Conversation;
 import com.example.project.customer.exception.ResourceNotFoundException;
+import com.example.project.customer.exception.UnauthorizedException;
 import com.example.project.customer.repository.ChatMessageRepository;
 import com.example.project.customer.repository.ConversationRepository;
 import lombok.RequiredArgsConstructor;
@@ -35,14 +36,20 @@ public class ChatServiceImpl implements ChatService {
     @Override
     @Transactional(readOnly = true)
     public List<ConversationResponse> getConversations(Integer userId) {
-        int uid = userId != null ? userId : 101;
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
+        int uid = userId;
         List<Conversation> list = conversationRepository.findByUserOrSeller(uid);
         return list.stream().map(c -> mapToConversationResponse(c, uid)).toList();
     }
 
     @Override
     public ConversationResponse startConversation(Integer userId, StartConversationRequest request) {
-        int buyerId = userId != null ? userId : 101;
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
+        int buyerId = userId;
         String topic = request.getTopic() != null ? request.getTopic() : "GENERAL";
         String refId = request.getReferenceId();
 
@@ -114,8 +121,11 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public ChatMessageResponse sendMessage(Integer conversationId, Integer senderId, String senderRole, ChatMessageRequest request) {
+        if (senderId == null) {
+            throw new UnauthorizedException("Authentication required: Sender ID must not be null.");
+        }
         Conversation conv = findConversation(conversationId);
-        int sid = senderId != null ? senderId : 101;
+        int sid = senderId;
         String role = senderRole != null ? senderRole : "BUYER";
 
         ChatMessage msg = ChatMessage.builder()

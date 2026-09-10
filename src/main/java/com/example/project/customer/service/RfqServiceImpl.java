@@ -16,6 +16,7 @@ import com.example.project.customer.entity.Rfq;
 import com.example.project.customer.entity.RfqQuestion;
 import com.example.project.customer.entity.TrackingCheckpoint;
 import com.example.project.customer.exception.ResourceNotFoundException;
+import com.example.project.customer.exception.UnauthorizedException;
 import com.example.project.customer.repository.OrderItemRepository;
 import com.example.project.customer.repository.OrderRepository;
 import com.example.project.customer.repository.QuotationRepository;
@@ -52,7 +53,10 @@ public class RfqServiceImpl implements RfqService {
 
     @Override
     public RfqResponse createRfq(Integer userId, RfqRequest request) {
-        int uid = userId != null ? userId : 101;
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
+        int uid = userId;
         String dateYear = String.valueOf(LocalDate.now().getYear());
         long randomSuffix = (long) (Math.random() * 900) + 100;
         String rfqNum = "RFQ-" + dateYear + "-000" + randomSuffix;
@@ -85,7 +89,10 @@ public class RfqServiceImpl implements RfqService {
     @Override
     @Transactional(readOnly = true)
     public ApiResponse<List<RfqResponse>> getRfqs(Integer userId, String status, int page, int limit) {
-        int uid = userId != null ? userId : 101;
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
+        int uid = userId;
         int pageNumber = Math.max(page - 1, 0);
         int pageSize = limit > 0 ? limit : 20;
         Pageable pageable = PageRequest.of(pageNumber, pageSize);

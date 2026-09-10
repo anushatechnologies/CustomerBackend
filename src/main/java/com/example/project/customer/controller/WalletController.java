@@ -10,6 +10,7 @@ import com.example.project.customer.service.WalletService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -22,6 +23,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/wallet")
 @RequiredArgsConstructor
+@PreAuthorize("isAuthenticated()")
 public class WalletController {
 
     private final WalletService walletService;
@@ -51,6 +53,7 @@ public class WalletController {
     }
 
     @PostMapping("/topup")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<WalletInfoResponse>> topup(@Valid @RequestBody WalletTopupRequest request) {
         Integer userId = userContextUtil.getCurrentUserId();
         WalletInfoResponse updated = walletService.topup(userId, request);

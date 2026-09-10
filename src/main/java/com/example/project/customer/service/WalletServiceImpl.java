@@ -10,9 +10,11 @@ import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.RewardVoucher;
 import com.example.project.customer.entity.Wallet;
 import com.example.project.customer.entity.WalletTransaction;
+import com.example.project.customer.exception.ForbiddenException;
 import com.example.project.customer.repository.RewardVoucherRepository;
 import com.example.project.customer.repository.WalletRepository;
 import com.example.project.customer.repository.WalletTransactionRepository;
+import com.example.project.customer.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -29,7 +31,6 @@ import java.util.List;
 @Service
 @Transactional
 @RequiredArgsConstructor
-@SuppressWarnings("null")
 public class WalletServiceImpl implements WalletService {
 
     private final WalletRepository walletRepository;
@@ -46,17 +47,15 @@ public class WalletServiceImpl implements WalletService {
     @Override
     @Transactional(readOnly = true)
     public ApiResponse<List<WalletTransactionResponse>> getTransactions(Integer userId, int page, int limit) {
-        int pageNumber = page > 0 ? page : 1;
-        int pageSize = limit > 0 ? limit : 20;
-        Pageable pageable = PageRequest.of(pageNumber - 1, pageSize);
+        int pageNumber = Math.max(page - 1, 0);
+        Pageable pageable = PageRequest.of(pageNumber, limit);
+        Page<WalletTransaction> paged = transactionRepository.findByWallet_Customer_CustomerIdOrderByTimestampDesc(userId, pageable);
 
-        Page<WalletTransaction> pageResult = transactionRepository.findByWallet_Customer_CustomerIdOrderByTimestampDesc(userId, pageable);
-
-        List<WalletTransactionResponse> data = pageResult.getContent().stream()
+        List<WalletTransactionResponse> data = paged.getContent().stream()
                 .map(this::mapToTransactionResponse)
                 .toList();
 
-        PaginationMeta meta = PaginationMeta.of(pageNumber, pageSize, pageResult.getTotalElements());
+        PaginationMeta meta = PaginationMeta.of(page, limit, paged.getTotalElements());
         return ApiResponse.paginated("Wallet transactions retrieved successfully", data, meta);
     }
 
@@ -71,6 +70,10 @@ public class WalletServiceImpl implements WalletService {
 
     @Override
     public WalletInfoResponse topup(Integer userId, WalletTopupRequest request) {
+        if (!SecurityUtils.isAdmin()) {
+            throw new ForbiddenException("Manual wallet top-up is restricted to administrators. Customers must top up their wallet via Razorpay checkout.");
+        }
+
         Wallet wallet = getOrCreateWallet(userId);
         BigDecimal newBalance = wallet.getBalance().add(request.getAmount());
         wallet.setBalance(newBalance);
@@ -96,27 +99,13 @@ public class WalletServiceImpl implements WalletService {
                 .orElseGet(() -> {
                     Wallet w = Wallet.builder()
                             .customer(Customer.builder().customerId(userId).build())
-                            .balance(new BigDecimal("50000.00"))
+                            .balance(BigDecimal.ZERO)
                             .currency("INR")
-                            .loyaltyPoints(1250)
-                            .tier("PLATINUM")
+                            .loyaltyPoints(0)
+                            .tier("STANDARD")
                             .active(true)
                             .build();
-                    Wallet saved = walletRepository.save(w);
-
-                    // Seed initial welcome credit transaction
-                    WalletTransaction txn = WalletTransaction.builder()
-                            .wallet(saved)
-                            .type("CREDIT")
-                            .amount(new BigDecimal("50000.00"))
-                            .source("ENTERPRISE_CREDIT")
-                            .referenceId("CR-" + System.currentTimeMillis())
-                            .description("Initial Pre-approved B2B Construction Credit Line")
-                            .balanceAfter(new BigDecimal("50000.00"))
-                            .timestamp(LocalDateTime.now().minusDays(3))
-                            .build();
-                    transactionRepository.save(txn);
-                    return saved;
+                    return walletRepository.save(w);
                 });
     }
 

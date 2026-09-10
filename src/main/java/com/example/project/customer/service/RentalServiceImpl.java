@@ -9,6 +9,7 @@ import com.example.project.customer.entity.RentalBooking;
 import com.example.project.customer.entity.RentalEquipment;
 import com.example.project.customer.exception.ResourceConflictException;
 import com.example.project.customer.exception.ResourceNotFoundException;
+import com.example.project.customer.exception.UnauthorizedException;
 import com.example.project.customer.repository.RentalBookingRepository;
 import com.example.project.customer.repository.RentalEquipmentRepository;
 import lombok.RequiredArgsConstructor;
@@ -82,7 +83,10 @@ public class RentalServiceImpl implements RentalService {
 
     @Override
     public RentalBookingResponse bookEquipment(Integer userId, RentalBookingRequest request) {
-        int uid = userId != null ? userId : 101;
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
+        int uid = userId;
         RentalEquipment eq = findEquipment(request.getEquipmentId());
 
         if (!Boolean.TRUE.equals(eq.getAvailable())) {

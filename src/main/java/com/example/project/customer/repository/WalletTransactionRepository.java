@@ -18,4 +18,6 @@ public interface WalletTransactionRepository extends JpaRepository<WalletTransac
 
     @Query("SELECT wt FROM WalletTransaction wt WHERE wt.wallet.customer.customerId = :customerId ORDER BY wt.timestamp DESC")
     Page<WalletTransaction> findByWallet_Customer_CustomerIdOrderByTimestampDesc(@Param("customerId") Integer customerId, Pageable pageable);
+
+    boolean existsByReferenceId(String referenceId);
 }

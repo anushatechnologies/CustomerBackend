@@ -10,6 +10,7 @@ import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.PurchaseOrder;
 import com.example.project.customer.entity.PurchaseOrderItem;
 import com.example.project.customer.exception.ResourceNotFoundException;
+import com.example.project.customer.exception.UnauthorizedException;
 import com.example.project.customer.repository.PurchaseOrderItemRepository;
 import com.example.project.customer.repository.PurchaseOrderRepository;
 import lombok.RequiredArgsConstructor;
@@ -38,7 +39,10 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
     @Override
     public PurchaseOrderResponse createPurchaseOrder(Integer userId, PurchaseOrderRequest request) {
-        int uid = userId != null ? userId : 101;
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
+        int uid = userId;
         String poNum = "PO-" + System.currentTimeMillis();
 
         BigDecimal calculatedTotal = BigDecimal.ZERO;
@@ -86,10 +90,14 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Override
     @Transactional(readOnly = true)
     public ApiResponse<List<PurchaseOrderResponse>> getPurchaseOrders(Integer userId, String status, int page, int limit) {
-        int pageNumber = page > 0 ? page : 1;
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
+        int uid = userId;
+
+        int pageNumber = Math.max(page - 1, 0);
         int pageSize = limit > 0 ? limit : 20;
-        Pageable pageable = PageRequest.of(pageNumber - 1, pageSize);
-        int uid = userId != null ? userId : 101;
+        Pageable pageable = PageRequest.of(pageNumber, pageSize);
 
         Page<PurchaseOrder> pageResult;
         if (status != null && !status.isBlank()) {
@@ -102,7 +110,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                 .map(this::mapToResponse)
                 .toList();
 
-        PaginationMeta meta = PaginationMeta.of(pageNumber, pageSize, pageResult.getTotalElements());
+        PaginationMeta meta = PaginationMeta.of(page, pageSize, pageResult.getTotalElements());
         return ApiResponse.paginated("Purchase orders retrieved successfully", data, meta);
     }
 

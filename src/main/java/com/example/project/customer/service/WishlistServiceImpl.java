@@ -6,6 +6,7 @@ import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.Product;
 import com.example.project.customer.entity.WishlistItem;
 import com.example.project.customer.exception.ResourceNotFoundException;
+import com.example.project.customer.exception.UnauthorizedException;
 import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.repository.WishlistRepository;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +30,10 @@ public class WishlistServiceImpl implements WishlistService {
     @Override
     @Transactional(readOnly = true)
     public List<WishlistResponse> getWishlist(Integer userId) {
-        int uid = userId != null ? userId : 101;
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
+        int uid = userId;
         return wishlistRepository.findByCustomer_CustomerIdOrderByCreatedAtDesc(uid).stream()
                 .map(this::mapToResponse)
                 .toList();
@@ -37,7 +41,10 @@ public class WishlistServiceImpl implements WishlistService {
 
     @Override
     public WishlistResponse addToWishlist(Integer userId, Integer productId) {
-        int uid = userId != null ? userId : 101;
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
+        int uid = userId;
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
 
@@ -56,7 +63,10 @@ public class WishlistServiceImpl implements WishlistService {
 
     @Override
     public void removeFromWishlist(Integer userId, Integer productId) {
-        int uid = userId != null ? userId : 101;
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
+        int uid = userId;
         wishlistRepository.deleteByUserIdAndProduct_ProductId(uid, productId);
     }
 

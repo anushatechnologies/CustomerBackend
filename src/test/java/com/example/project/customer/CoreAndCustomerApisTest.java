@@ -104,7 +104,7 @@ public class CoreAndCustomerApisTest {
         mockMvc = MockMvcBuilders.standaloneSetup(
                 new CartController(cartService, userContextUtil),
                 new CheckoutController(checkoutService, userContextUtil),
-                new CustomerController(customerService),
+                new CustomerController(customerService, userContextUtil),
                 new WishlistController(wishlistService, userContextUtil),
                 new RfqController(rfqService, userContextUtil),
                 new SellerDiscountController(sellerDiscountService, sellerContextUtil),
@@ -237,6 +237,7 @@ public class CoreAndCustomerApisTest {
     @Test
     @DisplayName("Customer API: GET /api/customers/101 retrieves customer")
     void testGetCustomer() throws Exception {
+        when(userContextUtil.getCurrentUserId()).thenReturn(101);
         CustomerResponse customer = CustomerResponse.builder()
                 .customerId(101)
                 .name("Site Project Manager")
@@ -254,6 +255,7 @@ public class CoreAndCustomerApisTest {
     @Test
     @DisplayName("Customer API: PUT /api/customers/101 updates customer")
     void testUpdateCustomer() throws Exception {
+        when(userContextUtil.getCurrentUserId()).thenReturn(101);
         CustomerRequest req = CustomerRequest.builder()
                 .name("Chief Procurement Engineer")
                 .email("infra@enterprise.com")

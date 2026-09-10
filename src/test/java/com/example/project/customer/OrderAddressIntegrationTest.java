@@ -77,6 +77,12 @@ class OrderAddressIntegrationTest {
     @Mock
     private com.example.project.customer.repository.StoreRepository storeRepository;
 
+    @Mock
+    private com.example.project.customer.config.UserContextUtil userContextUtil;
+
+    @Mock
+    private com.example.project.customer.config.SellerContextUtil sellerContextUtil;
+
     private OrderServiceImpl orderService;
     private CheckoutServiceImpl checkoutServiceImpl;
 
@@ -96,10 +102,12 @@ class OrderAddressIntegrationTest {
                 pdfInvoiceGeneratorService,
                 storeInvoiceSequenceService,
                 sellerPayoutLedgerRepository,
-                storeRepository
+                storeRepository,
+                userContextUtil,
+                sellerContextUtil
         );
 
-        checkoutServiceImpl = new CheckoutServiceImpl(cartService, addressRepository);
+        checkoutServiceImpl = new CheckoutServiceImpl(cartService, addressRepository, storeRepository);
 
         customer101 = Customer.builder().customerId(101).name("Pavan Kumar").phone("9876543210").build();
 

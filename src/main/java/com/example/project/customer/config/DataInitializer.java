@@ -63,7 +63,6 @@ public class DataInitializer implements CommandLineRunner {
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
     private final ProductReviewRepository productReviewRepository;
-    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
     private final com.example.project.customer.repository.WalletRepository walletRepository;
     private final com.example.project.customer.repository.WalletTransactionRepository walletTransactionRepository;
     private final com.example.project.customer.repository.RewardVoucherRepository rewardVoucherRepository;
@@ -79,11 +78,6 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        try {
-            jdbcTemplate.execute("ALTER TABLE seller_documents MODIFY COLUMN document_type VARCHAR(50) NOT NULL");
-            jdbcTemplate.execute("ALTER TABLE seller_documents MODIFY COLUMN title VARCHAR(150) NULL DEFAULT ''");
-        } catch (Exception ignored) {
-        }
         try {
             initCustomers();
             initAddresses();

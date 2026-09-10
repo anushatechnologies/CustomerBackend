@@ -14,6 +14,7 @@ import com.example.project.customer.entity.Store;
 import com.example.project.customer.entity.StoreStatus;
 import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.exception.StoreMismatchException;
+import com.example.project.customer.exception.UnauthorizedException;
 import com.example.project.customer.repository.CartItemRepository;
 import com.example.project.customer.repository.CartRepository;
 import com.example.project.customer.repository.ProductRepository;
@@ -50,7 +51,10 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public CartResponse addItem(Integer userId, CartItemRequest request) {
-        int uid = userId != null ? userId : 101;
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
+        int uid = userId;
         Product product = productRepository.findById(request.getProductId())
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + request.getProductId()));
 
@@ -101,7 +105,10 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public CartResponse switchStore(Integer userId, SwitchStoreRequest request) {
-        int uid = userId != null ? userId : 101;
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
+        int uid = userId;
         Store targetStore;
 
         if (request.getStoreId() != null) {
@@ -127,8 +134,10 @@ public class CartServiceImpl implements CartService {
             }
         }
 
-        // Activate or create cart for target store
-        Cart newActiveCart = getOrCreateCartForStore(uid, targetStore);
+        // Find or create cart for target store
+        Cart targetCart = getOrCreateCartForStore(uid, targetStore);
+        targetCart.setIsActive(true);
+        cartRepository.save(targetCart);
 
         // Optionally add the pending item that prompted the switch
         if (request.getPendingProductId() != null) {
@@ -136,14 +145,14 @@ public class CartServiceImpl implements CartService {
                     .orElseThrow(() -> new ResourceNotFoundException("Pending product not found with id: " + request.getPendingProductId()));
 
             int qty = (request.getPendingQuantity() != null && request.getPendingQuantity() > 0) ? request.getPendingQuantity() : 1;
-            Optional<CartItem> existing = cartItemRepository.findByCart_CartIdAndProduct_ProductId(newActiveCart.getCartId(), pendingProduct.getProductId());
+            Optional<CartItem> existing = cartItemRepository.findByCart_CartIdAndProduct_ProductId(targetCart.getCartId(), pendingProduct.getProductId());
             if (existing.isPresent()) {
                 CartItem item = existing.get();
                 item.setQuantity(qty);
                 cartItemRepository.save(item);
             } else {
                 CartItem newItem = CartItem.builder()
-                        .cart(newActiveCart)
+                        .cart(targetCart)
                         .product(pendingProduct)
                         .quantity(qty)
                         .build();
@@ -152,7 +161,7 @@ public class CartServiceImpl implements CartService {
         }
 
         log.info("Customer #{} switched active cart to Store #{} ('{}')", uid, targetStore.getStoreId(), targetStore.getName());
-        return calculateCartResponse(newActiveCart);
+        return calculateCartResponse(targetCart);
     }
 
     @Override
@@ -166,42 +175,38 @@ public class CartServiceImpl implements CartService {
     @Override
     public void clearCart(Integer userId) {
         Cart cart = getOrCreateActiveCart(userId);
-        cart.getItems().clear();
-        cart.setAppliedCoupon(null);
+        cartItemRepository.deleteByCart_CartId(cart.getCartId());
     }
 
     @Override
     public CouponResponse applyCoupon(Integer userId, String couponCode) {
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
         Cart cart = getOrCreateActiveCart(userId);
         String code = couponCode != null ? couponCode.trim().toUpperCase() : "";
 
-        BigDecimal discount;
-        if ("BUILDER50K".equalsIgnoreCase(code)) {
-            discount = BigDecimal.valueOf(50000.0);
-            cart.setAppliedCoupon("BUILDER50K");
-        } else if ("HINCH10".equalsIgnoreCase(code)) {
-            cart.setAppliedCoupon("HINCH10");
-            CartResponse temp = calculateCartResponse(cart);
-            discount = temp.getSubtotal().multiply(BigDecimal.valueOf(0.10)).setScale(2, RoundingMode.HALF_UP);
-            if (discount.compareTo(BigDecimal.valueOf(25000)) > 0) {
-                discount = BigDecimal.valueOf(25000.0);
-            }
-        } else {
-            throw new IllegalArgumentException("Invalid or expired coupon code: " + couponCode);
+        if (!"BUILDER50K".equalsIgnoreCase(code) && !"HINCH10".equalsIgnoreCase(code) && !"WELCOME500".equalsIgnoreCase(code)) {
+            throw new IllegalArgumentException("Invalid coupon code: " + couponCode);
         }
 
+        cart.setAppliedCoupon(code);
         cartRepository.save(cart);
-        CartResponse updated = calculateCartResponse(cart);
+
+        CartResponse response = calculateCartResponse(cart);
 
         return CouponResponse.builder()
                 .couponCode(code)
-                .discountAmount(discount)
-                .newGrandTotal(updated.getGrandTotal())
+                .discountAmount(response.getCouponDiscount())
+                .newGrandTotal(response.getGrandTotal())
                 .build();
     }
 
     public Cart getOrCreateActiveCart(Integer userId) {
-        int uid = userId != null ? userId : 101;
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
+        int uid = userId;
         return cartRepository.findByCustomer_CustomerIdAndIsActiveTrue(uid)
                 .orElseGet(() -> {
                     Store defaultStore = getDefaultStore();
@@ -306,6 +311,11 @@ public class CartServiceImpl implements CartService {
             couponDiscount = subtotal.multiply(BigDecimal.valueOf(0.10)).setScale(2, RoundingMode.HALF_UP);
             if (couponDiscount.compareTo(BigDecimal.valueOf(25000)) > 0) {
                 couponDiscount = BigDecimal.valueOf(25000.0);
+            }
+        } else if ("WELCOME500".equalsIgnoreCase(cart.getAppliedCoupon())) {
+            couponDiscount = BigDecimal.valueOf(500.0);
+            if (couponDiscount.compareTo(subtotal) > 0) {
+                couponDiscount = subtotal;
             }
         }
 

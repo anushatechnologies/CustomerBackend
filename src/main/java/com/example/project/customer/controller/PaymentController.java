@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -34,6 +35,7 @@ public class PaymentController {
      * Generates a razorpay_order_id in paise to initialize frontend checkout modal.
      */
     @PostMapping("/create-order")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<PaymentOrderCreateResponse>> createPaymentOrder(
             @Valid @RequestBody PaymentOrderCreateRequest request) {
         Integer userId = userContextUtil.getCurrentUserId();
@@ -47,6 +49,7 @@ public class PaymentController {
      * Called by frontend immediately after successful checkout modal authorization.
      */
     @PostMapping("/verify")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<PaymentStatusResponse>> verifyPayment(
             @Valid @RequestBody PaymentVerifyRequest request) {
         Integer userId = userContextUtil.getCurrentUserId();
@@ -58,6 +61,7 @@ public class PaymentController {
      * Step 3: Get Real-time Payment Status by Razorpay Payment ID (e.g. pay_xxx)
      */
     @GetMapping("/{paymentId}/status")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<PaymentStatusResponse>> getPaymentStatus(
             @PathVariable String paymentId) {
         PaymentStatusResponse response = paymentService.getPaymentStatus(paymentId);
@@ -68,6 +72,7 @@ public class PaymentController {
      * Step 4: Get Latest Payment Status for an Internal Order
      */
     @GetMapping("/order/{orderId}/status")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<PaymentStatusResponse>> getOrderStatus(
             @PathVariable Integer orderId) {
         PaymentStatusResponse response = paymentService.getLatestOrderPaymentStatus(orderId);
@@ -78,6 +83,7 @@ public class PaymentController {
      * Step 5: Get All Payments for a Specific Customer
      */
     @GetMapping("/customer/{customerId}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<java.util.List<PaymentStatusResponse>>> getCustomerPayments(
             @PathVariable Integer customerId) {
         java.util.List<PaymentStatusResponse> list = paymentService.getCustomerPayments(customerId);
