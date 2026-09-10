@@ -31,6 +31,13 @@ public class UserServiceImpl implements UserService {
             throw new IllegalArgumentException("Firebase UID cannot be empty");
         }
 
+        // 1. Check if user belongs to a Seller profile
+        String checkEmail = email != null && !email.isBlank() ? email.trim().toLowerCase() : null;
+        boolean isSeller = checkEmail != null && (
+                sellerRepository.findFirstByEmailIgnoreCase(checkEmail).isPresent()
+                || checkEmail.contains("seller")
+        );
+
         // 1. Try finding existing customer by Firebase UID
         Optional<Customer> existingByUid = customerRepository.findByFirebaseUid(firebaseUid);
         if (existingByUid.isPresent()) {
@@ -42,6 +49,10 @@ public class UserServiceImpl implements UserService {
             }
             if (phone != null && !phone.isBlank() && customer.getPhone() == null) {
                 customer.setPhone(phone.trim());
+                updated = true;
+            }
+            if (isSeller && !Role.SELLER.name().equals(customer.getRole()) && !Role.ADMIN.name().equals(customer.getRole())) {
+                customer.setRole(Role.SELLER.name());
                 updated = true;
             }
             if (updated) {
@@ -59,22 +70,26 @@ public class UserServiceImpl implements UserService {
                 if (name != null && !name.isBlank() && (customer.getName() == null || customer.getName().isBlank())) {
                     customer.setName(name.trim());
                 }
-                log.info("Linked existing Customer (ID: {}) with Firebase UID: {}", customer.getCustomerId(), firebaseUid);
+                if (isSeller && !Role.SELLER.name().equals(customer.getRole()) && !Role.ADMIN.name().equals(customer.getRole())) {
+                    customer.setRole(Role.SELLER.name());
+                }
+                log.info("Linked existing Customer (ID: {}, Role: {}) with Firebase UID: {}", customer.getCustomerId(), customer.getRole(), firebaseUid);
                 return customerRepository.save(customer);
             }
         }
 
-        // 3. Create new Customer record with default role CUSTOMER
+        // 3. Create new Customer record with appropriate role
         String resolvedName = (name != null && !name.isBlank()) ? name.trim() : (email != null ? email.split("@")[0] : "Customer User");
         String resolvedEmail = (email != null && !email.isBlank()) ? email.trim().toLowerCase() : (firebaseUid + "@firebase.user");
         String resolvedPhone = (phone != null && !phone.isBlank()) ? phone.trim() : null;
+        String resolvedRole = isSeller ? Role.SELLER.name() : Role.CUSTOMER.name();
 
         Customer newCustomer = Customer.builder()
                 .firebaseUid(firebaseUid)
                 .name(resolvedName)
                 .email(resolvedEmail)
                 .phone(resolvedPhone)
-                .role(Role.CUSTOMER.name())
+                .role(resolvedRole)
                 .active(true)
                 .build();
 

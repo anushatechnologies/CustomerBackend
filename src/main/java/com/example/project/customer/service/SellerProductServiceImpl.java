@@ -65,7 +65,7 @@ public class SellerProductServiceImpl implements SellerProductService {
             List<Predicate> predicates = new ArrayList<>();
 
             // 1. Mandatory Seller Isolation
-            Predicate matchSellerId = cb.equal(root.get("sellerId"), sellerId);
+            Predicate matchSellerId = cb.equal(root.get("seller").get("sellerId"), sellerId);
             predicates.add(matchSellerId);
 
             // 2. Search query

@@ -67,11 +67,11 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                     // Synchronize or load internal customer from MySQL database
                     Customer customer = userService.syncUserWithFirebase(firebaseUid, email, name, phone);
 
-                    // Determine Role: Priority: 1. Firebase Custom Claims -> 2. Database Role
-                    Role effectiveRole = resolveEffectiveRole(claims, customer);
-
                     // Resolve internal sellerId if applicable
                     Integer sellerId = userService.resolveSellerIdForUser(customer);
+
+                    // Determine Role: Priority: 1. Firebase Custom Claims -> 2. Database Role -> 3. Seller Profile
+                    Role effectiveRole = resolveEffectiveRole(claims, customer, sellerId);
 
                     // Build authenticated principal
                     FirebaseUserPrincipal principal = FirebaseUserPrincipal.create(
@@ -105,7 +105,7 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    private Role resolveEffectiveRole(Map<String, Object> claims, Customer customer) {
+    private Role resolveEffectiveRole(Map<String, Object> claims, Customer customer, Integer sellerId) {
         if (claims != null && claims.containsKey("role")) {
             Object roleObj = claims.get("role");
             if (roleObj != null) {
@@ -114,6 +114,12 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
         }
         if (claims != null && Boolean.TRUE.equals(claims.get("admin"))) {
             return Role.ADMIN;
+        }
+        if (customer != null && customer.getRoleEnum() != Role.CUSTOMER) {
+            return customer.getRoleEnum();
+        }
+        if (sellerId != null) {
+            return Role.SELLER;
         }
         if (customer != null) {
             return customer.getRoleEnum();
