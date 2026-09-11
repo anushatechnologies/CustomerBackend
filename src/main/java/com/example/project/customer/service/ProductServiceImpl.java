@@ -12,6 +12,7 @@ import com.example.project.customer.entity.ApprovalStatus;
 import com.example.project.customer.entity.Brand;
 import com.example.project.customer.entity.Category;
 import com.example.project.customer.entity.Product;
+import com.example.project.customer.entity.Seller;
 import com.example.project.customer.exception.ResourceConflictException;
 import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.repository.BrandRepository;
@@ -547,6 +548,7 @@ public class ProductServiceImpl implements ProductService {
                                 ApprovalStatus.PENDING
                         )
                         .stream()
+                        .filter(p -> p.getSeller() == null || isSellerApproved(p.getSeller()))
                         .map(this::mapToResponse)
                         .toList();
 
@@ -554,6 +556,11 @@ public class ProductServiceImpl implements ProductService {
                 products,
                 products.size()
         );
+    }
+
+    private boolean isSellerApproved(Seller seller) {
+        if (seller == null) return true;
+        return seller.getVerificationStatus() == com.example.project.customer.entity.VerificationStatus.VERIFIED;
     }
 
     @Override
@@ -586,6 +593,14 @@ public class ProductServiceImpl implements ProductService {
     public ProductResponse approve(Integer id) {
 
         Product product = findProduct(id);
+
+        if (product.getSeller() != null && !isSellerApproved(product.getSeller())) {
+            String sellerName = product.getSeller().getCompanyName() != null 
+                    ? product.getSeller().getCompanyName() 
+                    : (product.getSeller().getName() != null ? product.getSeller().getName() : "Seller #" + product.getSeller().getSellerId());
+            throw new IllegalStateException("Cannot approve product because the seller '" + sellerName + 
+                    "' (ID: " + product.getSeller().getSellerId() + ") is not yet verified and approved by admin.");
+        }
 
         product.setApprovalStatus(
                 ApprovalStatus.APPROVED
