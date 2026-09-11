@@ -35,6 +35,8 @@ import com.example.project.customer.exception.ForbiddenException;
 import com.example.project.customer.exception.UnauthorizedException;
 import com.example.project.customer.repository.AddressRepository;
 
+import com.example.project.customer.service.outbox.OutboxService;
+
 import java.util.List;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,6 +61,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final OrderService orderService;
     private final AddressRepository addressRepository;
     private final UserContextUtil userContextUtil;
+    private final OutboxService outboxService;
 
     @Value("${razorpay.key-id}")
     private String keyId;
@@ -342,11 +345,15 @@ public class PaymentServiceImpl implements PaymentService {
                 if (payment.getPaymentMethod() != null) {
                     order.setPaymentMethod(payment.getPaymentMethod());
                 }
-                if ("PLACED".equalsIgnoreCase(order.getOrderStatus()) || "PENDING".equalsIgnoreCase(order.getOrderStatus())) {
+                boolean transitioningToConfirmed = "PLACED".equalsIgnoreCase(order.getOrderStatus()) || "PENDING".equalsIgnoreCase(order.getOrderStatus());
+                if (transitioningToConfirmed) {
                     order.setOrderStatus("CONFIRMED");
                 }
                 orderRepository.save(order);
                 log.info("Order #{} marked as PAID and CONFIRMED", order.getOrderId());
+                if (transitioningToConfirmed) {
+                    outboxService.recordOrderConfirmed(order);
+                }
             }
 
             // Update Wallet if purpose is WALLET_TOPUP
@@ -491,11 +498,15 @@ public class PaymentServiceImpl implements PaymentService {
                     if (p.getPaymentMethod() != null) {
                         o.setPaymentMethod(p.getPaymentMethod());
                     }
-                    if ("PLACED".equalsIgnoreCase(o.getOrderStatus()) || "PENDING".equalsIgnoreCase(o.getOrderStatus())) {
+                    boolean transitioningToConfirmed = "PLACED".equalsIgnoreCase(o.getOrderStatus()) || "PENDING".equalsIgnoreCase(o.getOrderStatus());
+                    if (transitioningToConfirmed) {
                         o.setOrderStatus("CONFIRMED");
                     }
                     orderRepository.save(o);
                     log.info("Order #{} marked PAID via webhook", o.getOrderId());
+                    if (transitioningToConfirmed) {
+                        outboxService.recordOrderConfirmed(o);
+                    }
                 }
             });
         } else if ("payment.failed".equals(eventType)) {

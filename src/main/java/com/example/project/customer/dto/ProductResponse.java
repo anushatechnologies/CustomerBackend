@@ -54,6 +54,8 @@ public class ProductResponse {
 
     private String unit;
 
+    private BigDecimal weightKg;
+
     private Integer moq;
 
     private Integer stockQty;

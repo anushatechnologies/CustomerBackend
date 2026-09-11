@@ -27,6 +27,8 @@ public class StoreResponse {
     private StoreStatus status;
     private BigDecimal minOrderValue;
     private Integer serviceRadiusKm;
+    private Double latitude;
+    private Double longitude;
     private BigDecimal commissionRate;
     private Double rating;
     private Integer reviewCount;

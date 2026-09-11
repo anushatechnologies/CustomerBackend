@@ -49,7 +49,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -97,6 +99,7 @@ public class OrderServiceImpl implements OrderService {
         }
 
         // 2. Pre-checkout stock & price re-validation
+        Map<Integer, Product> productMap = new HashMap<>();
         for (CartItemResponse ci : cart.getItems()) {
             Product p = productRepository.findById(ci.getProductId())
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found: " + ci.getTitle() + " (ID: " + ci.getProductId() + ")"));
@@ -108,6 +111,7 @@ public class OrderServiceImpl implements OrderService {
             if (availableStock < ci.getQuantity()) {
                 throw new ResourceConflictException("Insufficient stock for '" + p.getTitle() + "'. Requested: " + ci.getQuantity() + ", Available: " + availableStock);
             }
+            productMap.put(ci.getProductId(), p);
         }
 
         Address address = addressRepository.findByCustomer_CustomerIdAndId(uid, request.getAddressId())
@@ -194,8 +198,14 @@ public class OrderServiceImpl implements OrderService {
         Order savedOrder = orderRepository.save(order);
 
         List<OrderItem> orderItems = new ArrayList<>();
+        BigDecimal totalWeightKg = BigDecimal.ZERO;
+        boolean hasAnyWeight = false;
+
         for (CartItemResponse ci : cart.getItems()) {
             decrementStock(ci);
+
+            Product p = productMap.get(ci.getProductId());
+            BigDecimal itemWeight = p != null ? p.getWeightKg() : null;
 
             OrderItem oi = OrderItem.builder()
                     .order(savedOrder)
@@ -204,6 +214,7 @@ public class OrderServiceImpl implements OrderService {
                     .imageUrl(ci.getImageUrl())
                     .quantity(ci.getQuantity())
                     .unit(ci.getUnit())
+                    .weightKg(itemWeight)
                     .unitPrice(ci.getUnitPrice())
                     .originalPrice(ci.getOriginalPrice())
                     .appliedTier(ci.getAppliedTier())
@@ -211,9 +222,17 @@ public class OrderServiceImpl implements OrderService {
                     .lineTotal(ci.getLineTotal())
                     .lineGst(ci.getLineGst())
                     .build();
-            orderItems.add(orderItemRepository.save(oi));
+            OrderItem savedOi = orderItemRepository.save(oi);
+            orderItems.add(savedOi);
+
+            if (savedOi.getWeightKg() != null && savedOi.getQuantity() != null) {
+                totalWeightKg = totalWeightKg.add(savedOi.getWeightKg().multiply(BigDecimal.valueOf(savedOi.getQuantity())));
+                hasAnyWeight = true;
+            }
         }
         savedOrder.setItems(orderItems);
+        savedOrder.setTotalWeightKg(hasAnyWeight ? totalWeightKg : null);
+        savedOrder = orderRepository.save(savedOrder);
 
         // 5. Create SellerPayoutLedger entry (Gross - Commission - 1% TCS = Net Payout)
         BigDecimal tcsAmount = preview.getTaxableAmount().multiply(BigDecimal.valueOf(0.01)).setScale(2, RoundingMode.HALF_UP);
@@ -585,6 +604,7 @@ public class OrderServiceImpl implements OrderService {
                         .imageUrl(i.getImageUrl())
                         .quantity(i.getQuantity())
                         .unit(i.getUnit())
+                        .weightKg(i.getWeightKg())
                         .unitPrice(i.getUnitPrice())
                         .originalPrice(i.getOriginalPrice())
                         .appliedTier(i.getAppliedTier())
@@ -608,6 +628,7 @@ public class OrderServiceImpl implements OrderService {
                 .commissionRate(o.getCommissionRate())
                 .commissionAmount(o.getCommissionAmount())
                 .totalAmount(o.getTotalAmount())
+                .totalWeightKg(o.getTotalWeightKg())
                 .subtotal(o.getSubtotal())
                 .discount(o.getDiscount())
                 .taxableAmount(o.getTaxableAmount())

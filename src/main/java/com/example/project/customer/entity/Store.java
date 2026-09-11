@@ -66,6 +66,12 @@ public class Store {
     @Builder.Default
     private Integer serviceRadiusKm = 50;
 
+    @Column(name = "latitude")
+    private Double latitude;
+
+    @Column(name = "longitude")
+    private Double longitude;
+
     @Column(name = "commission_rate", precision = 5, scale = 2, nullable = false)
     @Builder.Default
     private BigDecimal commissionRate = BigDecimal.valueOf(5.00);

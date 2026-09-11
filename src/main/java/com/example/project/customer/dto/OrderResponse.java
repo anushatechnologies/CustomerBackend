@@ -25,6 +25,7 @@ public class OrderResponse {
     private BigDecimal commissionRate;
     private BigDecimal commissionAmount;
     private BigDecimal totalAmount;
+    private BigDecimal totalWeightKg;
     private BigDecimal subtotal;
     private BigDecimal discount;
     private BigDecimal taxableAmount;
@@ -60,6 +61,7 @@ public class OrderResponse {
         private String imageUrl;
         private Integer quantity;
         private String unit;
+        private BigDecimal weightKg;
         private BigDecimal unitPrice;
         private BigDecimal originalPrice;
         private String appliedTier;

@@ -50,6 +50,9 @@ public class OrderItem {
     @Column(nullable = false)
     private String unit;
 
+    @Column(name = "weight_kg", precision = 10, scale = 3)
+    private BigDecimal weightKg;
+
     @Column(name = "unit_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal unitPrice;
 

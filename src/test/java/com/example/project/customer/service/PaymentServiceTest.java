@@ -74,6 +74,9 @@ class PaymentServiceTest {
     @Mock
     private com.example.project.customer.config.UserContextUtil userContextUtil;
 
+    @Mock
+    private com.example.project.customer.service.outbox.OutboxService outboxService;
+
     @InjectMocks
     private PaymentServiceImpl paymentService;
 

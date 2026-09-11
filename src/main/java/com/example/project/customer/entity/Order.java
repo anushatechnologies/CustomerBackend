@@ -108,6 +108,9 @@ public class Order {
     @Column(name = "total_amount", nullable = false, precision = 14, scale = 2)
     private BigDecimal totalAmount;
 
+    @Column(name = "total_weight_kg", precision = 12, scale = 3)
+    private BigDecimal totalWeightKg;
+
     @Column(name = "payment_method")
     @Builder.Default
     private String paymentMethod = "RAZORPAY";
