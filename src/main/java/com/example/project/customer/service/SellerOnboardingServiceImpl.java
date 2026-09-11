@@ -496,21 +496,41 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
         if (approved) {
             seller.setOnboardingStatus(OnboardingStatus.VERIFIED);
             seller.setVerificationStatus(VerificationStatus.VERIFIED);
-            for (SellerDocument doc : documents) {
-                doc.setVerificationStatus(VerificationStatus.VERIFIED);
+            if (documents != null) {
+                for (SellerDocument doc : documents) {
+                    doc.setVerificationStatus(VerificationStatus.VERIFIED);
+                    if (remarks != null && !remarks.isBlank() && (doc.getRemarks() == null || doc.getRemarks().isBlank())) {
+                        doc.setRemarks(remarks);
+                    }
+                }
             }
             // Upgrade role to SELLER in MySQL database & Firebase Custom Claims
-            upgradeUserToSellerRole(seller.getEmail());
-            autoCreateStoreForSeller(seller);
+            try {
+                upgradeUserToSellerRole(seller.getEmail());
+            } catch (Exception e) {
+                log.warn("Failed to upgrade user to seller role for seller {}: {}", sellerId, e.getMessage());
+            }
+            try {
+                autoCreateStoreForSeller(seller);
+            } catch (Exception e) {
+                log.warn("Failed to auto-create store for seller {}: {}", sellerId, e.getMessage());
+            }
         } else {
             seller.setOnboardingStatus(OnboardingStatus.REJECTED);
             seller.setVerificationStatus(VerificationStatus.REJECTED);
-            for (SellerDocument doc : documents) {
-                doc.setVerificationStatus(VerificationStatus.REJECTED);
+            if (documents != null) {
+                for (SellerDocument doc : documents) {
+                    doc.setVerificationStatus(VerificationStatus.REJECTED);
+                    if (remarks != null && !remarks.isBlank()) {
+                        doc.setRemarks(remarks);
+                    }
+                }
             }
         }
 
-        documentRepository.saveAll(documents);
+        if (documents != null && !documents.isEmpty()) {
+            documentRepository.saveAll(documents);
+        }
         return sellerRepository.save(seller);
     }
 
@@ -667,11 +687,17 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
             return;
         }
 
-        String storeName = seller.getCompanyName() != null && !seller.getCompanyName().isBlank()
-                ? seller.getCompanyName().trim()
-                : seller.getName().trim();
+        String storeName = "Seller Store " + seller.getSellerId();
+        if (seller.getCompanyName() != null && !seller.getCompanyName().isBlank()) {
+            storeName = seller.getCompanyName().trim();
+        } else if (seller.getName() != null && !seller.getName().isBlank()) {
+            storeName = seller.getName().trim();
+        }
 
         String baseSlug = slugify(storeName);
+        if (baseSlug.isBlank()) {
+            baseSlug = "store-" + seller.getSellerId();
+        }
         String uniqueSlug = baseSlug;
         int counter = 1;
         while (storeRepository.existsBySlugIgnoreCase(uniqueSlug)) {
@@ -689,6 +715,8 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
                 .reviewCount(0)
                 .serviceRadiusKm(50)
                 .minOrderValue(java.math.BigDecimal.ZERO)
+                .createdAt(java.time.LocalDateTime.now())
+                .updatedAt(java.time.LocalDateTime.now())
                 .build();
 
         storeRepository.save(store);

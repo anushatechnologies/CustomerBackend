@@ -84,9 +84,11 @@ public class Store {
     @Builder.Default
     private Integer reviewCount = 0;
 
+    @org.hibernate.annotations.CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @org.hibernate.annotations.UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
