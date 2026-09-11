@@ -575,6 +575,10 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
         Optional<Customer> customerOpt = customerRepository.findByEmailIgnoreCase(email.trim());
         if (customerOpt.isPresent()) {
             Customer customer = customerOpt.get();
+            if (Role.ADMIN.name().equalsIgnoreCase(customer.getRole())) {
+                log.info("Skipping seller role upgrade for Admin account (ID: {}, email: {})", customer.getCustomerId(), email);
+                return;
+            }
             customer.setRole(Role.SELLER.name());
             customerRepository.save(customer);
             log.info("Upgraded Customer (ID: {}) to ROLE_SELLER in database", customer.getCustomerId());

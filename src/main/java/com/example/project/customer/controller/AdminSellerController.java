@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping({"/api/admin/sellers", "/api/admin/seller"})
+@RequestMapping({"/api/admin/sellers", "/api/admin/seller", "/api/sellers"})
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ADMIN')")
 public class AdminSellerController {

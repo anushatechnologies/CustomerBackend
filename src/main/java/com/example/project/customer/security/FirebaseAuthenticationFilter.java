@@ -27,13 +27,16 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
 
     private final FirebaseAuthService firebaseAuthService;
     private final UserService userService;
+    private final com.example.project.customer.repository.AdminUserRepository adminUserRepository;
 
     public FirebaseAuthenticationFilter(
             @Autowired(required = false) FirebaseAuthService firebaseAuthService,
-            @Autowired(required = false) UserService userService
+            @Autowired(required = false) UserService userService,
+            @Autowired(required = false) com.example.project.customer.repository.AdminUserRepository adminUserRepository
     ) {
         this.firebaseAuthService = firebaseAuthService;
         this.userService = userService;
+        this.adminUserRepository = adminUserRepository;
     }
 
     @Override
@@ -105,45 +108,89 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
+    @org.springframework.beans.factory.annotation.Value("${app.security.admin-emails:admin@hinchmart.com,admin@example.com}")
+    private String configuredAdminEmails = "admin@hinchmart.com";
+
     private Role resolveEffectiveRole(Map<String, Object> claims, Customer customer, Integer sellerId) {
         // 1. Firebase Custom Claims take highest precedence
+        if (claims != null && claims.containsKey("role")) {
+            Object roleObj = claims.get("role");
+            if (roleObj != null) {
+                Role parsedRole = Role.fromString(roleObj.toString());
+                if (parsedRole == Role.ADMIN) {
+                    return Role.ADMIN;
+                }
+            }
+        }
+        if (claims != null && (Boolean.TRUE.equals(claims.get("admin")) || "ADMIN".equalsIgnoreCase(String.valueOf(claims.get("role"))))) {
+            return Role.ADMIN;
+        }
+
+        // 2. MySQL database Admin table or Customer role is authoritative for ADMIN
+        if (adminUserRepository != null && customer != null) {
+            if (customer.getEmail() != null && adminUserRepository.findByEmailIgnoreCase(customer.getEmail().trim()).isPresent()) {
+                return Role.ADMIN;
+            }
+            if (customer.getFirebaseUid() != null && adminUserRepository.findByFirebaseUid(customer.getFirebaseUid()).isPresent()) {
+                return Role.ADMIN;
+            }
+        }
+        if (customer != null && customer.getRole() != null && !customer.getRole().isBlank()) {
+            if ("ADMIN".equalsIgnoreCase(customer.getRole()) || customer.getRoleEnum() == Role.ADMIN) {
+                return Role.ADMIN;
+            }
+        }
+
+        // 3. Configured Admin Email check or email containing 'admin'
+        if (customer != null && customer.getEmail() != null && !customer.getEmail().isBlank()) {
+            String checkEmail = customer.getEmail().trim().toLowerCase();
+            if (isAdminEmail(checkEmail)) {
+                return Role.ADMIN;
+            }
+        }
+
+        // 4. Firebase Custom Claims for SELLER / CUSTOMER
         if (claims != null && claims.containsKey("role")) {
             Object roleObj = claims.get("role");
             if (roleObj != null) {
                 return Role.fromString(roleObj.toString());
             }
         }
-        if (claims != null && Boolean.TRUE.equals(claims.get("admin"))) {
-            return Role.ADMIN;
-        }
 
-        // 2. MySQL database Customer role takes precedence next
+        // 5. MySQL database Customer role for SELLER
         if (customer != null && customer.getRole() != null && !customer.getRole().isBlank()) {
             Role dbRole = customer.getRoleEnum();
-            if (dbRole == Role.ADMIN) {
-                return Role.ADMIN;
-            }
             if (dbRole == Role.SELLER) {
                 return Role.SELLER;
             }
         }
 
-        // 3. Email heuristic fallback for admin
-        if (customer != null && customer.getEmail() != null && (
-                customer.getEmail().toLowerCase().contains("admin") || "ADMIN".equalsIgnoreCase(customer.getRole())
-        )) {
-            return Role.ADMIN;
-        }
-
-        // 4. Linked seller profile
+        // 6. Linked seller profile (only for non-admin accounts)
         if (sellerId != null) {
             return Role.SELLER;
         }
 
-        // 5. Default customer role
+        // 7. Default customer role
         if (customer != null) {
             return customer.getRoleEnum();
         }
         return Role.CUSTOMER;
+    }
+
+    private boolean isAdminEmail(String email) {
+        if (email == null || email.isBlank()) return false;
+        String clean = email.trim().toLowerCase();
+        if (clean.equals("admin@hinchmart.com") || clean.contains("admin")) {
+            return true;
+        }
+        if (configuredAdminEmails != null && !configuredAdminEmails.isBlank()) {
+            String[] admins = configuredAdminEmails.split(",");
+            for (String adm : admins) {
+                if (clean.equalsIgnoreCase(adm.trim())) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }

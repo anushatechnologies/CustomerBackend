@@ -60,6 +60,7 @@ public class DataInitializer implements CommandLineRunner {
     private final QuotationRepository quotationRepository;
     private final RfqQuestionRepository rfqQuestionRepository;
     private final CustomerRepository customerRepository;
+    private final com.example.project.customer.repository.AdminUserRepository adminUserRepository;
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
     private final ProductReviewRepository productReviewRepository;
@@ -79,6 +80,7 @@ public class DataInitializer implements CommandLineRunner {
     @Override
     public void run(String... args) {
         try {
+            initAdmins();
             initCustomers();
             initAddresses();
             initCatalogAndBanners();
@@ -90,8 +92,44 @@ public class DataInitializer implements CommandLineRunner {
         }
     }
 
+    private void initAdmins() {
+        if (adminUserRepository != null && adminUserRepository.findByEmailIgnoreCase("admin@hinchmart.com").isEmpty()) {
+            com.example.project.customer.entity.AdminUser superAdmin = com.example.project.customer.entity.AdminUser.builder()
+                    .name("HinchMart Super Admin")
+                    .email("admin@hinchmart.com")
+                    .phone("9999999999")
+                    .role("ADMIN")
+                    .active(true)
+                    .build();
+            adminUserRepository.save(superAdmin);
+            log.info("Initialized default Super Admin in admins table (admin@hinchmart.com)");
+        }
+    }
+
     private void initCustomers() {
-        if (customerRepository.count() == 0) {
+        // Ensure primary Super Admin account exists with ADMIN role
+        customerRepository.findByEmailIgnoreCase("admin@hinchmart.com").ifPresentOrElse(
+                admin -> {
+                    if (!"ADMIN".equalsIgnoreCase(admin.getRole())) {
+                        admin.setRole("ADMIN");
+                        customerRepository.save(admin);
+                        log.info("Synchronized existing admin account to role ADMIN: admin@hinchmart.com");
+                    }
+                },
+                () -> {
+                    Customer superAdmin = Customer.builder()
+                            .name("HinchMart Super Admin")
+                            .email("admin@hinchmart.com")
+                            .phone("9999999999")
+                            .role("ADMIN")
+                            .active(true)
+                            .build();
+                    customerRepository.save(superAdmin);
+                    log.info("Initialized default Super Admin account (admin@hinchmart.com)");
+                }
+        );
+
+        if (customerRepository.findByEmailIgnoreCase("rajesh@apexbldrs.com").isEmpty()) {
             Customer customer1 = Customer.builder()
                     .name("Rajesh Sharma")
                     .email("rajesh@apexbldrs.com")

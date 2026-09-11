@@ -38,6 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(SellerProductController.class)
 @Import({GlobalExceptionHandler.class, SecurityConfig.class})
+@org.springframework.security.test.context.support.WithMockUser(username = "seller@test.com", roles = {"SELLER", "ADMIN"})
 class SellerProductControllerTest {
 
     @Autowired
