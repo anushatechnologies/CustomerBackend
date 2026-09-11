@@ -98,6 +98,7 @@ public class DataInitializer implements CommandLineRunner {
                     .name("HinchMart Super Admin")
                     .email("admin@hinchmart.com")
                     .phone("9999999999")
+                    .password("Admin@12345")
                     .role("ADMIN")
                     .active(true)
                     .build();

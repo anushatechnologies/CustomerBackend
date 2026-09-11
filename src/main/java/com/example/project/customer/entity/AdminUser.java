@@ -40,6 +40,13 @@ public class AdminUser {
     @Column(name = "phone")
     private String phone;
 
+    @jakarta.validation.constraints.Pattern(
+        regexp = "^(?=.*[A-Z])(?=.*\\d)(?=.*[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>\\/?~`]).{8,}$",
+        message = "Password must be at least 8 characters long, contain at least one uppercase letter, one number, and one special character/symbol"
+    )
+    @Column(name = "password")
+    private String password;
+
     @Column(name = "role", nullable = false)
     @Builder.Default
     private String role = "ADMIN";
