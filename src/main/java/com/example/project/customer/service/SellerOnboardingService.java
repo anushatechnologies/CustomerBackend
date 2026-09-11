@@ -39,4 +39,8 @@ public interface SellerOnboardingService {
     Seller verifySellerByAdmin(Integer sellerId, boolean approved, String remarks);
 
     SellerDocument verifyDocumentByAdmin(Integer sellerId, DocumentType documentType, VerificationStatus status, String remarks);
+
+    List<Seller> getAllSellersForAdmin(VerificationStatus status, String search);
+
+    Seller getSellerByIdForAdmin(Integer sellerId);
 }

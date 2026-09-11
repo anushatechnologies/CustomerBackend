@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,6 +31,7 @@ public class SellerDiscountController {
     private final SellerContextUtil sellerContextUtil;
 
     @PostMapping("/seller/discounts")
+    @PreAuthorize("hasRole('SELLER') or hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<SellerDiscountResponse>> create(@Valid @RequestBody SellerDiscountRequest request) {
         Integer sellerId = sellerContextUtil.getCurrentSellerId();
         SellerDiscountResponse response = service.create(sellerId, request);
@@ -38,26 +40,30 @@ public class SellerDiscountController {
     }
 
     @GetMapping("/seller/discounts")
+    @PreAuthorize("hasRole('SELLER') or hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<List<SellerDiscountResponse>>> getBySeller() {
         Integer sellerId = sellerContextUtil.getCurrentSellerId();
         return ResponseEntity.ok(ApiResponse.ok("Seller discounts retrieved successfully", service.getBySeller(sellerId)));
     }
 
     @GetMapping("/seller/discounts/{discountId}")
+    @PreAuthorize("hasRole('SELLER') or hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<SellerDiscountResponse>> getById(@PathVariable Integer discountId) {
         Integer sellerId = sellerContextUtil.getCurrentSellerId();
         return ResponseEntity.ok(ApiResponse.ok("Discount retrieved successfully", service.getById(sellerId, discountId)));
     }
 
     @PutMapping("/seller/discounts/{discountId}")
+    @PreAuthorize("hasRole('SELLER') or hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<SellerDiscountResponse>> update(@PathVariable Integer discountId,
-                                                                     @Valid @RequestBody SellerDiscountRequest request) {
+                                                                      @Valid @RequestBody SellerDiscountRequest request) {
         Integer sellerId = sellerContextUtil.getCurrentSellerId();
         SellerDiscountResponse response = service.update(sellerId, discountId, request);
         return ResponseEntity.ok(ApiResponse.ok("Discount updated successfully", response));
     }
 
     @PatchMapping("/seller/discounts/{discountId}/submit")
+    @PreAuthorize("hasRole('SELLER') or hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<SellerDiscountResponse>> submitForReview(@PathVariable Integer discountId) {
         Integer sellerId = sellerContextUtil.getCurrentSellerId();
         SellerDiscountResponse response = service.submitForReview(sellerId, discountId);
@@ -65,27 +71,32 @@ public class SellerDiscountController {
     }
 
     @GetMapping("/admin/discounts/pending")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<List<SellerDiscountResponse>>> pending() {
         return ResponseEntity.ok(ApiResponse.ok("Pending discounts retrieved successfully", service.getPendingForAdmin()));
     }
 
     @GetMapping("/admin/discounts")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<List<SellerDiscountResponse>>> all() {
         return ResponseEntity.ok(ApiResponse.ok("Discounts retrieved successfully", service.getAllForAdmin()));
     }
 
     @PatchMapping("/admin/discounts/{discountId}/approve")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<SellerDiscountResponse>> approve(@PathVariable Integer discountId) {
         return ResponseEntity.ok(ApiResponse.ok("Discount approved successfully", service.approve(discountId)));
     }
 
     @PatchMapping("/admin/discounts/{discountId}/reject")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<SellerDiscountResponse>> reject(@PathVariable Integer discountId,
-                                                                     @Valid @RequestBody DiscountRejectionRequest request) {
+                                                                      @Valid @RequestBody DiscountRejectionRequest request) {
         return ResponseEntity.ok(ApiResponse.ok("Discount rejected successfully", service.reject(discountId, request)));
     }
 
     @PutMapping("/admin/discounts/{discountId}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<SellerDiscountResponse>> editByAdmin(@PathVariable Integer discountId,
                                                                           @Valid @RequestBody SellerDiscountRequest request) {
         return ResponseEntity.ok(ApiResponse.ok("Discount updated by admin", service.editByAdmin(discountId, request)));

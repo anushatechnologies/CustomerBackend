@@ -8,6 +8,8 @@ public interface UserService {
 
     Customer syncUserWithFirebase(String firebaseUid, String email, String name, String phone);
 
+    Customer syncUserWithFirebase(String firebaseUid, String email, String name, String phone, String requestedRole);
+
     Customer getCustomerByFirebaseUid(String firebaseUid);
 
     Customer getCustomerById(Integer id);

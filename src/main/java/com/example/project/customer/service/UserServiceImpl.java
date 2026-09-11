@@ -27,26 +27,24 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public Customer syncUserWithFirebase(String firebaseUid, String email, String name, String phone) {
+        return syncUserWithFirebase(firebaseUid, email, name, phone, null);
+    }
+
+    @Override
+    @Transactional
+    public Customer syncUserWithFirebase(String firebaseUid, String email, String name, String phone, String requestedRole) {
         if (firebaseUid == null || firebaseUid.isBlank()) {
             throw new IllegalArgumentException("Firebase UID cannot be empty");
         }
 
-        // 1. Check if user belongs to an Admin or Seller profile
         String checkEmail = email != null && !email.isBlank() ? email.trim().toLowerCase() : null;
-        boolean isAdmin = checkEmail != null && (
-                checkEmail.contains("admin") || checkEmail.equals("admin@hinchmart.com")
-        );
-        boolean isSeller = !isAdmin && checkEmail != null && (
-                sellerRepository.findFirstByEmailIgnoreCase(checkEmail).isPresent()
-                || checkEmail.contains("seller")
-        );
 
         // 1. Try finding existing customer by Firebase UID
         Optional<Customer> existingByUid = customerRepository.findByFirebaseUid(firebaseUid);
         if (existingByUid.isPresent()) {
             Customer customer = existingByUid.get();
             boolean updated = false;
-            if (name != null && !name.isBlank() && (customer.getName() == null || "User".equals(customer.getName()))) {
+            if (name != null && !name.isBlank() && (customer.getName() == null || "User".equals(customer.getName()) || customer.getName().isBlank())) {
                 customer.setName(name.trim());
                 updated = true;
             }
@@ -54,13 +52,24 @@ public class UserServiceImpl implements UserService {
                 customer.setPhone(phone.trim());
                 updated = true;
             }
-            if (isAdmin && !Role.ADMIN.name().equals(customer.getRole())) {
-                customer.setRole(Role.ADMIN.name());
-                updated = true;
-            } else if (isSeller && !Role.SELLER.name().equals(customer.getRole()) && !Role.ADMIN.name().equals(customer.getRole())) {
-                customer.setRole(Role.SELLER.name());
+            if (checkEmail != null && (customer.getEmail() == null || customer.getEmail().contains("@firebase.user"))) {
+                customer.setEmail(checkEmail);
                 updated = true;
             }
+
+            String currentRole = customer.getRole();
+            if ("ADMIN".equalsIgnoreCase(requestedRole) || (checkEmail != null && (checkEmail.contains("admin") || checkEmail.equals("admin@hinchmart.com")))) {
+                if (!Role.ADMIN.name().equalsIgnoreCase(currentRole)) {
+                    customer.setRole(Role.ADMIN.name());
+                    updated = true;
+                }
+            } else if ("SELLER".equalsIgnoreCase(requestedRole) || (checkEmail != null && sellerRepository.findFirstByEmailIgnoreCase(checkEmail).isPresent())) {
+                if (!Role.ADMIN.name().equalsIgnoreCase(currentRole) && !Role.SELLER.name().equalsIgnoreCase(currentRole)) {
+                    customer.setRole(Role.SELLER.name());
+                    updated = true;
+                }
+            }
+
             if (updated) {
                 return customerRepository.save(customer);
             }
@@ -68,29 +77,45 @@ public class UserServiceImpl implements UserService {
         }
 
         // 2. Try finding existing customer by Email (account linking)
-        if (email != null && !email.isBlank()) {
-            Optional<Customer> existingByEmail = customerRepository.findByEmailIgnoreCase(email.trim());
+        if (checkEmail != null) {
+            Optional<Customer> existingByEmail = customerRepository.findByEmailIgnoreCase(checkEmail);
             if (existingByEmail.isPresent()) {
                 Customer customer = existingByEmail.get();
                 customer.setFirebaseUid(firebaseUid);
                 if (name != null && !name.isBlank() && (customer.getName() == null || customer.getName().isBlank())) {
                     customer.setName(name.trim());
                 }
-                if (isAdmin && !Role.ADMIN.name().equals(customer.getRole())) {
-                    customer.setRole(Role.ADMIN.name());
-                } else if (isSeller && !Role.SELLER.name().equals(customer.getRole()) && !Role.ADMIN.name().equals(customer.getRole())) {
-                    customer.setRole(Role.SELLER.name());
+                if (phone != null && !phone.isBlank() && customer.getPhone() == null) {
+                    customer.setPhone(phone.trim());
                 }
+
+                String currentRole = customer.getRole();
+                if ("ADMIN".equalsIgnoreCase(requestedRole) || checkEmail.contains("admin") || checkEmail.equals("admin@hinchmart.com")) {
+                    if (!Role.ADMIN.name().equalsIgnoreCase(currentRole)) {
+                        customer.setRole(Role.ADMIN.name());
+                    }
+                } else if ("SELLER".equalsIgnoreCase(requestedRole) || sellerRepository.findFirstByEmailIgnoreCase(checkEmail).isPresent()) {
+                    if (!Role.ADMIN.name().equalsIgnoreCase(currentRole) && !Role.SELLER.name().equalsIgnoreCase(currentRole)) {
+                        customer.setRole(Role.SELLER.name());
+                    }
+                }
+
                 log.info("Linked existing Customer (ID: {}, Role: {}) with Firebase UID: {}", customer.getCustomerId(), customer.getRole(), firebaseUid);
                 return customerRepository.save(customer);
             }
         }
 
         // 3. Create new Customer record with appropriate role
-        String resolvedName = (name != null && !name.isBlank()) ? name.trim() : (email != null ? email.split("@")[0] : "Customer User");
-        String resolvedEmail = (email != null && !email.isBlank()) ? email.trim().toLowerCase() : (firebaseUid + "@firebase.user");
+        String resolvedRole = Role.CUSTOMER.name();
+        if ("ADMIN".equalsIgnoreCase(requestedRole) || (checkEmail != null && (checkEmail.contains("admin") || checkEmail.equals("admin@hinchmart.com")))) {
+            resolvedRole = Role.ADMIN.name();
+        } else if ("SELLER".equalsIgnoreCase(requestedRole) || (checkEmail != null && sellerRepository.findFirstByEmailIgnoreCase(checkEmail).isPresent())) {
+            resolvedRole = Role.SELLER.name();
+        }
+
+        String resolvedName = (name != null && !name.isBlank()) ? name.trim() : (checkEmail != null ? checkEmail.split("@")[0] : "Customer User");
+        String resolvedEmail = checkEmail != null ? checkEmail : (firebaseUid + "@firebase.user");
         String resolvedPhone = (phone != null && !phone.isBlank()) ? phone.trim() : null;
-        String resolvedRole = isAdmin ? Role.ADMIN.name() : (isSeller ? Role.SELLER.name() : Role.CUSTOMER.name());
 
         Customer newCustomer = Customer.builder()
                 .firebaseUid(firebaseUid)

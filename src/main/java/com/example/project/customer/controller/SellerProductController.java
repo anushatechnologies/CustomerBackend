@@ -30,6 +30,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/seller/products")
 @RequiredArgsConstructor
+@org.springframework.security.access.prepost.PreAuthorize("isAuthenticated()")
 public class SellerProductController {
 
     private final SellerProductService sellerProductService;

@@ -106,6 +106,7 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
     }
 
     private Role resolveEffectiveRole(Map<String, Object> claims, Customer customer, Integer sellerId) {
+        // 1. Firebase Custom Claims take highest precedence
         if (claims != null && claims.containsKey("role")) {
             Object roleObj = claims.get("role");
             if (roleObj != null) {
@@ -115,17 +116,31 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
         if (claims != null && Boolean.TRUE.equals(claims.get("admin"))) {
             return Role.ADMIN;
         }
+
+        // 2. MySQL database Customer role takes precedence next
+        if (customer != null && customer.getRole() != null && !customer.getRole().isBlank()) {
+            Role dbRole = customer.getRoleEnum();
+            if (dbRole == Role.ADMIN) {
+                return Role.ADMIN;
+            }
+            if (dbRole == Role.SELLER) {
+                return Role.SELLER;
+            }
+        }
+
+        // 3. Email heuristic fallback for admin
         if (customer != null && customer.getEmail() != null && (
                 customer.getEmail().toLowerCase().contains("admin") || "ADMIN".equalsIgnoreCase(customer.getRole())
         )) {
             return Role.ADMIN;
         }
-        if (customer != null && customer.getRoleEnum() != Role.CUSTOMER) {
-            return customer.getRoleEnum();
-        }
+
+        // 4. Linked seller profile
         if (sellerId != null) {
             return Role.SELLER;
         }
+
+        // 5. Default customer role
         if (customer != null) {
             return customer.getRoleEnum();
         }

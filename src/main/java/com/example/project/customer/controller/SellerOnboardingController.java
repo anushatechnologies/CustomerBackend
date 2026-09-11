@@ -162,4 +162,25 @@ public class SellerOnboardingController {
         SellerDocument doc = onboardingService.verifyDocumentByAdmin(sellerId, documentType, status, remarks);
         return ResponseEntity.ok(doc);
     }
+
+    @GetMapping({"/all", "/list"})
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<Seller>> getAllSellers(
+            @RequestParam(required = false) VerificationStatus status,
+            @RequestParam(required = false) String search) {
+        return ResponseEntity.ok(onboardingService.getAllSellersForAdmin(status, search));
+    }
+
+    @GetMapping("/pending")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<Seller>> getPendingSellers(
+            @RequestParam(required = false) String search) {
+        return ResponseEntity.ok(onboardingService.getAllSellersForAdmin(VerificationStatus.PENDING, search));
+    }
+
+    @GetMapping("/{sellerId}")
+    @PreAuthorize("hasRole('ADMIN') or @authorizationService.isCurrentSeller(#sellerId)")
+    public ResponseEntity<Seller> getSellerById(@PathVariable Integer sellerId) {
+        return ResponseEntity.ok(onboardingService.getSellerByIdForAdmin(sellerId));
+    }
 }

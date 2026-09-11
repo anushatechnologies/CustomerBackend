@@ -93,7 +93,8 @@ public class AuthController {
                 firebaseUid,
                 email,
                 name,
-                phone
+                phone,
+                request != null ? request.getRole() : null
         );
 
         Integer sellerId = userService.resolveSellerIdForUser(customer);

@@ -1,6 +1,7 @@
 package com.example.project.customer.config;
 
 import com.example.project.customer.entity.OnboardingStatus;
+import com.example.project.customer.entity.Role;
 import com.example.project.customer.entity.Seller;
 import com.example.project.customer.entity.Store;
 import com.example.project.customer.entity.StoreStatus;
@@ -42,11 +43,16 @@ public class SellerContextUtil {
     public Integer getCurrentSellerId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            throw new UnauthorizedException("Authentication required: No valid authenticated principal in SecurityContext. Please provide a valid Firebase Authorization token.");
+            throw new UnauthorizedException("Authentication required: No valid authenticated principal in SecurityContext. Please provide a valid Authorization token.");
         }
 
         Object principal = auth.getPrincipal();
         if (principal instanceof FirebaseUserPrincipal fup) {
+            // Check if user is an ADMIN
+            if (fup.getRole() == Role.ADMIN) {
+                throw new ForbiddenException("Access Denied: Admin accounts do not have an associated seller profile. Please use an authorized seller account.");
+            }
+
             if (fup.getSellerId() != null) {
                 return fup.getSellerId();
             }
@@ -59,33 +65,11 @@ public class SellerContextUtil {
                     if (sellerOpt.isPresent()) {
                         return sellerOpt.get().getSellerId();
                     }
-
-                    // Auto-provision Seller profile and default Store for authenticated user
-                    String uniquePhone = (fup.getClaims() != null && fup.getClaims().get("phone_number") != null)
-                            ? String.valueOf(fup.getClaims().get("phone_number"))
-                            : "9" + String.format("%09d", Math.abs(cleanEmail.hashCode() % 1000000000));
-
-                    while (!sellerRepository.findAllByPhone(uniquePhone).isEmpty()) {
-                        uniquePhone = "9" + String.format("%09d", Math.abs(ThreadLocalRandom.current().nextInt(100000000, 999999999)));
-                    }
-
-                    Seller newSeller = Seller.builder()
-                            .name(fup.getName() != null && !fup.getName().isBlank() ? fup.getName() : "Seller")
-                            .email(cleanEmail)
-                            .phone(uniquePhone)
-                            .onboardingStatus(OnboardingStatus.STEP_1)
-                            .verificationStatus(VerificationStatus.PENDING)
-                            .build();
-
-                    Seller savedSeller = sellerRepository.save(newSeller);
-                    autoCreateStoreForSeller(savedSeller);
-                    log.info("Auto-provisioned new Seller (ID: {}) and Store for authenticated user: {}", savedSeller.getSellerId(), cleanEmail);
-                    return savedSeller.getSellerId();
                 }
             }
         }
 
-        throw new ForbiddenException("Access Denied: The authenticated account is not registered as a seller.");
+        throw new ForbiddenException("Access Denied: The authenticated account is not registered as a seller. Please complete seller onboarding first.");
     }
 
     /**

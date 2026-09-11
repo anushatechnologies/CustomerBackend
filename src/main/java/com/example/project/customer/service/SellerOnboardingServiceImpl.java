@@ -546,6 +546,30 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
         return saved;
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<Seller> getAllSellersForAdmin(VerificationStatus status, String search) {
+        List<Seller> all = sellerRepository.findAll();
+        return all.stream()
+                .filter(s -> status == null || s.getVerificationStatus() == status)
+                .filter(s -> {
+                    if (search == null || search.isBlank()) return true;
+                    String q = search.trim().toLowerCase();
+                    boolean matchName = s.getName() != null && s.getName().toLowerCase().contains(q);
+                    boolean matchEmail = s.getEmail() != null && s.getEmail().toLowerCase().contains(q);
+                    boolean matchCompany = s.getCompanyName() != null && s.getCompanyName().toLowerCase().contains(q);
+                    boolean matchPhone = s.getPhone() != null && s.getPhone().toLowerCase().contains(q);
+                    return matchName || matchEmail || matchCompany || matchPhone;
+                })
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Seller getSellerByIdForAdmin(Integer sellerId) {
+        return findSeller(sellerId);
+    }
+
     private void upgradeUserToSellerRole(String email) {
         if (email == null || email.isBlank()) return;
         Optional<Customer> customerOpt = customerRepository.findByEmailIgnoreCase(email.trim());
