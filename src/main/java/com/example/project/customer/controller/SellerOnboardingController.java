@@ -134,21 +134,45 @@ public class SellerOnboardingController {
         return ResponseEntity.ok(saved);
     }
 
-    @PostMapping("/{sellerId}/admin/approve")
+    @PostMapping(value = {"/{sellerId}/admin/approve", "/{sellerId}/approve", "/{sellerId}/verify"})
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Seller> approveSellerByAdmin(
             @PathVariable Integer sellerId,
-            @RequestParam(value = "remarks", required = false) String remarks) {
-        Seller verified = onboardingService.verifySellerByAdmin(sellerId, true, remarks);
-        return ResponseEntity.ok(verified);
+            @RequestParam(value = "remarks", required = false) String remarks,
+            @RequestBody(required = false) java.util.Map<String, Object> body) {
+        String finalRemarks = remarks;
+        boolean isApproved = true;
+        if (body != null) {
+            if (body.get("remarks") != null) {
+                finalRemarks = String.valueOf(body.get("remarks"));
+            } else if (body.get("reason") != null) {
+                finalRemarks = String.valueOf(body.get("reason"));
+            }
+            if (body.containsKey("verified")) {
+                isApproved = Boolean.parseBoolean(String.valueOf(body.get("verified")));
+            } else if (body.containsKey("approved")) {
+                isApproved = Boolean.parseBoolean(String.valueOf(body.get("approved")));
+            }
+        }
+        Seller result = onboardingService.verifySellerByAdmin(sellerId, isApproved, finalRemarks);
+        return ResponseEntity.ok(result);
     }
 
-    @PostMapping("/{sellerId}/admin/reject")
+    @PostMapping(value = {"/{sellerId}/admin/reject", "/{sellerId}/reject"})
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Seller> rejectSellerByAdmin(
             @PathVariable Integer sellerId,
-            @RequestParam(value = "remarks", required = false) String remarks) {
-        Seller rejected = onboardingService.verifySellerByAdmin(sellerId, false, remarks);
+            @RequestParam(value = "remarks", required = false) String remarks,
+            @RequestBody(required = false) java.util.Map<String, Object> body) {
+        String finalRemarks = remarks;
+        if (body != null) {
+            if (body.get("remarks") != null) {
+                finalRemarks = String.valueOf(body.get("remarks"));
+            } else if (body.get("reason") != null) {
+                finalRemarks = String.valueOf(body.get("reason"));
+            }
+        }
+        Seller rejected = onboardingService.verifySellerByAdmin(sellerId, false, finalRemarks);
         return ResponseEntity.ok(rejected);
     }
 

@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -89,26 +90,51 @@ public class AdminSellerController {
     }
 
     /**
-     * Admin approve a seller application.
+     * Admin approve a seller application (supports both query param remarks and JSON body).
      */
-    @PostMapping("/{sellerId}/approve")
+    @PostMapping(value = {"/{sellerId}/approve", "/{sellerId}/verify"})
     public ResponseEntity<ApiResponse<Seller>> approveSeller(
             @PathVariable Integer sellerId,
-            @RequestParam(value = "remarks", required = false) String remarks
+            @RequestParam(value = "remarks", required = false) String remarks,
+            @RequestBody(required = false) java.util.Map<String, Object> body
     ) {
-        Seller approved = onboardingService.verifySellerByAdmin(sellerId, true, remarks);
-        return ResponseEntity.ok(ApiResponse.ok("Seller approved successfully", approved));
+        String finalRemarks = remarks;
+        boolean isApproved = true;
+        if (body != null) {
+            if (body.get("remarks") != null) {
+                finalRemarks = String.valueOf(body.get("remarks"));
+            } else if (body.get("reason") != null) {
+                finalRemarks = String.valueOf(body.get("reason"));
+            }
+            if (body.containsKey("verified")) {
+                isApproved = Boolean.parseBoolean(String.valueOf(body.get("verified")));
+            } else if (body.containsKey("approved")) {
+                isApproved = Boolean.parseBoolean(String.valueOf(body.get("approved")));
+            }
+        }
+        Seller result = onboardingService.verifySellerByAdmin(sellerId, isApproved, finalRemarks);
+        String message = isApproved ? "Seller approved successfully" : "Seller rejected successfully";
+        return ResponseEntity.ok(ApiResponse.ok(message, result));
     }
 
     /**
-     * Admin reject a seller application.
+     * Admin reject a seller application (supports both query param remarks and JSON body).
      */
     @PostMapping("/{sellerId}/reject")
     public ResponseEntity<ApiResponse<Seller>> rejectSeller(
             @PathVariable Integer sellerId,
-            @RequestParam(value = "remarks", required = false) String remarks
+            @RequestParam(value = "remarks", required = false) String remarks,
+            @RequestBody(required = false) java.util.Map<String, Object> body
     ) {
-        Seller rejected = onboardingService.verifySellerByAdmin(sellerId, false, remarks);
+        String finalRemarks = remarks;
+        if (body != null) {
+            if (body.get("remarks") != null) {
+                finalRemarks = String.valueOf(body.get("remarks"));
+            } else if (body.get("reason") != null) {
+                finalRemarks = String.valueOf(body.get("reason"));
+            }
+        }
+        Seller rejected = onboardingService.verifySellerByAdmin(sellerId, false, finalRemarks);
         return ResponseEntity.ok(ApiResponse.ok("Seller rejected successfully", rejected));
     }
 
