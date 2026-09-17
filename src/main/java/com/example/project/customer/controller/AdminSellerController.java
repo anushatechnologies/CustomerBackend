@@ -3,11 +3,13 @@ package com.example.project.customer.controller;
 import com.example.project.customer.dto.ApiResponse;
 import com.example.project.customer.dto.SellerDocumentVaultResponse;
 import com.example.project.customer.dto.SellerOnboardingSummaryResponse;
+import com.example.project.customer.dto.StoreResponse;
 import com.example.project.customer.entity.DocumentType;
 import com.example.project.customer.entity.Seller;
 import com.example.project.customer.entity.SellerDocument;
 import com.example.project.customer.entity.VerificationStatus;
 import com.example.project.customer.service.SellerOnboardingService;
+import com.example.project.customer.service.StoreService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -29,6 +31,7 @@ import java.util.List;
 public class AdminSellerController {
 
     private final SellerOnboardingService onboardingService;
+    private final StoreService storeService;
 
     /**
      * List all registered sellers with optional status filter (e.g., PENDING, VERIFIED, REJECTED) and search.
@@ -69,6 +72,16 @@ public class AdminSellerController {
     public ResponseEntity<ApiResponse<SellerOnboardingSummaryResponse>> getSellerSummary(@PathVariable Integer sellerId) {
         SellerOnboardingSummaryResponse summary = onboardingService.getSummary(sellerId);
         return ResponseEntity.ok(ApiResponse.ok("Seller onboarding summary retrieved successfully", summary));
+    }
+
+    /**
+     * Fetch a specific seller's store profile by seller ID.
+     * GET /api/admin/sellers/{sellerId}/store
+     */
+    @GetMapping("/{sellerId}/store")
+    public ResponseEntity<ApiResponse<StoreResponse>> getSellerStore(@PathVariable Integer sellerId) {
+        StoreResponse store = storeService.getSellerStore(sellerId);
+        return ResponseEntity.ok(ApiResponse.ok("Seller store details retrieved successfully", store));
     }
 
     /**

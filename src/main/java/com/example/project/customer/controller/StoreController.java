@@ -7,6 +7,7 @@ import com.example.project.customer.dto.ProductResponse;
 import com.example.project.customer.dto.StoreResponse;
 import com.example.project.customer.dto.StoreStatusUpdateRequest;
 import com.example.project.customer.dto.StoreUpdateRequest;
+import com.example.project.customer.entity.StoreStatus;
 import com.example.project.customer.service.StoreService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -105,5 +106,22 @@ public class StoreController {
             @Valid @RequestBody StoreStatusUpdateRequest request) {
         StoreResponse response = storeService.updateStoreStatusByAdmin(id, request);
         return ResponseEntity.ok(ApiResponse.ok("Store status updated successfully", response));
+    }
+
+    @GetMapping("/admin/stores/seller/{sellerId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<StoreResponse>> getStoreBySellerId(@PathVariable Integer sellerId) {
+        StoreResponse response = storeService.getSellerStore(sellerId);
+        return ResponseEntity.ok(ApiResponse.ok("Seller store profile retrieved successfully", response));
+    }
+
+    @GetMapping("/admin/stores")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<List<StoreResponse>>> getAllStoresForAdmin(
+            @RequestParam(required = false) StoreStatus status,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false, defaultValue = "1") int page,
+            @RequestParam(required = false, defaultValue = "20") int limit) {
+        return ResponseEntity.ok(storeService.getAllStoresForAdmin(status, search, page, limit));
     }
 }

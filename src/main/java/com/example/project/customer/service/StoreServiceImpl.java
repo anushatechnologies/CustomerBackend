@@ -82,6 +82,41 @@ public class StoreServiceImpl implements StoreService {
 
     @Override
     @Transactional(readOnly = true)
+    public ApiResponse<List<StoreResponse>> getAllStoresForAdmin(StoreStatus status, String search, int page, int limit) {
+        int pageNumber = page > 0 ? page : 1;
+        int pageSize = limit > 0 ? limit : 20;
+        Pageable pageable = PageRequest.of(pageNumber - 1, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        Specification<Store> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
+            }
+
+            if (search != null && !search.isBlank()) {
+                String term = "%" + search.trim().toLowerCase() + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("name")), term),
+                        cb.like(cb.lower(root.get("slug")), term),
+                        cb.like(cb.lower(root.get("description")), term)
+                ));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        Page<Store> pageResult = storeRepository.findAll(spec, pageable);
+        List<StoreResponse> responses = pageResult.getContent().stream()
+                .map(this::mapToResponse)
+                .toList();
+
+        PaginationMeta meta = PaginationMeta.of(pageNumber, pageSize, pageResult.getTotalElements());
+        return ApiResponse.paginated("All marketplace stores retrieved successfully for admin", responses, meta);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public StoreResponse getStoreBySlug(String slug) {
         Store store = storeRepository.findBySlugIgnoreCase(slug)
                 .orElseThrow(() -> new ResourceNotFoundException("Store not found with slug: " + slug));

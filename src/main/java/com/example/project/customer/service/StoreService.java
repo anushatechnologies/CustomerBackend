@@ -7,12 +7,15 @@ import com.example.project.customer.dto.StoreStatusUpdateRequest;
 import com.example.project.customer.dto.StoreUpdateRequest;
 
 import com.example.project.customer.dto.CategoryResponse;
+import com.example.project.customer.entity.StoreStatus;
 
 import java.util.List;
 
 public interface StoreService {
 
     ApiResponse<List<StoreResponse>> getActiveStores(String search, int page, int limit);
+
+    ApiResponse<List<StoreResponse>> getAllStoresForAdmin(StoreStatus status, String search, int page, int limit);
 
     default ApiResponse<List<StoreResponse>> getActiveStores(int page, int limit) {
         return getActiveStores(null, page, limit);
