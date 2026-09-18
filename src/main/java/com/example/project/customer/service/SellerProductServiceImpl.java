@@ -288,8 +288,12 @@ public class SellerProductServiceImpl implements SellerProductService {
     @Override
     public void deleteSellerProduct(Integer sellerId, Integer productId) {
         Product product = findSellerProduct(sellerId, productId);
-        productRepository.delete(product);
-        log.info("Deleted product id={} for sellerId={}", productId, sellerId);
+        product.setActive(false);
+        product.setApprovalStatus(ApprovalStatus.REJECTED);
+        product.setRejectionReason("Removed from inventory by seller");
+        product.setUpdatedAt(LocalDateTime.now());
+        productRepository.save(product);
+        log.info("Soft-deleted (deactivated) product id={} for sellerId={}", productId, sellerId);
     }
 
     private Product findSellerProduct(Integer sellerId, Integer productId) {

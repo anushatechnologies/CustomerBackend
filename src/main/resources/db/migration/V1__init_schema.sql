@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS sellers (
     account_type VARCHAR(255),
     onboarding_status VARCHAR(50) NOT NULL DEFAULT 'STEP_1',
     verification_status VARCHAR(50) DEFAULT 'PENDING',
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    deleted_at DATETIME,
     created_at DATETIME,
     updated_at DATETIME
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

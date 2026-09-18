@@ -102,4 +102,16 @@ public class PaymentController {
         paymentService.handleWebhook(payload, signature);
         return ResponseEntity.ok("Webhook processed successfully");
     }
+
+    /**
+     * Step 7: Order Refund Endpoint
+     * Manually triggers refund for an order (also triggered automatically upon cancellation).
+     */
+    @PostMapping("/order/{orderId}/refund")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<PaymentStatusResponse>> refundOrderPayment(
+            @PathVariable Integer orderId) {
+        PaymentStatusResponse response = paymentService.refundOrderPayment(orderId, "Customer or admin requested cancellation refund");
+        return ResponseEntity.ok(ApiResponse.ok("Order refund processed successfully", response));
+    }
 }

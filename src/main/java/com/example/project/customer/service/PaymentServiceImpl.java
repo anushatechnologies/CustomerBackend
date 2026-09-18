@@ -18,6 +18,8 @@ import com.example.project.customer.repository.WalletTransactionRepository;
 import com.razorpay.RazorpayClient;
 import com.razorpay.RazorpayException;
 import com.razorpay.Utils;
+import com.example.project.customer.event.OrderCancelledEvent;
+import org.springframework.context.event.EventListener;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.json.JSONObject;
@@ -90,18 +92,23 @@ public class PaymentServiceImpl implements PaymentService {
         // 1. If paying for an existing Order -> Fetch price directly from Order
         if (request.getOrderId() != null) {
             order = orderRepository.findById(request.getOrderId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + request.getOrderId()));
+                    .orElseThrow(
+                            () -> new ResourceNotFoundException("Order not found with id: " + request.getOrderId()));
             amount = order.getTotalAmount();
             receipt = order.getOrderNumber() != null ? order.getOrderNumber() : "ORD-" + order.getOrderId();
             purpose = "ORDER_PAYMENT";
-            description = "Payment for Order #" + (order.getOrderNumber() != null ? order.getOrderNumber() : order.getOrderId());
+            description = "Payment for Order #"
+                    + (order.getOrderNumber() != null ? order.getOrderNumber() : order.getOrderId());
         }
-        // 2. If paying directly from Cart or Checkout preview (or if amount is not specified and purpose is not WALLET_TOPUP)
-        else if ("CART".equalsIgnoreCase(purpose) || "CART_PAYMENT".equalsIgnoreCase(purpose) || "CHECKOUT".equalsIgnoreCase(purpose)
+        // 2. If paying directly from Cart or Checkout preview (or if amount is not
+        // specified and purpose is not WALLET_TOPUP)
+        else if ("CART".equalsIgnoreCase(purpose) || "CART_PAYMENT".equalsIgnoreCase(purpose)
+                || "CHECKOUT".equalsIgnoreCase(purpose)
                 || (amount == null && !"WALLET_TOPUP".equalsIgnoreCase(purpose))) {
             CartResponse cart = cartService.getCart(uid);
             if (cart == null || cart.getItems() == null || cart.getItems().isEmpty()) {
-                throw new IllegalStateException("Cannot generate payment for an empty cart. Please add items to your cart first.");
+                throw new IllegalStateException(
+                        "Cannot generate payment for an empty cart. Please add items to your cart first.");
             }
 
             if (request.getAddressId() != null) {
@@ -172,14 +179,17 @@ public class PaymentServiceImpl implements PaymentService {
                     if (attempt < 3) {
                         try {
                             Thread.sleep(500);
-                        } catch (InterruptedException ignored) {}
+                        } catch (InterruptedException ignored) {
+                        }
                     }
                 }
             }
 
             if (rzpOrder == null) {
-                if (lastException != null && lastException.getMessage() != null && lastException.getMessage().contains("No such host is known")) {
-                    throw new RuntimeException("Unable to connect to Razorpay (Network/DNS error). Please check your internet connection and try again.");
+                if (lastException != null && lastException.getMessage() != null
+                        && lastException.getMessage().contains("No such host is known")) {
+                    throw new RuntimeException(
+                            "Unable to connect to Razorpay (Network/DNS error). Please check your internet connection and try again.");
                 }
                 throw lastException;
             }
@@ -198,7 +208,8 @@ public class PaymentServiceImpl implements PaymentService {
                     .build();
             paymentRepository.save(payment);
 
-            log.info("Created Razorpay order {} for customer {} with amount {} INR (purpose: {})", razorpayOrderId, uid, amount, purpose);
+            log.info("Created Razorpay order {} for customer {} with amount {} INR (purpose: {})", razorpayOrderId, uid,
+                    amount, purpose);
 
             return PaymentOrderCreateResponse.builder()
                     .razorpayOrderId(razorpayOrderId)
@@ -223,7 +234,8 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public PaymentStatusResponse verifyPayment(Integer customerId, PaymentVerifyRequest request) {
-        log.info("Verifying Razorpay payment for orderId: {}, paymentId: {}", request.getOrderId(), request.getRazorpayPaymentId());
+        log.info("Verifying Razorpay payment for orderId: {}, paymentId: {}", request.getOrderId(),
+                request.getRazorpayPaymentId());
 
         // Step 1: Cryptographic signature verification using HMAC-SHA256
         try {
@@ -234,7 +246,8 @@ public class PaymentServiceImpl implements PaymentService {
 
             boolean isValid = Utils.verifyPaymentSignature(attributes, keySecret);
             if (!isValid) {
-                log.warn("Invalid payment signature received for razorpay_payment_id: {}", request.getRazorpayPaymentId());
+                log.warn("Invalid payment signature received for razorpay_payment_id: {}",
+                        request.getRazorpayPaymentId());
                 throw new IllegalArgumentException("Invalid Razorpay payment signature.");
             }
         } catch (RazorpayException e) {
@@ -251,17 +264,21 @@ public class PaymentServiceImpl implements PaymentService {
                 break;
             } catch (RazorpayException e) {
                 lastFetchEx = e;
-                log.warn("Attempt {} to fetch Razorpay payment {} failed: {}", attempt, request.getRazorpayPaymentId(), e.getMessage());
+                log.warn("Attempt {} to fetch Razorpay payment {} failed: {}", attempt, request.getRazorpayPaymentId(),
+                        e.getMessage());
                 if (attempt < 3) {
                     try {
                         Thread.sleep(500);
-                    } catch (InterruptedException ignored) {}
+                    } catch (InterruptedException ignored) {
+                    }
                 }
             }
         }
         if (rzpPayment == null) {
-            log.error("Failed to fetch payment {} from Razorpay after retries: {}", request.getRazorpayPaymentId(), lastFetchEx != null ? lastFetchEx.getMessage() : "Unknown error");
-            throw new RuntimeException("Failed to verify payment with Razorpay gateway (network error): " + (lastFetchEx != null ? lastFetchEx.getMessage() : ""), lastFetchEx);
+            log.error("Failed to fetch payment {} from Razorpay after retries: {}", request.getRazorpayPaymentId(),
+                    lastFetchEx != null ? lastFetchEx.getMessage() : "Unknown error");
+            throw new RuntimeException("Failed to verify payment with Razorpay gateway (network error): "
+                    + (lastFetchEx != null ? lastFetchEx.getMessage() : ""), lastFetchEx);
         }
 
         String rzpStatus = rzpPayment.get("status"); // "captured", "authorized", "failed"
@@ -273,7 +290,8 @@ public class PaymentServiceImpl implements PaymentService {
         Payment payment = paymentRepository.findByRazorpayOrderId(request.getRazorpayOrderId())
                 .orElseGet(() -> {
                     Customer c = customerId != null ? customerRepository.findById(customerId).orElse(null) : null;
-                    Order o = request.getOrderId() != null ? orderRepository.findById(request.getOrderId()).orElse(null) : null;
+                    Order o = request.getOrderId() != null ? orderRepository.findById(request.getOrderId()).orElse(null)
+                            : null;
                     return Payment.builder()
                             .customer(c)
                             .order(o)
@@ -299,7 +317,8 @@ public class PaymentServiceImpl implements PaymentService {
         }
         paymentRepository.save(payment);
 
-        // Step 4: If payment is captured/authorized, update business entities (Order or Wallet)
+        // Step 4: If payment is captured/authorized, update business entities (Order or
+        // Wallet)
         if ("captured".equalsIgnoreCase(rzpStatus) || "authorized".equalsIgnoreCase(rzpStatus)) {
             // Update Order
             Order order = payment.getOrder();
@@ -307,8 +326,10 @@ public class PaymentServiceImpl implements PaymentService {
                 order = orderRepository.findById(request.getOrderId()).orElse(null);
             }
 
-            // If paying from CART_PAYMENT or CHECKOUT without an existing order, automatically convert cart into placed order
-            if (order == null && ("CART_PAYMENT".equalsIgnoreCase(payment.getPurpose()) || "CHECKOUT".equalsIgnoreCase(payment.getPurpose()))) {
+            // If paying from CART_PAYMENT or CHECKOUT without an existing order,
+            // automatically convert cart into placed order
+            if (order == null && ("CART_PAYMENT".equalsIgnoreCase(payment.getPurpose())
+                    || "CHECKOUT".equalsIgnoreCase(payment.getPurpose()))) {
                 try {
                     Integer addrId = null;
                     if (rzpPayment.has("notes") && rzpPayment.get("notes") != null) {
@@ -318,25 +339,37 @@ public class PaymentServiceImpl implements PaymentService {
                         }
                     }
                     if (addrId == null && payment.getCustomer() != null) {
-                        Address defAddr = addressRepository.findByCustomer_CustomerIdAndIsDefaultTrue(payment.getCustomer().getCustomerId()).orElse(null);
-                        if (defAddr != null) addrId = defAddr.getId();
+                        Address defAddr = addressRepository
+                                .findByCustomer_CustomerIdAndIsDefaultTrue(payment.getCustomer().getCustomerId())
+                                .orElse(null);
+                        if (defAddr != null)
+                            addrId = defAddr.getId();
                     }
 
                     if (addrId != null) {
                         OrderCreateRequest oReq = OrderCreateRequest.builder()
                                 .addressId(addrId)
-                                .paymentMethod(payment.getPaymentMethod() != null ? payment.getPaymentMethod() : "RAZORPAY")
-                                .deliveryInstructions("Auto-placed from Razorpay Payment " + payment.getRazorpayPaymentId())
+                                .paymentMethod(
+                                        payment.getPaymentMethod() != null ? payment.getPaymentMethod() : "RAZORPAY")
+                                .deliveryInstructions(
+                                        "Auto-placed from Razorpay Payment " + payment.getRazorpayPaymentId())
                                 .build();
                         OrderResponse placed = orderService.createOrder(payment.getCustomer().getCustomerId(), oReq);
                         order = orderRepository.findById(placed.getOrderId()).orElse(null);
                         payment.setOrder(order);
                         paymentRepository.save(payment);
                         log.info("Auto-placed Order #{} for customer #{} from captured payment {}",
-                                placed.getOrderId(), payment.getCustomer().getCustomerId(), payment.getRazorpayPaymentId());
+                                placed.getOrderId(), payment.getCustomer().getCustomerId(),
+                                payment.getRazorpayPaymentId());
+                    } else {
+                        throw new IllegalStateException(
+                                "No delivery address available to auto-place order from cart payment.");
                     }
                 } catch (Exception e) {
-                    log.error("Failed to auto-create order from payment {}: {}", payment.getRazorpayPaymentId(), e.getMessage(), e);
+                    log.error("Failed to auto-create order from payment {}: {}", payment.getRazorpayPaymentId(),
+                            e.getMessage(), e);
+                    refundPaymentOrCreditWallet(payment, payment.getRazorpayPaymentId(),
+                            "Order auto-placement failed: " + e.getMessage());
                 }
             }
 
@@ -345,7 +378,8 @@ public class PaymentServiceImpl implements PaymentService {
                 if (payment.getPaymentMethod() != null) {
                     order.setPaymentMethod(payment.getPaymentMethod());
                 }
-                boolean transitioningToConfirmed = "PLACED".equalsIgnoreCase(order.getOrderStatus()) || "PENDING".equalsIgnoreCase(order.getOrderStatus());
+                boolean transitioningToConfirmed = "PLACED".equalsIgnoreCase(order.getOrderStatus())
+                        || "PENDING".equalsIgnoreCase(order.getOrderStatus());
                 if (transitioningToConfirmed) {
                     order.setOrderStatus("CONFIRMED");
                 }
@@ -358,7 +392,8 @@ public class PaymentServiceImpl implements PaymentService {
 
             // Update Wallet if purpose is WALLET_TOPUP
             if ("WALLET_TOPUP".equalsIgnoreCase(payment.getPurpose()) && payment.getCustomer() != null) {
-                creditCustomerWallet(payment.getCustomer().getCustomerId(), payment.getAmount(), payment.getRazorpayPaymentId());
+                creditCustomerWallet(payment.getCustomer().getCustomerId(), payment.getAmount(),
+                        payment.getRazorpayPaymentId());
             }
         }
 
@@ -498,7 +533,8 @@ public class PaymentServiceImpl implements PaymentService {
                     if (p.getPaymentMethod() != null) {
                         o.setPaymentMethod(p.getPaymentMethod());
                     }
-                    boolean transitioningToConfirmed = "PLACED".equalsIgnoreCase(o.getOrderStatus()) || "PENDING".equalsIgnoreCase(o.getOrderStatus());
+                    boolean transitioningToConfirmed = "PLACED".equalsIgnoreCase(o.getOrderStatus())
+                            || "PENDING".equalsIgnoreCase(o.getOrderStatus());
                     if (transitioningToConfirmed) {
                         o.setOrderStatus("CONFIRMED");
                     }
@@ -506,6 +542,54 @@ public class PaymentServiceImpl implements PaymentService {
                     log.info("Order #{} marked PAID via webhook", o.getOrderId());
                     if (transitioningToConfirmed) {
                         outboxService.recordOrderConfirmed(o);
+                    }
+                } else if ("CART_PAYMENT".equalsIgnoreCase(p.getPurpose())
+                        || "CHECKOUT".equalsIgnoreCase(p.getPurpose())) {
+                    // Auto-create order from webhook if verifyPayment was never called (e.g. mobile
+                    // app crash or network drop)
+                    try {
+                        Integer addrId = null;
+                        if (paymentObj.has("notes") && paymentObj.get("notes") != null) {
+                            Object nObj = paymentObj.get("notes");
+                            if (nObj instanceof JSONObject nJson && nJson.has("addressId")) {
+                                addrId = Integer.parseInt(nJson.optString("addressId"));
+                            }
+                        }
+                        if (addrId == null && p.getCustomer() != null) {
+                            Address defAddr = addressRepository
+                                    .findByCustomer_CustomerIdAndIsDefaultTrue(p.getCustomer().getCustomerId())
+                                    .orElse(null);
+                            if (defAddr != null)
+                                addrId = defAddr.getId();
+                        }
+
+                        if (addrId != null && p.getCustomer() != null) {
+                            OrderCreateRequest oReq = OrderCreateRequest.builder()
+                                    .addressId(addrId)
+                                    .paymentMethod(p.getPaymentMethod() != null ? p.getPaymentMethod() : "RAZORPAY")
+                                    .deliveryInstructions("Auto-placed from Razorpay Webhook " + rzpPaymentId)
+                                    .build();
+                            OrderResponse placed = orderService.createOrder(p.getCustomer().getCustomerId(), oReq);
+                            Order order = orderRepository.findById(placed.getOrderId()).orElse(null);
+                            if (order != null) {
+                                order.setPaymentStatus("PAID");
+                                order.setOrderStatus("CONFIRMED");
+                                orderRepository.save(order);
+                                p.setOrder(order);
+                                paymentRepository.save(p);
+                                outboxService.recordOrderConfirmed(order);
+                                log.info("Auto-placed Order #{} via webhook for customer #{} from captured payment {}",
+                                        order.getOrderId(), p.getCustomer().getCustomerId(), rzpPaymentId);
+                            }
+                        } else {
+                            throw new IllegalStateException(
+                                    "No delivery address available to auto-place order from webhook.");
+                        }
+                    } catch (Exception e) {
+                        log.error("Failed to auto-create order from webhook for payment {}: {}", rzpPaymentId,
+                                e.getMessage(), e);
+                        refundPaymentOrCreditWallet(p, rzpPaymentId,
+                                "Webhook auto-placement failed: " + e.getMessage());
                     }
                 }
             });
@@ -528,19 +612,137 @@ public class PaymentServiceImpl implements PaymentService {
         }
     }
 
-    private synchronized void creditCustomerWallet(Integer customerId, BigDecimal amount, String paymentId) {
+    @EventListener
+    public void onOrderCancelled(OrderCancelledEvent event) {
+        log.info("Handling OrderCancelledEvent for Order #{}. Initiating automatic refund...", event.orderId());
+        try {
+            refundOrderPayment(event.orderId(), event.reason());
+        } catch (Exception e) {
+            log.error("Failed to process auto-refund for cancelled Order #{}: {}", event.orderId(), e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public PaymentStatusResponse refundOrderPayment(Integer orderId, String reason) {
+        if (orderId == null) {
+            throw new IllegalArgumentException("Order ID cannot be null for refund processing.");
+        }
+
+        Payment payment = paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(orderId).orElse(null);
+        if (payment == null) {
+            log.warn("No payment record found for Order #{}. Marking paymentStatus as REFUNDED directly.", orderId);
+            Order order = orderRepository.findById(orderId).orElse(null);
+            if (order != null) {
+                order.setPaymentStatus("REFUNDED");
+                orderRepository.save(order);
+            }
+            return PaymentStatusResponse.builder()
+                    .orderId(orderId)
+                    .status("NO_PAYMENT_RECORD")
+                    .errorDescription("No payment record found to refund for order " + orderId)
+                    .build();
+        }
+
+        if ("REFUNDED".equalsIgnoreCase(payment.getStatus())
+                || "REFUNDED_TO_WALLET".equalsIgnoreCase(payment.getStatus())) {
+            log.info("Payment #{} for Order #{} is already refunded: {}", payment.getPaymentId(), orderId,
+                    payment.getStatus());
+            return mapToStatusResponse(payment, null);
+        }
+
+        refundPaymentOrCreditWallet(payment, payment.getRazorpayPaymentId(),
+                reason != null ? reason : "Order #" + orderId + " cancellation refund");
+
+        Order order = payment.getOrder() != null ? payment.getOrder() : orderRepository.findById(orderId).orElse(null);
+        if (order != null) {
+            order.setPaymentStatus("REFUNDED");
+            orderRepository.save(order);
+        }
+
+        return mapToStatusResponse(payment, null);
+    }
+
+    /**
+     * Customer Fund Protection:
+     * When payment is captured by Razorpay, but the corresponding order cannot be
+     * fulfilled
+     * (e.g. out of stock, inactive store, validation failure) or was cancelled,
+     * ensures the customer never loses money.
+     * 1. Attempts immediate online refund via Razorpay refund API.
+     * 2. If Razorpay refund fails or is delayed, credits 100% of the funds to the
+     * customer's in-app wallet.
+     */
+    private void refundPaymentOrCreditWallet(Payment payment, String razorpayPaymentId, String reason) {
+        log.warn("Initiating customer protection refund for payment {} (Customer: #{}). Reason: {}",
+                razorpayPaymentId, payment.getCustomer() != null ? payment.getCustomer().getCustomerId() : "unknown",
+                reason);
+
+        boolean refundedViaGateway = false;
+        if (razorpayPaymentId != null && !razorpayPaymentId.isBlank()) {
+            try {
+                JSONObject refundRequest = new JSONObject();
+                refundRequest.put("notes", new JSONObject()
+                        .put("reason", "Automatic refund")
+                        .put("details", reason != null ? reason : "Customer protection refund"));
+                com.razorpay.Refund rzpRefund = razorpayClient.payments.refund(razorpayPaymentId, refundRequest);
+                String refundId = rzpRefund.get("id");
+                payment.setStatus("REFUNDED");
+                payment.setErrorDescription(
+                        "Payment automatically refunded via Razorpay (Refund ID: " + refundId + "). Reason: " + reason);
+                paymentRepository.save(payment);
+                refundedViaGateway = true;
+                log.info("Successfully processed gateway refund {} for payment {}", refundId, razorpayPaymentId);
+            } catch (Exception rzpEx) {
+                log.error("Razorpay online refund failed for payment {}: {}. Falling back to customer wallet credit.",
+                        razorpayPaymentId, rzpEx.getMessage(), rzpEx);
+            }
+        }
+
+        if (!refundedViaGateway && payment.getCustomer() != null) {
+            try {
+                creditCustomerWallet(
+                        payment.getCustomer().getCustomerId(),
+                        payment.getAmount(),
+                        "REFUND-" + (razorpayPaymentId != null ? razorpayPaymentId : ("PAY-" + payment.getPaymentId())),
+                        "REFUND",
+                        "Automatic Wallet Refund: " + reason);
+                payment.setStatus("REFUNDED_TO_WALLET");
+                payment.setErrorDescription("Payment automatically credited to customer wallet. Reason: " + reason);
+                paymentRepository.save(payment);
+                log.info("Successfully credited {} INR to customer #{} wallet as fallback refund",
+                        payment.getAmount(), payment.getCustomer().getCustomerId());
+            } catch (Exception walletEx) {
+                log.error("CRITICAL: Failed to credit customer wallet for payment {}: {}", razorpayPaymentId,
+                        walletEx.getMessage(), walletEx);
+                payment.setStatus("REFUND_FAILED");
+                payment.setErrorDescription("Auto-refund failed (" + reason + "). Immediate manual action required.");
+                paymentRepository.save(payment);
+            }
+        }
+    }
+
+    private void creditCustomerWallet(Integer customerId, BigDecimal amount, String paymentId) {
+        creditCustomerWallet(customerId, amount, paymentId, "TOPUP", "Wallet Top-up via Razorpay (" + paymentId + ")");
+    }
+
+    private synchronized void creditCustomerWallet(Integer customerId, BigDecimal amount, String paymentId,
+            String source, String description) {
         if (customerId == null || amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             log.warn("Invalid wallet credit parameters: customerId={}, amount={}", customerId, amount);
             return;
         }
 
-        // Idempotency guard: prevent duplicate credit if this paymentId was already processed
+        // Idempotency guard: prevent duplicate credit if this paymentId was already
+        // processed
         if (paymentId != null && walletTransactionRepository.existsByReferenceId(paymentId)) {
-            log.warn("Payment reference '{}' was already credited to customer {} wallet. Skipping duplicate credit.", paymentId, customerId);
+            log.warn("Payment reference '{}' was already credited to customer {} wallet. Skipping duplicate credit.",
+                    paymentId, customerId);
             return;
         }
 
-        Wallet wallet = walletRepository.findByCustomer_CustomerId(customerId)
+        // Use pessimistic lock query to guarantee concurrency safety across multiple
+        // pods
+        Wallet wallet = walletRepository.findByCustomer_CustomerIdForUpdate(customerId)
                 .orElseGet(() -> {
                     Customer c = customerRepository.findById(customerId).orElse(null);
                     Wallet w = Wallet.builder()
@@ -562,14 +764,15 @@ public class PaymentServiceImpl implements PaymentService {
                 .wallet(wallet)
                 .type("CREDIT")
                 .amount(amount)
-                .source("TOPUP")
+                .source(source != null ? source : "TOPUP")
                 .referenceId(paymentId != null ? paymentId : "TXN-" + System.currentTimeMillis())
-                .description("Wallet Top-up via Razorpay (" + paymentId + ")")
+                .description(description != null ? description : "Wallet Credit (" + paymentId + ")")
                 .balanceAfter(newBalance)
                 .timestamp(LocalDateTime.now())
                 .build();
         walletTransactionRepository.save(txn);
-        log.info("Credited wallet for customer {} with amount {} INR. New balance: {}", customerId, amount, newBalance);
+        log.info("Credited wallet for customer {} with amount {} INR (source: {}). New balance: {}",
+                customerId, amount, source, newBalance);
     }
 
     private PaymentStatusResponse mapToStatusResponse(Payment localPayment, com.razorpay.Payment rzpPayment) {
@@ -594,8 +797,10 @@ public class PaymentServiceImpl implements PaymentService {
             customerId = c.getCustomerId();
             customerName = c.getName();
             customerPhone = c.getPhone();
-            if (contact == null) contact = c.getPhone();
-            if (email == null) email = c.getEmail();
+            if (contact == null)
+                contact = c.getPhone();
+            if (email == null)
+                email = c.getEmail();
         }
 
         if (rzpPayment != null) {
@@ -603,7 +808,8 @@ public class PaymentServiceImpl implements PaymentService {
                 status = rzpPayment.get("status").toString().toUpperCase();
             }
             if (rzpPayment.has("amount") && rzpPayment.get("amount") != null) {
-                amount = BigDecimal.valueOf(((Number) rzpPayment.get("amount")).doubleValue() / 100.0).setScale(2, RoundingMode.HALF_UP);
+                amount = BigDecimal.valueOf(((Number) rzpPayment.get("amount")).doubleValue() / 100.0).setScale(2,
+                        RoundingMode.HALF_UP);
             }
             if (rzpPayment.has("method") && rzpPayment.get("method") != null) {
                 method = rzpPayment.get("method").toString().toUpperCase();
@@ -623,8 +829,10 @@ public class PaymentServiceImpl implements PaymentService {
             if (rzpPayment.has("card") && rzpPayment.get("card") != null) {
                 Object cardObj = rzpPayment.get("card");
                 if (cardObj instanceof JSONObject card) {
-                    if (card.has("network") && !card.isNull("network")) cardNetwork = card.optString("network");
-                    if (card.has("last4") && !card.isNull("last4")) cardLast4 = card.optString("last4");
+                    if (card.has("network") && !card.isNull("network"))
+                        cardNetwork = card.optString("network");
+                    if (card.has("last4") && !card.isNull("last4"))
+                        cardLast4 = card.optString("last4");
                 }
             }
             if (rzpPayment.has("error_code") && rzpPayment.get("error_code") != null) {
@@ -640,10 +848,15 @@ public class PaymentServiceImpl implements PaymentService {
                 .customerId(customerId)
                 .customerName(customerName)
                 .customerPhone(customerPhone)
-                .orderId(localPayment != null && localPayment.getOrder() != null ? localPayment.getOrder().getOrderId() : null)
-                .orderNumber(localPayment != null && localPayment.getOrder() != null ? localPayment.getOrder().getOrderNumber() : null)
-                .razorpayPaymentId(rzpPayment != null ? rzpPayment.get("id") : (localPayment != null ? localPayment.getRazorpayPaymentId() : null))
-                .razorpayOrderId(rzpPayment != null && rzpPayment.has("order_id") ? rzpPayment.get("order_id") : (localPayment != null ? localPayment.getRazorpayOrderId() : null))
+                .orderId(localPayment != null && localPayment.getOrder() != null ? localPayment.getOrder().getOrderId()
+                        : null)
+                .orderNumber(localPayment != null && localPayment.getOrder() != null
+                        ? localPayment.getOrder().getOrderNumber()
+                        : null)
+                .razorpayPaymentId(rzpPayment != null ? rzpPayment.get("id")
+                        : (localPayment != null ? localPayment.getRazorpayPaymentId() : null))
+                .razorpayOrderId(rzpPayment != null && rzpPayment.has("order_id") ? rzpPayment.get("order_id")
+                        : (localPayment != null ? localPayment.getRazorpayOrderId() : null))
                 .status(status != null ? status.toUpperCase() : "UNKNOWN")
                 .amount(amount)
                 .currency("INR")

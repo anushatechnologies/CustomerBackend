@@ -5,9 +5,11 @@ import com.example.project.customer.dto.BusinessTaxRequest;
 import com.example.project.customer.dto.PersonalKycRequest;
 import com.example.project.customer.dto.SellerDocumentVaultResponse;
 import com.example.project.customer.dto.SellerOnboardingSummaryResponse;
+import com.example.project.customer.entity.ApprovalStatus;
 import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.DocumentType;
 import com.example.project.customer.entity.OnboardingStatus;
+import com.example.project.customer.entity.Product;
 import com.example.project.customer.entity.Role;
 import com.example.project.customer.entity.Seller;
 import com.example.project.customer.entity.SellerDocument;
@@ -17,6 +19,7 @@ import com.example.project.customer.entity.VerificationStatus;
 import com.example.project.customer.exception.ResourceConflictException;
 import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.repository.CustomerRepository;
+import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.repository.SellerDocumentRepository;
 import com.example.project.customer.repository.SellerRepository;
 import com.example.project.customer.repository.StoreRepository;
@@ -29,6 +32,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -43,6 +47,7 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
     private final SellerDocumentRepository documentRepository;
     private final CustomerRepository customerRepository;
     private final StoreRepository storeRepository;
+    private final ProductRepository productRepository;
     private final S3ImageService s3ImageService;
     private final FirebaseAuthService firebaseAuthService;
     private final Validator validator;
@@ -53,6 +58,7 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
             SellerDocumentRepository documentRepository,
             CustomerRepository customerRepository,
             @Autowired(required = false) StoreRepository storeRepository,
+            @Autowired(required = false) ProductRepository productRepository,
             @Autowired(required = false) S3ImageService s3ImageService,
             @Autowired(required = false) FirebaseAuthService firebaseAuthService,
             Validator validator
@@ -61,6 +67,7 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
         this.documentRepository = documentRepository;
         this.customerRepository = customerRepository;
         this.storeRepository = storeRepository;
+        this.productRepository = productRepository;
         this.s3ImageService = s3ImageService;
         this.firebaseAuthService = firebaseAuthService;
         this.validator = validator;
@@ -72,7 +79,7 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
             S3ImageService s3ImageService,
             Validator validator
     ) {
-        this(sellerRepository, documentRepository, null, null, s3ImageService, null, validator);
+        this(sellerRepository, documentRepository, null, null, null, s3ImageService, null, validator);
     }
 
     @Override
@@ -569,8 +576,16 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
     @Override
     @Transactional(readOnly = true)
     public List<Seller> getAllSellersForAdmin(VerificationStatus status, String search) {
+        return getAllSellersForAdmin(status, search, false);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Seller> getAllSellersForAdmin(VerificationStatus status, String search, Boolean includeDeleted) {
         List<Seller> all = sellerRepository.findAll();
+        boolean allowDeleted = Boolean.TRUE.equals(includeDeleted);
         return all.stream()
+                .filter(s -> allowDeleted || !Boolean.TRUE.equals(s.getIsDeleted()))
                 .filter(s -> status == null || s.getVerificationStatus() == status)
                 .filter(s -> {
                     if (search == null || search.isBlank()) return true;
@@ -582,6 +597,70 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
                     return matchName || matchEmail || matchCompany || matchPhone;
                 })
                 .toList();
+    }
+
+    @Override
+    @Transactional
+    public Seller softDeleteSeller(Integer sellerId, String reason) {
+        Seller seller = findSeller(sellerId);
+
+        // 1. Mark Seller as soft-deleted
+        seller.setIsDeleted(true);
+        seller.setDeletedAt(LocalDateTime.now());
+        seller.setVerificationStatus(VerificationStatus.REJECTED);
+        seller.setOnboardingStatus(OnboardingStatus.REJECTED);
+        Seller savedSeller = sellerRepository.save(seller);
+
+        // 2. Close associated Store so buyers cannot purchase from it
+        if (storeRepository != null) {
+            storeRepository.findBySeller_SellerId(sellerId).ifPresent(store -> {
+                store.setStatus(StoreStatus.CLOSED);
+                store.setUpdatedAt(LocalDateTime.now());
+                storeRepository.save(store);
+                log.info("Closed store ID: {} for soft-deleted seller ID: {}", store.getStoreId(), sellerId);
+            });
+        }
+
+        // 3. Deactivate all Products belonging to this seller
+        if (productRepository != null) {
+            List<Product> products = productRepository.findBySellerId(sellerId);
+            if (products != null && !products.isEmpty()) {
+                String rejection = (reason != null && !reason.isBlank())
+                        ? reason
+                        : "Seller account deactivated / soft-deleted";
+                for (Product p : products) {
+                    p.setActive(false);
+                    p.setApprovalStatus(ApprovalStatus.REJECTED);
+                    p.setRejectionReason(rejection);
+                    p.setUpdatedAt(LocalDateTime.now());
+                }
+                productRepository.saveAll(products);
+                log.info("Soft-deleted (deactivated) {} products for seller ID: {}", products.size(), sellerId);
+            }
+        }
+
+        // 4. Demote Customer role from SELLER back to CUSTOMER if applicable
+        if (customerRepository != null && seller.getEmail() != null) {
+            customerRepository.findByEmailIgnoreCase(seller.getEmail().trim()).ifPresent(customer -> {
+                if (Role.SELLER.name().equalsIgnoreCase(customer.getRole())) {
+                    customer.setRole(Role.CUSTOMER.name());
+                    customerRepository.save(customer);
+                    log.info("Demoted customer ID: {} from ROLE_SELLER to ROLE_CUSTOMER", customer.getCustomerId());
+
+                    if (firebaseAuthService != null && customer.getFirebaseUid() != null) {
+                        try {
+                            firebaseAuthService.setUserRoleClaim(customer.getFirebaseUid(), Role.CUSTOMER);
+                            log.info("Updated Firebase custom claims to role=CUSTOMER for UID: {}", customer.getFirebaseUid());
+                        } catch (Exception e) {
+                            log.warn("Failed to reset Firebase custom claims for soft-deleted seller: {}", e.getMessage());
+                        }
+                    }
+                }
+            });
+        }
+
+        log.info("Successfully soft-deleted seller ID: {} (email: {})", sellerId, seller.getEmail());
+        return savedSeller;
     }
 
     @Override

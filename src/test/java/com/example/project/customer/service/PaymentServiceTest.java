@@ -15,6 +15,7 @@ import com.example.project.customer.repository.PaymentRepository;
 import com.example.project.customer.repository.WalletRepository;
 import com.example.project.customer.repository.WalletTransactionRepository;
 import com.razorpay.OrderClient;
+import com.razorpay.PaymentClient;
 import com.razorpay.RazorpayClient;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +34,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -287,5 +289,116 @@ class PaymentServiceTest {
         assertThat(response.getRazorpayOrderId()).isEqualTo("order_CartOrder999");
         assertThat(response.getPurpose()).isEqualTo("CART_PAYMENT");
         verify(paymentRepository).save(any(Payment.class));
+    }
+
+    @Test
+    @DisplayName("refundOrderPayment - processes online gateway refund successfully")
+    void testRefundOrderPayment_OnlineSuccess() throws Exception {
+        Payment capturedPayment = Payment.builder()
+                .paymentId(15)
+                .order(order)
+                .customer(customer)
+                .razorpayOrderId("order_Mock12345")
+                .razorpayPaymentId("pay_Captured999")
+                .amount(BigDecimal.valueOf(1500.00))
+                .status("CAPTURED")
+                .build();
+
+        when(paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(5001))
+                .thenReturn(Optional.of(capturedPayment));
+
+        PaymentClient mockPaymentsClient = mock(PaymentClient.class);
+        ReflectionTestUtils.setField(razorpayClient, "payments", mockPaymentsClient);
+
+        JSONObject refundJson = new JSONObject();
+        refundJson.put("id", "rfnd_MockABC123");
+        refundJson.put("amount", 150000);
+        refundJson.put("status", "processed");
+        com.razorpay.Refund mockRefund = new com.razorpay.Refund(refundJson);
+
+        when(mockPaymentsClient.refund(eq("pay_Captured999"), any(JSONObject.class)))
+                .thenReturn(mockRefund);
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        PaymentStatusResponse response = paymentService.refundOrderPayment(5001, "Customer cancellation");
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatus()).isEqualTo("REFUNDED");
+        assertThat(capturedPayment.getStatus()).isEqualTo("REFUNDED");
+        assertThat(order.getPaymentStatus()).isEqualTo("REFUNDED");
+        verify(orderRepository).save(order);
+    }
+
+    @Test
+    @DisplayName("refundOrderPayment - falls back to customer wallet when gateway refund fails")
+    void testRefundOrderPayment_WalletFallback() throws Exception {
+        Payment capturedPayment = Payment.builder()
+                .paymentId(16)
+                .order(order)
+                .customer(customer)
+                .razorpayOrderId("order_Mock12345")
+                .razorpayPaymentId("pay_CapturedGatewayFail")
+                .amount(BigDecimal.valueOf(1500.00))
+                .status("CAPTURED")
+                .build();
+
+        when(paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(5001))
+                .thenReturn(Optional.of(capturedPayment));
+
+        PaymentClient mockPaymentsClient = mock(PaymentClient.class);
+        ReflectionTestUtils.setField(razorpayClient, "payments", mockPaymentsClient);
+
+        when(mockPaymentsClient.refund(eq("pay_CapturedGatewayFail"), any(JSONObject.class)))
+                .thenThrow(new com.razorpay.RazorpayException("Gateway timeout / already settled"));
+
+        com.example.project.customer.entity.Wallet wallet = com.example.project.customer.entity.Wallet.builder()
+                .customer(customer)
+                .balance(BigDecimal.valueOf(100.00))
+                .active(true)
+                .build();
+        when(walletRepository.findByCustomer_CustomerIdForUpdate(101))
+                .thenReturn(Optional.of(wallet));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        PaymentStatusResponse response = paymentService.refundOrderPayment(5001, "Customer cancellation");
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatus()).isEqualTo("REFUNDED_TO_WALLET");
+        assertThat(wallet.getBalance()).isEqualByComparingTo("1600.00");
+        assertThat(order.getPaymentStatus()).isEqualTo("REFUNDED");
+        verify(walletRepository).save(wallet);
+        verify(walletTransactionRepository).save(any(com.example.project.customer.entity.WalletTransaction.class));
+    }
+
+    @Test
+    @DisplayName("onOrderCancelled - event listener automatically executes refund")
+    void testOnOrderCancelled_EventListener() throws Exception {
+        Payment capturedPayment = Payment.builder()
+                .paymentId(17)
+                .order(order)
+                .customer(customer)
+                .razorpayOrderId("order_Mock12345")
+                .razorpayPaymentId("pay_EventTest")
+                .amount(BigDecimal.valueOf(1500.00))
+                .status("CAPTURED")
+                .build();
+
+        when(paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(5001))
+                .thenReturn(Optional.of(capturedPayment));
+
+        PaymentClient mockPaymentsClient = mock(PaymentClient.class);
+        ReflectionTestUtils.setField(razorpayClient, "payments", mockPaymentsClient);
+
+        JSONObject refundJson = new JSONObject();
+        refundJson.put("id", "rfnd_EventSuccess");
+        com.razorpay.Refund mockRefund = new com.razorpay.Refund(refundJson);
+        when(mockPaymentsClient.refund(eq("pay_EventTest"), any(JSONObject.class)))
+                .thenReturn(mockRefund);
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        paymentService.onOrderCancelled(new com.example.project.customer.event.OrderCancelledEvent(5001, "Customer cancellation"));
+
+        assertThat(capturedPayment.getStatus()).isEqualTo("REFUNDED");
+        assertThat(order.getPaymentStatus()).isEqualTo("REFUNDED");
     }
 }

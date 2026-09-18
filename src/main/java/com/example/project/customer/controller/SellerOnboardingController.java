@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -206,5 +207,14 @@ public class SellerOnboardingController {
     @PreAuthorize("hasRole('ADMIN') or @authorizationService.isCurrentSeller(#sellerId)")
     public ResponseEntity<Seller> getSellerById(@PathVariable Integer sellerId) {
         return ResponseEntity.ok(onboardingService.getSellerByIdForAdmin(sellerId));
+    }
+
+    @DeleteMapping("/{sellerId}")
+    @PreAuthorize("hasRole('ADMIN') or @authorizationService.isCurrentSeller(#sellerId)")
+    public ResponseEntity<Seller> deleteSeller(
+            @PathVariable Integer sellerId,
+            @RequestParam(value = "reason", required = false) String reason) {
+        Seller seller = onboardingService.softDeleteSeller(sellerId, reason);
+        return ResponseEntity.ok(seller);
     }
 }

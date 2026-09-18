@@ -61,7 +61,7 @@ import java.util.UUID;
 @Transactional
 
 @SuppressWarnings("null")
-public class OrderServiceImpl implements OrderService {
+public class OrderServiceImpl implements OrderService, org.springframework.context.ApplicationEventPublisherAware {
 
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
@@ -77,6 +77,12 @@ public class OrderServiceImpl implements OrderService {
     private final StoreRepository storeRepository;
     private final UserContextUtil userContextUtil;
     private final SellerContextUtil sellerContextUtil;
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
+    @Override
+    public void setApplicationEventPublisher(org.springframework.context.ApplicationEventPublisher applicationEventPublisher) {
+        this.eventPublisher = applicationEventPublisher;
+    }
 
     @Autowired
     public OrderServiceImpl(
@@ -543,6 +549,14 @@ public class OrderServiceImpl implements OrderService {
             log.info("Payout ledger for Order #{} marked as REVERSED", order.getOrderId());
         });
 
+        // Publish cancellation event to trigger automatic customer refund
+        if (eventPublisher != null) {
+            eventPublisher.publishEvent(new com.example.project.customer.event.OrderCancelledEvent(
+                    updated.getOrderId(),
+                    description != null ? description : "Pre-dispatch cancellation by customer"
+            ));
+        }
+
         return mapToOrderResponse(updated);
     }
 
@@ -572,10 +586,28 @@ public class OrderServiceImpl implements OrderService {
         if (SecurityUtils.isAdmin()) {
             return;
         }
-        Integer currentUserId = userContextUtil.getCurrentUserId();
-        if (order.getCustomer() != null && currentUserId.equals(order.getCustomer().getCustomerId())) {
+        Integer currentUserId = null;
+        try {
+            currentUserId = userContextUtil.getOptionalCurrentUserId();
+        } catch (Exception ignored) {}
+
+        if (currentUserId != null && order.getCustomer() != null && currentUserId.equals(order.getCustomer().getCustomerId())) {
             return;
         }
+
+        if (SecurityUtils.isSeller()) {
+            Optional<Integer> currentSellerId = SecurityUtils.getCurrentSellerId();
+            if (currentSellerId.isEmpty()) {
+                try {
+                    currentSellerId = Optional.ofNullable(sellerContextUtil.getCurrentSellerId());
+                } catch (Exception ignored) {}
+            }
+            if (currentSellerId.isPresent() && order.getStore() != null && order.getStore().getSeller() != null
+                    && currentSellerId.get().equals(order.getStore().getSeller().getSellerId())) {
+                return;
+            }
+        }
+
         throw new ForbiddenException("Access denied: You can only cancel your own orders.");
     }
 

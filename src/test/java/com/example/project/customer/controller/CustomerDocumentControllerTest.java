@@ -1,9 +1,10 @@
 package com.example.project.customer.controller;
 
+import com.example.project.customer.config.SecurityConfig;
+import com.example.project.customer.config.UserContextUtil;
 import com.example.project.customer.dto.CustomerDocumentRequest;
 import com.example.project.customer.dto.CustomerDocumentResponse;
 import com.example.project.customer.dto.RejectDocumentRequest;
-import com.example.project.customer.config.SecurityConfig;
 import com.example.project.customer.entity.DocumentType;
 import com.example.project.customer.entity.VerificationStatus;
 import com.example.project.customer.exception.GlobalExceptionHandler;
@@ -16,6 +17,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
@@ -48,9 +50,15 @@ class CustomerDocumentControllerTest {
     @MockBean
     private CustomerDocumentService documentService;
 
+    @MockBean
+    private UserContextUtil userContextUtil;
+
     @Test
+    @WithMockUser(username = "cust1", roles = {"CUSTOMER"})
     @DisplayName("POST /api/customers/{customerId}/documents - Should submit document and return 201 Created")
     void submitDocument_Success() throws Exception {
+        when(userContextUtil.getCurrentUserId()).thenReturn(1);
+
         CustomerDocumentRequest request = new CustomerDocumentRequest(
                 DocumentType.GST_CERTIFICATE,
                 "GST Registration Certificate (Form REG-06)",
@@ -90,8 +98,33 @@ class CustomerDocumentControllerTest {
     }
 
     @Test
+    @WithMockUser(username = "cust2", roles = {"CUSTOMER"})
+    @DisplayName("POST /api/customers/{customerId}/documents - Should return 403 Forbidden when submitting for another customer")
+    void submitDocument_ForbiddenForOtherCustomer() throws Exception {
+        when(userContextUtil.getCurrentUserId()).thenReturn(2);
+
+        CustomerDocumentRequest request = new CustomerDocumentRequest(
+                DocumentType.GST_CERTIFICATE,
+                "GST Registration Certificate",
+                "27AABCV1234E1Z5",
+                "GST.pdf",
+                "https://storage.example.com/docs/GST.pdf",
+                "1.4 MB",
+                null
+        );
+
+        mockMvc.perform(post("/api/customers/1/documents")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "cust1", roles = {"CUSTOMER"})
     @DisplayName("POST /api/customers/{customerId}/documents - Should return 400 when title is blank")
     void submitDocument_InvalidRequest_BlankTitle() throws Exception {
+        when(userContextUtil.getCurrentUserId()).thenReturn(1);
+
         CustomerDocumentRequest request = new CustomerDocumentRequest(
                 DocumentType.GST_CERTIFICATE,
                 "",
@@ -110,8 +143,11 @@ class CustomerDocumentControllerTest {
     }
 
     @Test
+    @WithMockUser(username = "cust1", roles = {"CUSTOMER"})
     @DisplayName("GET /api/customers/{customerId}/documents - Should return list of documents")
     void getCustomerDocuments_Success() throws Exception {
+        when(userContextUtil.getCurrentUserId()).thenReturn(1);
+
         CustomerDocumentResponse doc1 = new CustomerDocumentResponse(
                 1, 1, DocumentType.GST_CERTIFICATE, "GST Cert", "27A", "gst.pdf", "url1", "1.4 MB",
                 VerificationStatus.VERIFIED, null, null, LocalDateTime.now(), LocalDateTime.now()
@@ -127,8 +163,11 @@ class CustomerDocumentControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/documents/{documentId} - Should return document by ID")
+    @WithMockUser(username = "cust1", roles = {"CUSTOMER"})
+    @DisplayName("GET /api/documents/{documentId} - Should return document by ID for owner")
     void getDocumentById_Success() throws Exception {
+        when(userContextUtil.getCurrentUserId()).thenReturn(1);
+
         CustomerDocumentResponse doc = new CustomerDocumentResponse(
                 1, 1, DocumentType.TRADE_LICENSE, "Trade License", "TL-1", "trade.pdf", "url", "1.1 MB",
                 VerificationStatus.VERIFIED, null, LocalDate.of(2027, 3, 31), LocalDateTime.now(), LocalDateTime.now()
@@ -144,7 +183,25 @@ class CustomerDocumentControllerTest {
     }
 
     @Test
-    @DisplayName("PATCH /api/documents/{documentId}/verify - Should mark document as VERIFIED")
+    @WithMockUser(username = "cust2", roles = {"CUSTOMER"})
+    @DisplayName("GET /api/documents/{documentId} - Should return 403 Forbidden when viewing other customer's document")
+    void getDocumentById_ForbiddenForOtherCustomer() throws Exception {
+        when(userContextUtil.getCurrentUserId()).thenReturn(2);
+
+        CustomerDocumentResponse doc = new CustomerDocumentResponse(
+                1, 1, DocumentType.TRADE_LICENSE, "Trade License", "TL-1", "trade.pdf", "url", "1.1 MB",
+                VerificationStatus.VERIFIED, null, LocalDate.of(2027, 3, 31), LocalDateTime.now(), LocalDateTime.now()
+        );
+
+        when(documentService.getDocumentById(1)).thenReturn(doc);
+
+        mockMvc.perform(get("/api/documents/1"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    @DisplayName("PATCH /api/documents/{documentId}/verify - Should mark document as VERIFIED for Admin")
     void verifyDocument_Success() throws Exception {
         CustomerDocumentResponse verified = new CustomerDocumentResponse(
                 1, 1, DocumentType.GST_CERTIFICATE, "GST Cert", "27A", "gst.pdf", "url1", "1.4 MB",
@@ -160,7 +217,16 @@ class CustomerDocumentControllerTest {
     }
 
     @Test
-    @DisplayName("PATCH /api/documents/{documentId}/reject - Should mark document as REJECTED with reason")
+    @WithMockUser(username = "customer", roles = {"CUSTOMER"})
+    @DisplayName("PATCH /api/documents/{documentId}/verify - Should return 403 Forbidden for non-admin")
+    void verifyDocument_ForbiddenForCustomer() throws Exception {
+        mockMvc.perform(patch("/api/documents/1/verify"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    @DisplayName("PATCH /api/documents/{documentId}/reject - Should mark document as REJECTED with reason for Admin")
     void rejectDocument_Success() throws Exception {
         RejectDocumentRequest rejectReq = new RejectDocumentRequest("Image blurry");
 
@@ -180,13 +246,51 @@ class CustomerDocumentControllerTest {
     }
 
     @Test
-    @DisplayName("DELETE /api/documents/{documentId} - Should delete document and return 204")
+    @WithMockUser(username = "customer", roles = {"CUSTOMER"})
+    @DisplayName("PATCH /api/documents/{documentId}/reject - Should return 403 Forbidden for non-admin")
+    void rejectDocument_ForbiddenForCustomer() throws Exception {
+        RejectDocumentRequest rejectReq = new RejectDocumentRequest("Image blurry");
+
+        mockMvc.perform(patch("/api/documents/1/reject")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(rejectReq)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "cust1", roles = {"CUSTOMER"})
+    @DisplayName("DELETE /api/documents/{documentId} - Should delete document and return 204 for owner")
     void deleteDocument_Success() throws Exception {
+        when(userContextUtil.getCurrentUserId()).thenReturn(1);
+
+        CustomerDocumentResponse doc = new CustomerDocumentResponse(
+                1, 1, DocumentType.GST_CERTIFICATE, "GST Cert", "27A", "gst.pdf", "url1", "1.4 MB",
+                VerificationStatus.PENDING, null, null, LocalDateTime.now(), null
+        );
+
+        when(documentService.getDocumentById(1)).thenReturn(doc);
         doNothing().when(documentService).deleteDocument(1);
 
         mockMvc.perform(delete("/api/documents/1"))
                 .andExpect(status().isNoContent());
 
         verify(documentService).deleteDocument(1);
+    }
+
+    @Test
+    @WithMockUser(username = "cust2", roles = {"CUSTOMER"})
+    @DisplayName("DELETE /api/documents/{documentId} - Should return 403 Forbidden when deleting other customer's document")
+    void deleteDocument_ForbiddenForOtherCustomer() throws Exception {
+        when(userContextUtil.getCurrentUserId()).thenReturn(2);
+
+        CustomerDocumentResponse doc = new CustomerDocumentResponse(
+                1, 1, DocumentType.GST_CERTIFICATE, "GST Cert", "27A", "gst.pdf", "url1", "1.4 MB",
+                VerificationStatus.PENDING, null, null, LocalDateTime.now(), null
+        );
+
+        when(documentService.getDocumentById(1)).thenReturn(doc);
+
+        mockMvc.perform(delete("/api/documents/1"))
+                .andExpect(status().isForbidden());
     }
 }

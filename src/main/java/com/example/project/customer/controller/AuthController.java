@@ -32,6 +32,9 @@ public class AuthController {
     private final FirebaseAuthService firebaseAuthService;
     private final com.example.project.customer.repository.AdminUserRepository adminUserRepository;
 
+    @org.springframework.beans.factory.annotation.Value("${app.security.admin-emails:admin@hinchmart.com,admin@example.com}")
+    private String configuredAdminEmails = "admin@hinchmart.com";
+
     public AuthController(
             UserService userService,
             @Autowired(required = false) FirebaseAuthService firebaseAuthService,
@@ -161,6 +164,26 @@ public class AuthController {
 
         if (firebaseUid == null && email == null) {
             email = "admin@hinchmart.com";
+        }
+
+        if (email != null) {
+            String clean = email.trim().toLowerCase();
+            boolean isAuthorizedAdmin = clean.equals("admin@hinchmart.com");
+            if (!isAuthorizedAdmin && configuredAdminEmails != null && !configuredAdminEmails.isBlank()) {
+                for (String adm : configuredAdminEmails.split(",")) {
+                    if (clean.equalsIgnoreCase(adm.trim())) {
+                        isAuthorizedAdmin = true;
+                        break;
+                    }
+                }
+            }
+            if (!isAuthorizedAdmin && adminUserRepository != null && adminUserRepository.findByEmailIgnoreCase(clean).isPresent()) {
+                isAuthorizedAdmin = true;
+            }
+            if (!isAuthorizedAdmin) {
+                log.warn("Unauthorized attempt to claim ADMIN role by email: {}", email);
+                throw new com.example.project.customer.exception.ForbiddenException("Access denied: Email '" + email + "' is not authorized to claim the ADMIN role.");
+            }
         }
 
         Customer customer = userService.syncUserWithFirebase(

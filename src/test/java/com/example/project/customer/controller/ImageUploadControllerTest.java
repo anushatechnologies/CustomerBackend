@@ -1,10 +1,15 @@
 package com.example.project.customer.controller;
 
+import com.example.project.customer.config.SecurityConfig;
+import com.example.project.customer.config.SellerContextUtil;
 import com.example.project.customer.dto.ImageFolder;
 import com.example.project.customer.dto.ImageUploadResponse;
-import com.example.project.customer.config.SecurityConfig;
+import com.example.project.customer.entity.Product;
+import com.example.project.customer.entity.Seller;
+import com.example.project.customer.entity.Store;
 import com.example.project.customer.exception.GlobalExceptionHandler;
 import com.example.project.customer.exception.InvalidImageException;
+import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.service.S3ImageService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -14,7 +19,10 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -40,7 +48,14 @@ class ImageUploadControllerTest {
     @MockBean
     private S3ImageService s3ImageService;
 
+    @MockBean
+    private ProductRepository productRepository;
+
+    @MockBean
+    private SellerContextUtil sellerContextUtil;
+
     @Test
+    @WithMockUser(roles = "ADMIN")
     @DisplayName("POST /api/images/upload - Should upload image to specified folder and return 201 wrapped in ApiResponse")
     void uploadImage_Success() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
@@ -74,7 +89,8 @@ class ImageUploadControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/images/products - Should upload image to products folder")
+    @WithMockUser(roles = "SELLER")
+    @DisplayName("POST /api/images/products - Should upload image to products folder for SELLER")
     void uploadProductImage_Success() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "file",
@@ -100,7 +116,8 @@ class ImageUploadControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/images/categories - Should upload image to categories folder")
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("POST /api/images/categories - Should upload image to categories folder for ADMIN")
     void uploadCategoryImage_Success() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "file",
@@ -126,6 +143,19 @@ class ImageUploadControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "SELLER")
+    @DisplayName("POST /api/images/categories - Should reject SELLER from uploading category image (Admin only)")
+    void uploadCategoryImage_ForbiddenForSeller() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "cat.webp", "image/webp", "webp bytes".getBytes()
+        );
+
+        mockMvc.perform(multipart("/api/images/categories").file(file))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
     @DisplayName("POST /api/images/banners - Should upload image to banners folder")
     void uploadBannerImage_Success() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
@@ -152,6 +182,7 @@ class ImageUploadControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     @DisplayName("POST /api/images/upload - Should return 400 when image is invalid")
     void uploadImage_InvalidImage_ReturnsBadRequest() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
@@ -186,8 +217,10 @@ class ImageUploadControllerTest {
     }
 
     @Test
-    @DisplayName("DELETE /api/images - Should delete image and return 200 OK with ApiResponse")
-    void deleteImage_Success() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("DELETE /api/images - Should delete image for ADMIN and return 200 OK")
+    void deleteImage_AdminSuccess() throws Exception {
+        when(s3ImageService.extractKeyFromUrl("products/test.png")).thenReturn("products/test.png");
         doNothing().when(s3ImageService).deleteImage("products/test.png");
 
         mockMvc.perform(delete("/api/images").param("key", "products/test.png"))
@@ -199,7 +232,82 @@ class ImageUploadControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/images/subcategories - Should upload image to subcategories folder")
+    @DisplayName("DELETE /api/images - Should reject unauthenticated deletion with 401 or 403")
+    void deleteImage_Unauthenticated_Rejected() throws Exception {
+        mockMvc.perform(delete("/api/images").param("key", "products/test.png"))
+                .andExpect(result -> {
+                    int status = result.getResponse().getStatus();
+                    org.junit.jupiter.api.Assertions.assertTrue(status == 401 || status == 403);
+                });
+    }
+
+    @Test
+    @WithMockUser(roles = "CUSTOMER")
+    @DisplayName("DELETE /api/images - Should reject customer role with 403 Forbidden")
+    void deleteImage_UnauthorizedRoleCustomer_Forbidden() throws Exception {
+        mockMvc.perform(delete("/api/images").param("key", "products/test.png"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "SELLER")
+    @DisplayName("DELETE /api/images - Should allow seller deleting their own product image")
+    void deleteImage_SellerOwnsProduct_Success() throws Exception {
+        when(s3ImageService.extractKeyFromUrl("products/seller1-prod.jpg")).thenReturn("products/seller1-prod.jpg");
+        when(sellerContextUtil.getCurrentSellerId()).thenReturn(10);
+
+        Seller seller = new Seller();
+        seller.setSellerId(10);
+        Store store = new Store();
+        store.setSeller(seller);
+        Product product = new Product();
+        product.setStore(store);
+        product.setImageUrl("https://s3.aws.com/products/seller1-prod.jpg");
+
+        when(productRepository.findByImageUrlContainingKey("products/seller1-prod.jpg")).thenReturn(List.of(product));
+        doNothing().when(s3ImageService).deleteImage("products/seller1-prod.jpg");
+
+        mockMvc.perform(delete("/api/images").param("key", "products/seller1-prod.jpg"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @WithMockUser(roles = "SELLER")
+    @DisplayName("DELETE /api/images - Should reject seller attempting to delete system banners with 403")
+    void deleteImage_SellerAttemptsToDeleteSystemBanner_Forbidden() throws Exception {
+        when(s3ImageService.extractKeyFromUrl("banners/summer-sale.jpg")).thenReturn("banners/summer-sale.jpg");
+
+        mockMvc.perform(delete("/api/images").param("key", "banners/summer-sale.jpg"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Access denied: Sellers are not permitted to delete platform or catalog assets."));
+    }
+
+    @Test
+    @WithMockUser(roles = "SELLER")
+    @DisplayName("DELETE /api/images - Should reject seller attempting to delete other seller's product image with 403")
+    void deleteImage_SellerAttemptsToDeleteOtherSellerProduct_Forbidden() throws Exception {
+        when(s3ImageService.extractKeyFromUrl("products/other-seller-item.jpg")).thenReturn("products/other-seller-item.jpg");
+        when(sellerContextUtil.getCurrentSellerId()).thenReturn(10);
+
+        Seller otherSeller = new Seller();
+        otherSeller.setSellerId(99); // different seller!
+        Store otherStore = new Store();
+        otherStore.setSeller(otherSeller);
+        Product otherProduct = new Product();
+        otherProduct.setStore(otherStore);
+        otherProduct.setImageUrl("https://s3.aws.com/products/other-seller-item.jpg");
+
+        when(productRepository.findByImageUrlContainingKey("products/other-seller-item.jpg")).thenReturn(List.of(otherProduct));
+
+        mockMvc.perform(delete("/api/images").param("key", "products/other-seller-item.jpg"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Access denied: You do not own the product associated with this image."));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("POST /api/images/subcategories - Should upload image to subcategories folder for ADMIN")
     void uploadSubcategoryImage_Success() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "file", "subcat.webp", "image/webp", "bytes".getBytes()
@@ -222,7 +330,8 @@ class ImageUploadControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/images/documents - Should upload document to documents folder")
+    @WithMockUser(roles = "SELLER")
+    @DisplayName("POST /api/images/documents - Should upload document for SELLER")
     void uploadDocument_Success() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "file", "doc.pdf", "application/pdf", "pdf bytes".getBytes()
@@ -245,7 +354,8 @@ class ImageUploadControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/images/multiple - Should upload multiple images")
+    @WithMockUser(roles = "SELLER")
+    @DisplayName("POST /api/images/multiple - Should upload multiple images for SELLER")
     void uploadMultipleImages_Success() throws Exception {
         MockMultipartFile file1 = new MockMultipartFile(
                 "files", "img1.jpg", "image/jpeg", "bytes1".getBytes()

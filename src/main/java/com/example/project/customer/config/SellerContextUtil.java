@@ -54,6 +54,12 @@ public class SellerContextUtil {
             }
 
             if (fup.getSellerId() != null) {
+                if (sellerRepository != null) {
+                    Optional<Seller> sellerOpt = sellerRepository.findById(fup.getSellerId());
+                    if (sellerOpt.isPresent() && Boolean.TRUE.equals(sellerOpt.get().getIsDeleted())) {
+                        throw new ForbiddenException("Access Denied: This seller account has been deactivated / deleted.");
+                    }
+                }
                 return fup.getSellerId();
             }
 
@@ -63,6 +69,9 @@ public class SellerContextUtil {
                 if (sellerRepository != null) {
                     Optional<Seller> sellerOpt = sellerRepository.findFirstByEmailIgnoreCase(cleanEmail);
                     if (sellerOpt.isPresent()) {
+                        if (Boolean.TRUE.equals(sellerOpt.get().getIsDeleted())) {
+                            throw new ForbiddenException("Access Denied: This seller account has been deactivated / deleted.");
+                        }
                         return sellerOpt.get().getSellerId();
                     }
                 }

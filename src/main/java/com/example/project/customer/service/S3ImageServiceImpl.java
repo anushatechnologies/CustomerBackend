@@ -236,6 +236,10 @@ public class S3ImageServiceImpl implements S3ImageService {
         return trimmed;
     }
 
+    private static final List<String> ALLOWED_EXTENSIONS = Arrays.asList(
+            ".jpg", ".jpeg", ".png", ".webp", ".pdf"
+    );
+
     private void validateImageFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new InvalidImageException("File cannot be empty");
@@ -245,14 +249,20 @@ public class S3ImageServiceImpl implements S3ImageService {
             throw new InvalidImageException("File size exceeds the 15MB limit");
         }
 
-        String contentType = file.getContentType();
-        if (contentType != null && !ALLOWED_CONTENT_TYPES.contains(contentType.toLowerCase())) {
-            log.warn("Non-standard content type: {}", contentType);
-        }
-
         String originalFilename = file.getOriginalFilename();
         if (originalFilename == null || originalFilename.isBlank()) {
             throw new InvalidImageException("File original filename is missing");
+        }
+
+        String lowerName = originalFilename.toLowerCase();
+        boolean validExt = ALLOWED_EXTENSIONS.stream().anyMatch(lowerName::endsWith);
+        if (!validExt) {
+            throw new InvalidImageException("Invalid or unsupported file extension. Allowed extensions are: .jpg, .jpeg, .png, .webp, .pdf");
+        }
+
+        String contentType = file.getContentType();
+        if (contentType != null && !ALLOWED_CONTENT_TYPES.contains(contentType.toLowerCase())) {
+            throw new InvalidImageException("Invalid or unsupported file content type: " + contentType);
         }
     }
 

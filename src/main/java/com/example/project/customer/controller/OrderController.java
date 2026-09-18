@@ -106,6 +106,7 @@ public class OrderController {
     }
 
     @PatchMapping("/{id}/cancel")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<OrderResponse>> cancelOrder(
             @PathVariable Integer id,
             @RequestBody(required = false) Map<String, String> body) {

@@ -111,7 +111,7 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
     @org.springframework.beans.factory.annotation.Value("${app.security.admin-emails:admin@hinchmart.com,admin@example.com}")
     private String configuredAdminEmails = "admin@hinchmart.com";
 
-    private Role resolveEffectiveRole(Map<String, Object> claims, Customer customer, Integer sellerId) {
+    Role resolveEffectiveRole(Map<String, Object> claims, Customer customer, Integer sellerId) {
         // 1. Firebase Custom Claims take highest precedence
         if (claims != null && claims.containsKey("role")) {
             Object roleObj = claims.get("role");
@@ -180,7 +180,7 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
     private boolean isAdminEmail(String email) {
         if (email == null || email.isBlank()) return false;
         String clean = email.trim().toLowerCase();
-        if (clean.equals("admin@hinchmart.com") || clean.contains("admin")) {
+        if (clean.equals("admin@hinchmart.com")) {
             return true;
         }
         if (configuredAdminEmails != null && !configuredAdminEmails.isBlank()) {

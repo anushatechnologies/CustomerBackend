@@ -13,6 +13,7 @@ import com.example.project.customer.service.StoreService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -39,9 +40,10 @@ public class AdminSellerController {
     @GetMapping
     public ResponseEntity<ApiResponse<List<Seller>>> getAllSellers(
             @RequestParam(required = false) VerificationStatus status,
-            @RequestParam(required = false) String search
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false, defaultValue = "false") Boolean includeDeleted
     ) {
-        List<Seller> sellers = onboardingService.getAllSellersForAdmin(status, search);
+        List<Seller> sellers = onboardingService.getAllSellersForAdmin(status, search, includeDeleted);
         return ResponseEntity.ok(ApiResponse.ok("Sellers retrieved successfully", sellers));
     }
 
@@ -163,5 +165,25 @@ public class AdminSellerController {
     ) {
         SellerDocument doc = onboardingService.verifyDocumentByAdmin(sellerId, documentType, status, remarks);
         return ResponseEntity.ok(ApiResponse.ok("Document verification status updated successfully", doc));
+    }
+
+    /**
+     * Admin soft-delete / deactivate a seller account.
+     * Marks seller as deleted, closes associated store, and deactivates all seller products.
+     */
+    @DeleteMapping("/{sellerId}")
+    public ResponseEntity<ApiResponse<Seller>> deleteSeller(
+            @PathVariable Integer sellerId,
+            @RequestParam(value = "reason", required = false) String reason,
+            @RequestBody(required = false) java.util.Map<String, Object> body
+    ) {
+        String finalReason = reason;
+        if (body != null && body.get("reason") != null) {
+            finalReason = String.valueOf(body.get("reason"));
+        } else if (body != null && body.get("remarks") != null) {
+            finalReason = String.valueOf(body.get("remarks"));
+        }
+        Seller seller = onboardingService.softDeleteSeller(sellerId, finalReason);
+        return ResponseEntity.ok(ApiResponse.ok("Seller account and associated products soft-deleted successfully", seller));
     }
 }

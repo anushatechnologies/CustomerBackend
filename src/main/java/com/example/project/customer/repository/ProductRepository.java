@@ -89,4 +89,7 @@ public interface ProductRepository
             String title,
             String brandName
     );
+
+    @Query("SELECT p FROM Product p WHERE p.imageUrl LIKE CONCAT('%', :key, '%')")
+    List<Product> findByImageUrlContainingKey(@Param("key") String key);
 }

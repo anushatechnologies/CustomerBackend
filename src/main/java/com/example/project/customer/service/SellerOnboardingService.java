@@ -40,7 +40,13 @@ public interface SellerOnboardingService {
 
     SellerDocument verifyDocumentByAdmin(Integer sellerId, DocumentType documentType, VerificationStatus status, String remarks);
 
-    List<Seller> getAllSellersForAdmin(VerificationStatus status, String search);
+    default List<Seller> getAllSellersForAdmin(VerificationStatus status, String search) {
+        return getAllSellersForAdmin(status, search, false);
+    }
+
+    List<Seller> getAllSellersForAdmin(VerificationStatus status, String search, Boolean includeDeleted);
 
     Seller getSellerByIdForAdmin(Integer sellerId);
+
+    Seller softDeleteSeller(Integer sellerId, String reason);
 }

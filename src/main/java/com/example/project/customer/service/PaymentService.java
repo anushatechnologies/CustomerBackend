@@ -20,4 +20,6 @@ public interface PaymentService {
     List<PaymentStatusResponse> getCustomerPayments(Integer customerId);
 
     void handleWebhook(String payload, String signatureHeader);
+
+    PaymentStatusResponse refundOrderPayment(Integer orderId, String reason);
 }
