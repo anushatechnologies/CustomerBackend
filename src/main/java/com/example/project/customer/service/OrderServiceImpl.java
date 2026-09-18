@@ -40,6 +40,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -58,7 +59,7 @@ import java.util.UUID;
 @Slf4j
 @Service
 @Transactional
-@RequiredArgsConstructor
+
 @SuppressWarnings("null")
 public class OrderServiceImpl implements OrderService {
 
@@ -69,12 +70,66 @@ public class OrderServiceImpl implements OrderService {
     private final CustomerRepository customerRepository;
     private final CartService cartService;
     private final CheckoutService checkoutService;
+    private final CouponService couponService;
     private final PdfInvoiceGeneratorService pdfInvoiceGeneratorService;
     private final StoreInvoiceSequenceService storeInvoiceSequenceService;
     private final SellerPayoutLedgerRepository sellerPayoutLedgerRepository;
     private final StoreRepository storeRepository;
     private final UserContextUtil userContextUtil;
     private final SellerContextUtil sellerContextUtil;
+
+    @Autowired
+    public OrderServiceImpl(
+            OrderRepository orderRepository,
+            OrderItemRepository orderItemRepository,
+            ProductRepository productRepository,
+            AddressRepository addressRepository,
+            CustomerRepository customerRepository,
+            CartService cartService,
+            CheckoutService checkoutService,
+            CouponService couponService,
+            PdfInvoiceGeneratorService pdfInvoiceGeneratorService,
+            StoreInvoiceSequenceService storeInvoiceSequenceService,
+            SellerPayoutLedgerRepository sellerPayoutLedgerRepository,
+            StoreRepository storeRepository,
+            UserContextUtil userContextUtil,
+            SellerContextUtil sellerContextUtil
+    ) {
+        this.orderRepository = orderRepository;
+        this.orderItemRepository = orderItemRepository;
+        this.productRepository = productRepository;
+        this.addressRepository = addressRepository;
+        this.customerRepository = customerRepository;
+        this.cartService = cartService;
+        this.checkoutService = checkoutService;
+        this.couponService = couponService;
+        this.pdfInvoiceGeneratorService = pdfInvoiceGeneratorService;
+        this.storeInvoiceSequenceService = storeInvoiceSequenceService;
+        this.sellerPayoutLedgerRepository = sellerPayoutLedgerRepository;
+        this.storeRepository = storeRepository;
+        this.userContextUtil = userContextUtil;
+        this.sellerContextUtil = sellerContextUtil;
+    }
+
+    public OrderServiceImpl(
+            OrderRepository orderRepository,
+            OrderItemRepository orderItemRepository,
+            ProductRepository productRepository,
+            AddressRepository addressRepository,
+            CustomerRepository customerRepository,
+            CartService cartService,
+            CheckoutService checkoutService,
+            PdfInvoiceGeneratorService pdfInvoiceGeneratorService,
+            StoreInvoiceSequenceService storeInvoiceSequenceService,
+            SellerPayoutLedgerRepository sellerPayoutLedgerRepository,
+            StoreRepository storeRepository,
+            UserContextUtil userContextUtil,
+            SellerContextUtil sellerContextUtil
+    ) {
+        this(orderRepository, orderItemRepository, productRepository, addressRepository, customerRepository,
+                cartService, checkoutService, null, pdfInvoiceGeneratorService, storeInvoiceSequenceService,
+                sellerPayoutLedgerRepository, storeRepository, userContextUtil, sellerContextUtil);
+    }
 
     @Override
     public OrderResponse createOrder(Integer userId, OrderCreateRequest request) {
@@ -196,6 +251,10 @@ public class OrderServiceImpl implements OrderService {
                 .build();
 
         Order savedOrder = orderRepository.save(order);
+
+        if (cart.getAppliedCoupon() != null && !cart.getAppliedCoupon().isBlank()) {
+            couponService.recordCouponUsage(cart.getAppliedCoupon(), savedOrder.getCustomer(), savedOrder, preview.getDiscount());
+        }
 
         List<OrderItem> orderItems = new ArrayList<>();
         BigDecimal totalWeightKg = BigDecimal.ZERO;

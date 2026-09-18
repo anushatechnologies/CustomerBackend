@@ -19,4 +19,7 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
 
     @org.springframework.data.jpa.repository.Query("SELECT COUNT(o) FROM Order o WHERE o.customer.customerId = :userId")
     int countByUserId(@org.springframework.data.repository.query.Param("userId") Integer userId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(o) FROM Order o WHERE o.customer.customerId = :userId AND UPPER(COALESCE(o.orderStatus, '')) <> 'CANCELLED'")
+    long countNonCancelledByCustomerId(@org.springframework.data.repository.query.Param("userId") Integer userId);
 }

@@ -41,6 +41,7 @@ public class CartServiceImpl implements CartService {
     private final CartItemRepository cartItemRepository;
     private final ProductRepository productRepository;
     private final StoreRepository storeRepository;
+    private final CouponService couponService;
 
     @Override
     @Transactional(readOnly = true)
@@ -100,6 +101,7 @@ public class CartServiceImpl implements CartService {
             cartItemRepository.save(newItem);
         }
 
+        revalidateAppliedCoupon(activeCart);
         return calculateCartResponse(activeCart);
     }
 
@@ -161,6 +163,7 @@ public class CartServiceImpl implements CartService {
         }
 
         log.info("Customer #{} switched active cart to Store #{} ('{}')", uid, targetStore.getStoreId(), targetStore.getName());
+        revalidateAppliedCoupon(targetCart);
         return calculateCartResponse(targetCart);
     }
 
@@ -169,6 +172,7 @@ public class CartServiceImpl implements CartService {
         Cart cart = getOrCreateActiveCart(userId);
         cartItemRepository.findByCart_CartIdAndProduct_ProductId(cart.getCartId(), productId)
                 .ifPresent(cartItemRepository::delete);
+        revalidateAppliedCoupon(cart);
         return calculateCartResponse(cart);
     }
 
@@ -176,6 +180,8 @@ public class CartServiceImpl implements CartService {
     public void clearCart(Integer userId) {
         Cart cart = getOrCreateActiveCart(userId);
         cartItemRepository.deleteByCart_CartId(cart.getCartId());
+        cart.setAppliedCoupon(null);
+        cartRepository.save(cart);
     }
 
     @Override
@@ -184,22 +190,33 @@ public class CartServiceImpl implements CartService {
             throw new UnauthorizedException("Authentication required: User ID must not be null.");
         }
         Cart cart = getOrCreateActiveCart(userId);
-        String code = couponCode != null ? couponCode.trim().toUpperCase() : "";
+        String code = couponCode != null ? couponCode.trim() : "";
+        CartResponse beforeCoupon = calculateCartResponse(cart, false);
+        var validation = couponService.validateAndCalculateDiscount(code, cart.getCustomer(), beforeCoupon.getSubtotal());
 
-        if (!"BUILDER50K".equalsIgnoreCase(code) && !"HINCH10".equalsIgnoreCase(code) && !"WELCOME500".equalsIgnoreCase(code)) {
-            throw new IllegalArgumentException("Invalid coupon code: " + couponCode);
-        }
-
-        cart.setAppliedCoupon(code);
+        cart.setAppliedCoupon(validation.getCoupon().getCode());
         cartRepository.save(cart);
 
         CartResponse response = calculateCartResponse(cart);
 
         return CouponResponse.builder()
-                .couponCode(code)
+                .couponCode(validation.getCoupon().getCode())
                 .discountAmount(response.getCouponDiscount())
                 .newGrandTotal(response.getGrandTotal())
+                .cartSubtotal(response.getSubtotal())
+                .taxAmount(response.getTotalGst())
+                .deliveryCharge(response.getDeliveryCharge())
+                .grandTotal(response.getGrandTotal())
                 .build();
+    }
+
+    @Override
+    public CartResponse removeCoupon(Integer userId) {
+        Cart cart = getOrCreateActiveCart(userId);
+        cart.setAppliedCoupon(null);
+        cartRepository.save(cart);
+        revalidateAppliedCoupon(cart);
+        return calculateCartResponse(cart);
     }
 
     public Cart getOrCreateActiveCart(Integer userId) {
@@ -248,6 +265,24 @@ public class CartServiceImpl implements CartService {
     }
 
     public CartResponse calculateCartResponse(Cart cart) {
+        return calculateCartResponse(cart, true);
+    }
+
+    private void revalidateAppliedCoupon(Cart cart) {
+        if (cart.getAppliedCoupon() == null || cart.getAppliedCoupon().isBlank()) {
+            return;
+        }
+        try {
+            BigDecimal subtotal = calculateCartResponse(cart, false).getSubtotal();
+            couponService.validateAndCalculateDiscount(cart.getAppliedCoupon(), cart.getCustomer(), subtotal);
+        } catch (RuntimeException exception) {
+            log.info("Removing ineligible coupon {} from cart {}: {}", cart.getAppliedCoupon(), cart.getCartId(), exception.getMessage());
+            cart.setAppliedCoupon(null);
+            cartRepository.save(cart);
+        }
+    }
+
+    private CartResponse calculateCartResponse(Cart cart, boolean includeCoupon) {
         List<CartItem> items = cartItemRepository.findByCart_CartId(cart.getCartId());
         List<CartItemResponse> itemResponses = new ArrayList<>();
 
@@ -300,22 +335,17 @@ public class CartServiceImpl implements CartService {
                     .build());
         }
 
-        // Coupon calculation
         BigDecimal couponDiscount = BigDecimal.ZERO;
-        if ("BUILDER50K".equalsIgnoreCase(cart.getAppliedCoupon())) {
-            couponDiscount = BigDecimal.valueOf(50000.0);
-            if (couponDiscount.compareTo(subtotal) > 0) {
-                couponDiscount = subtotal;
-            }
-        } else if ("HINCH10".equalsIgnoreCase(cart.getAppliedCoupon())) {
-            couponDiscount = subtotal.multiply(BigDecimal.valueOf(0.10)).setScale(2, RoundingMode.HALF_UP);
-            if (couponDiscount.compareTo(BigDecimal.valueOf(25000)) > 0) {
-                couponDiscount = BigDecimal.valueOf(25000.0);
-            }
-        } else if ("WELCOME500".equalsIgnoreCase(cart.getAppliedCoupon())) {
-            couponDiscount = BigDecimal.valueOf(500.0);
-            if (couponDiscount.compareTo(subtotal) > 0) {
-                couponDiscount = subtotal;
+        if (includeCoupon && cart.getAppliedCoupon() != null && !cart.getAppliedCoupon().isBlank()) {
+            try {
+                couponDiscount = couponService
+                        .validateAndCalculateDiscount(cart.getAppliedCoupon(), cart.getCustomer(), subtotal)
+                        .getDiscount();
+            } catch (RuntimeException exception) {
+                // A coupon can become ineligible after it was applied (expiry, limits, etc.).
+                // Keep the cart readable; checkout revalidates it before recording usage.
+                log.info("Applied coupon {} is no longer eligible for cart {}: {}",
+                        cart.getAppliedCoupon(), cart.getCartId(), exception.getMessage());
             }
         }
 

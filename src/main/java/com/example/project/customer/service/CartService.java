@@ -11,5 +11,6 @@ public interface CartService {
     CartResponse removeItem(Integer userId, Integer productId);
     void clearCart(Integer userId);
     CouponResponse applyCoupon(Integer userId, String couponCode);
+    CartResponse removeCoupon(Integer userId);
     CartResponse switchStore(Integer userId, SwitchStoreRequest request);
 }

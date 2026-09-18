@@ -11,6 +11,7 @@ import com.example.project.customer.service.CartService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/cart")
 @RequiredArgsConstructor
+@PreAuthorize("isAuthenticated()")
 public class CartController {
 
     private final CartService cartService;
@@ -67,5 +69,11 @@ public class CartController {
         Integer userId = userContextUtil.getCurrentUserId();
         CouponResponse couponResponse = cartService.applyCoupon(userId, request.getCode());
         return ResponseEntity.ok(ApiResponse.ok("Coupon " + request.getCode() + " applied successfully", couponResponse));
+    }
+
+    @DeleteMapping("/coupon")
+    public ResponseEntity<ApiResponse<CartResponse>> removeCoupon() {
+        Integer userId = userContextUtil.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.ok("Coupon removed successfully", cartService.removeCoupon(userId)));
     }
 }

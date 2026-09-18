@@ -15,4 +15,8 @@ public class CouponResponse {
     private String couponCode;
     private BigDecimal discountAmount;
     private BigDecimal newGrandTotal;
+    private BigDecimal cartSubtotal;
+    private BigDecimal taxAmount;
+    private BigDecimal deliveryCharge;
+    private BigDecimal grandTotal;
 }
