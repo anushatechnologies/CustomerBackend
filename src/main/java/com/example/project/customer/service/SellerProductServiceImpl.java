@@ -30,6 +30,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -181,8 +182,9 @@ public class SellerProductServiceImpl implements SellerProductService {
         if (categoryId == null && brand.getSubcategory() != null && brand.getSubcategory().getCategory() != null) {
             categoryId = brand.getSubcategory().getCategory().getCategoryId();
         }
+        Map<String, String> normalizedSpecs = request.getSpecifications() != null ? request.getSpecifications() : new java.util.LinkedHashMap<>();
         if (productSpecificationValidator != null) {
-            productSpecificationValidator.validateProductSpecifications(categoryId, request.getSpecifications());
+            normalizedSpecs = productSpecificationValidator.validateAndNormalize(categoryId, request.getSpecifications());
         }
 
         String slug = request.getTitle().toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "")
@@ -225,7 +227,7 @@ public class SellerProductServiceImpl implements SellerProductService {
                 .images(request.getImages() != null ? request.getImages() : new ArrayList<>())
                 .imageUrl(request.getImages() != null && !request.getImages().isEmpty() ? request.getImages().get(0) : null)
                 .bulkPricingTiers(request.getBulkPricingTiers() != null ? request.getBulkPricingTiers() : new ArrayList<>())
-                .specifications(request.getSpecifications() != null ? request.getSpecifications() : new java.util.LinkedHashMap<>())
+                .specifications(normalizedSpecs)
                 .approvalStatus(initialStatus)
                 .active(true)
                 .createdAt(LocalDateTime.now())
@@ -284,6 +286,7 @@ public class SellerProductServiceImpl implements SellerProductService {
             product.setBulkPricingTiers(request.getBulkPricingTiers());
         }
         if (request.getSpecifications() != null) {
+            Map<String, String> normalizedSpecs = request.getSpecifications();
             if (productSpecificationValidator != null) {
                 Integer categoryId = null;
                 Brand targetBrand = product.getBrand();
@@ -293,9 +296,9 @@ public class SellerProductServiceImpl implements SellerProductService {
                 if (targetBrand != null && targetBrand.getSubcategory() != null && targetBrand.getSubcategory().getCategory() != null) {
                     categoryId = targetBrand.getSubcategory().getCategory().getCategoryId();
                 }
-                productSpecificationValidator.validateProductSpecifications(categoryId, request.getSpecifications());
+                normalizedSpecs = productSpecificationValidator.validateAndNormalize(categoryId, request.getSpecifications());
             }
-            product.setSpecifications(request.getSpecifications());
+            product.setSpecifications(normalizedSpecs);
         }
         product.setUpdatedAt(LocalDateTime.now());
 

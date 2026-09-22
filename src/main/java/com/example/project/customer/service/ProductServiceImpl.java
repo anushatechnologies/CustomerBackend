@@ -34,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -80,7 +81,8 @@ public class ProductServiceImpl implements ProductService {
             categoryId = brand.getSubcategory().getCategory().getCategoryId();
         }
         if (productSpecificationValidator != null) {
-            productSpecificationValidator.validateProductSpecifications(categoryId, request.getSpecifications());
+            Map<String, String> normalized = productSpecificationValidator.validateAndNormalize(categoryId, request.getSpecifications());
+            request.setSpecifications(normalized);
         }
 
         Product product = new Product();
@@ -337,7 +339,8 @@ public class ProductServiceImpl implements ProductService {
             categoryId = brand.getSubcategory().getCategory().getCategoryId();
         }
         if (productSpecificationValidator != null && request.getSpecifications() != null) {
-            productSpecificationValidator.validateProductSpecifications(categoryId, request.getSpecifications());
+            Map<String, String> normalized = productSpecificationValidator.validateAndNormalize(categoryId, request.getSpecifications());
+            request.setSpecifications(normalized);
         }
 
         mapRequestToProduct(

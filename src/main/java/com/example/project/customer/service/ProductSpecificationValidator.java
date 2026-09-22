@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -25,17 +26,23 @@ public class ProductSpecificationValidator {
     private final SpecificationRepository specificationRepository;
 
     /**
-     * Validates product specifications against category specification mappings.
-     * If the category has no active specification mappings configured, validation passes
-     * to preserve full backward compatibility for unmapped/legacy products.
+     * Validates and normalizes product specifications against the category's available specification pool.
+     *
+     * Rules:
+     * 1. Category specifications represent the AVAILABLE POOL (e.g. 50 specifications).
+     * 2. Product specifications store ONLY the SELECTED SUBSET and their values.
+     * 3. Unused/unselected optional specifications are NOT stored (and empty/null entries are omitted).
+     * 4. All keys in the returned map are normalized to the canonical specification "key" (e.g. "conductor_material", "grade").
+     * 5. If category has no specification mappings, backward compatibility is preserved (unmapped products pass).
      *
      * @param categoryId     the target category ID
      * @param specifications the map of specification name/key to value
+     * @return a normalized LinkedHashMap with canonical specification keys and valid values
      */
-    public void validateProductSpecifications(Integer categoryId, Map<String, String> specifications) {
+    public Map<String, String> validateAndNormalize(Integer categoryId, Map<String, String> specifications) {
         if (categoryId == null) {
             log.debug("No categoryId provided for specification validation; skipping category mapping checks");
-            return;
+            return cleanLegacyMap(specifications);
         }
 
         List<CategorySpecification> activeMappings = categorySpecificationRepository
@@ -44,10 +51,10 @@ public class ProductSpecificationValidator {
         // Backward compatibility: If no specifications are configured for this category, do not block
         if (activeMappings.isEmpty()) {
             log.debug("Category id={} has no specification mappings configured; skipping validation", categoryId);
-            return;
+            return cleanLegacyMap(specifications);
         }
 
-        // 1. Check all required specifications
+        // 1. Enforce all required specifications
         for (CategorySpecification mapping : activeMappings) {
             Specification spec = mapping.getSpecification();
             if (Boolean.TRUE.equals(mapping.getRequired()) && Boolean.TRUE.equals(spec.getActive())) {
@@ -69,20 +76,21 @@ public class ProductSpecificationValidator {
         }
 
         if (specifications == null || specifications.isEmpty()) {
-            return;
+            return new LinkedHashMap<>();
         }
 
-        // 2. Validate each supplied specification
+        // 2. Validate supplied specifications and construct normalized subset
+        Map<String, String> normalizedMap = new LinkedHashMap<>();
         Set<Integer> matchedSpecIds = new HashSet<>();
 
         for (Map.Entry<String, String> entry : specifications.entrySet()) {
-            String key = entry.getKey();
+            String inputKey = entry.getKey();
             String value = entry.getValue();
 
-            if (key == null || key.trim().isBlank()) {
+            if (inputKey == null || inputKey.trim().isBlank()) {
                 throw new IllegalArgumentException("Specification key cannot be empty");
             }
-            String trimmedKey = key.trim();
+            String trimmedKey = inputKey.trim();
 
             CategorySpecification matchedMapping = null;
             for (CategorySpecification cs : activeMappings) {
@@ -117,11 +125,50 @@ public class ProductSpecificationValidator {
                 throw new IllegalArgumentException("Duplicate specification provided: '" + spec.getName() + "'");
             }
 
-            // 3. Validate values based on inputType
-            if (value != null && !value.trim().isBlank()) {
-                validateValue(spec, value.trim());
+            // If an optional specification is sent with null or blank value, do NOT store it
+            if (value == null || value.trim().isBlank()) {
+                if (Boolean.TRUE.equals(matchedMapping.getRequired())) {
+                    throw new IllegalArgumentException("Specification '" + spec.getName() + "' is required for this category");
+                }
+                // Skip empty optional specification
+                continue;
+            }
+
+            String trimmedValue = value.trim();
+
+            // 3. Validate value based on inputType
+            validateValue(spec, trimmedValue);
+
+            // 4. Store using canonical specification KEY (e.g. "conductor_material", "grade")
+            String storageKey = (spec.getKey() != null && !spec.getKey().isBlank())
+                    ? spec.getKey()
+                    : spec.getName();
+
+            normalizedMap.put(storageKey, trimmedValue);
+        }
+
+        return normalizedMap;
+    }
+
+    /**
+     * Backward-compatible validator method.
+     */
+    public void validateProductSpecifications(Integer categoryId, Map<String, String> specifications) {
+        validateAndNormalize(categoryId, specifications);
+    }
+
+    private Map<String, String> cleanLegacyMap(Map<String, String> specifications) {
+        if (specifications == null) {
+            return new LinkedHashMap<>();
+        }
+        Map<String, String> cleaned = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : specifications.entrySet()) {
+            if (entry.getKey() != null && !entry.getKey().isBlank()
+                    && entry.getValue() != null && !entry.getValue().isBlank()) {
+                cleaned.put(entry.getKey().trim(), entry.getValue().trim());
             }
         }
+        return cleaned;
     }
 
     private boolean matches(Specification spec, String inputKey) {

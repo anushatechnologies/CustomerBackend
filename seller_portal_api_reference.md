@@ -805,12 +805,94 @@ const newProduct  = await sellerApi('/api/seller/products', {
 
 | Frontend Page | APIs Used |
 |---------------|-----------|
-| **Add Product** | `GET /api/categories` → `GET /api/subcategories` → `GET /api/brands` → `POST /api/seller/products` |
+| **Add Product** | `GET /api/categories` → `GET /api/categories/{categoryId}/specifications` → `GET /api/subcategories` → `GET /api/brands` → `POST /api/seller/products` |
 | **My Products** | `GET /api/seller/products` + `PATCH .../stock` + `PATCH .../pricing` + `DELETE` |
-| **Edit Product** | `GET /api/seller/products/{id}` → `PUT /api/seller/products/{id}` |
+| **Edit Product** | `GET /api/seller/products/{id}` → `GET /api/categories/{categoryId}/specifications` → `PUT /api/seller/products/{id}` |
 | **Warehouses** | `GET /api/seller/warehouses` + `POST /api/seller/warehouses` |
 | **Inventory** | `POST /api/seller/inventory/adjust` |
 | **Bulk Pricing** | `POST /api/seller/pricing/bulk-adjust` |
 | **Documents** | `GET /api/seller/documents` + `POST /api/seller/documents` |
 | **Enquiries** | `GET /api/seller/enquiries` |
 | **Quotations** | `POST /api/seller/quotations` + `GET /api/seller/quotations` |
+
+---
+
+## ⚡ Dynamic Product Specifications (Category Pool vs Product Subset)
+
+### Overview
+A Category acts as an **available specification pool** (e.g., 50 possible specifications). A Product only contains and stores its **selected subset** and their values:
+- **Required Specifications**: Automatically displayed. Seller must provide a value. Cannot be removed.
+- **Optional Specifications**: Available via the `+ Add Specification` selector. Seller selects optional specs and supplies values. Can be removed prior to submission.
+- **Storage**: Keys are normalized canonical keys (e.g. `conductor_material`, `grade`, `voltage_rating`). Do NOT send unselected optional specifications with empty/null strings.
+
+### 1. Fetch Specification Pool for Category
+```http
+GET /api/categories/{categoryId}/specifications
+```
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "specificationId": 10,
+      "name": "Conductor Material",
+      "key": "conductor_material",
+      "inputType": "DROPDOWN",
+      "unit": null,
+      "required": true,
+      "displayOrder": 1,
+      "active": true,
+      "options": [
+        { "id": 1, "optionValue": "Copper", "displayOrder": 1 },
+        { "id": 2, "optionValue": "Aluminium", "displayOrder": 2 }
+      ]
+    },
+    {
+      "id": 2,
+      "specificationId": 11,
+      "name": "Voltage Rating",
+      "key": "voltage_rating",
+      "inputType": "TEXT",
+      "unit": "V",
+      "required": false,
+      "displayOrder": 2,
+      "active": true,
+      "options": []
+    }
+  ]
+}
+```
+
+### 2. Frontend State Model & Flow
+1. Fetch available specifications: `const pool = res.data;`
+2. Split pool:
+   - `requiredSpecs = pool.filter(s => s.required && s.active);`
+   - `optionalSpecs = pool.filter(s => !s.required && s.active);`
+3. Render `requiredSpecs` immediately with asterisks (*).
+4. For optional specs, render a `+ Add Specification` button.
+   - Dropdown displays `optionalSpecs.filter(s => !selectedSpecKeys.has(s.key))`.
+   - On selecting and clicking **Add**, mount the field with a `[Remove]` button.
+5. On Submit:
+   - Only include selected required specifications + selected optional specifications with valid non-blank values.
+   - Map key: use `spec.key` (e.g. `conductor_material`).
+   - Example payload:
+     ```json
+     {
+       "categoryId": 10,
+       "title": "10 sq mm Copper Cable",
+       "price": 2500,
+       "unit": "Coil",
+       "specifications": {
+         "conductor_material": "Copper",
+         "conductor_size": "10 sq mm",
+         "number_of_cores": "3",
+         "voltage_rating": "1100 V",
+         "insulation_material": "PVC",
+         "length": "90 m"
+       }
+     }
+     ```
+
