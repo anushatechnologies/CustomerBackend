@@ -62,6 +62,30 @@ public class GlobalExceptionHandler {
         return response(HttpStatus.NOT_FOUND, exception.getMessage());
     }
 
+    @ExceptionHandler(EstimationNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleEstimationNotFound(EstimationNotFoundException exception) {
+        log.warn("Estimation not found: {}", exception.getMessage());
+        return response(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(DocumentProcessingException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDocumentProcessing(DocumentProcessingException exception) {
+        log.warn("Document processing error: {}", exception.getMessage());
+        return response(HttpStatus.BAD_REQUEST, exception.getMessage());
+    }
+
+    @ExceptionHandler(AiProcessingException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAiProcessing(AiProcessingException exception) {
+        log.error("AI processing error: {}", exception.getMessage(), exception);
+        return response(HttpStatus.BAD_GATEWAY, exception.getMessage());
+    }
+
+    @ExceptionHandler(UnauthorizedAccessException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnauthorizedAccess(UnauthorizedAccessException exception) {
+        log.warn("Unauthorized estimation access: {}", exception.getMessage());
+        return response(HttpStatus.FORBIDDEN, exception.getMessage());
+    }
+
     @ExceptionHandler(StoreMismatchException.class)
     public ResponseEntity<java.util.Map<String, Object>> handleStoreMismatch(StoreMismatchException exception) {
         log.warn("Store mismatch conflict: {}", exception.getMessage());

@@ -135,6 +135,78 @@ public class S3ImageServiceImpl implements S3ImageService {
     }
 
     @Override
+    public ImageUploadResponse uploadFileToKey(MultipartFile file, String s3Key) {
+        validateImageFile(file);
+        if (s3Key == null || s3Key.isBlank()) {
+            throw new InvalidImageException("S3 key must not be blank");
+        }
+
+        log.info("[S3_KEY_UPLOAD_START] bucket={}, key={}, size={}, contentType={}", bucketName, s3Key, file.getSize(), file.getContentType());
+        String fileUrl;
+        try {
+            PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(s3Key)
+                    .contentType(file.getContentType())
+                    .build();
+
+            s3Client.putObject(putObjectRequest, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
+            fileUrl = buildImageUrl(s3Key);
+            log.info("[S3_KEY_UPLOAD_SUCCESS] bucket={}, key={}, url={}", bucketName, s3Key, fileUrl);
+        } catch (SdkException e) {
+            log.error("[S3_KEY_UPLOAD_FAILED] bucket={}, key={}, error={}", bucketName, s3Key, e.getMessage(), e);
+            throw new ImageStorageException("Failed to upload file to S3 storage", e);
+        } catch (IOException e) {
+            log.error("[S3_KEY_UPLOAD_READ_FAILED] key={}, error={}", s3Key, e.getMessage(), e);
+            throw new ImageStorageException("Failed to read file content for upload", e);
+        }
+
+        return ImageUploadResponse.builder()
+                .imageKey(s3Key)
+                .fileUrl(fileUrl)
+                .fileName(file.getOriginalFilename())
+                .mimeType(file.getContentType())
+                .fileSize(file.getSize())
+                .build();
+    }
+
+    @Override
+    public ImageUploadResponse uploadBytesToKey(byte[] bytes, String s3Key, String contentType) {
+        if (bytes == null || bytes.length == 0) {
+            throw new InvalidImageException("File bytes cannot be empty");
+        }
+        if (s3Key == null || s3Key.isBlank()) {
+            throw new InvalidImageException("S3 key must not be blank");
+        }
+        String mimeType = (contentType != null && !contentType.isBlank()) ? contentType : "application/pdf";
+
+        log.info("[S3_BYTES_KEY_UPLOAD_START] bucket={}, key={}, size={}, contentType={}", bucketName, s3Key, bytes.length, mimeType);
+        String fileUrl;
+        try {
+            PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(s3Key)
+                    .contentType(mimeType)
+                    .build();
+
+            s3Client.putObject(putObjectRequest, RequestBody.fromBytes(bytes));
+            fileUrl = buildImageUrl(s3Key);
+            log.info("[S3_BYTES_KEY_UPLOAD_SUCCESS] bucket={}, key={}, url={}", bucketName, s3Key, fileUrl);
+        } catch (SdkException e) {
+            log.error("[S3_BYTES_KEY_UPLOAD_FAILED] bucket={}, key={}, error={}", bucketName, s3Key, e.getMessage(), e);
+            throw new ImageStorageException("Failed to upload bytes to S3 storage", e);
+        }
+
+        return ImageUploadResponse.builder()
+                .imageKey(s3Key)
+                .fileUrl(fileUrl)
+                .fileName(s3Key.substring(s3Key.lastIndexOf('/') + 1))
+                .mimeType(mimeType)
+                .fileSize((long) bytes.length)
+                .build();
+    }
+
+    @Override
     public byte[] downloadImage(String imageKey) {
         if (imageKey == null || imageKey.isBlank()) {
             throw new InvalidImageException("Image key must not be blank");

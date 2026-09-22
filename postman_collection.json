@@ -1,0 +1,611 @@
+{
+  "info": {
+    "name": "HinchMart Backend APIs",
+    "description": "Complete Postman Collection for HinchMart Customer Backend",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "http://localhost:9000"
+    },
+    {
+      "key": "JWT_TOKEN",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    },
+    {
+      "key": "SELLER_ID",
+      "value": "seller_1001"
+    },
+    {
+      "key": "PRODUCT_ID",
+      "value": "sp_101"
+    },
+    {
+      "key": "WAREHOUSE_ID",
+      "value": "wh_1"
+    },
+    {
+      "key": "CATEGORY_ID",
+      "value": "1"
+    },
+    {
+      "key": "SUBCATEGORY_ID",
+      "value": "1"
+    },
+    {
+      "key": "BRAND_ID",
+      "value": "1"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Category Hierarchy",
+      "item": [
+        {
+          "name": "1.1 GET All Categories",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/categories",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "categories"]
+            }
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "status": "OK",
+              "code": 200,
+              "body": {
+                "string": "{\"success\":true,\"statusCode\":200,\"message\":\"Categories retrieved successfully\",\"data\":[{\"id\":1,\"categoryId\":1,\"name\":\"Civil & Structural\",\"slug\":\"civil-structural\",\"description\":\"Building materials and structural components\"},{\"id\":2,\"categoryId\":2,\"name\":\"Electrical & Power\",\"slug\":\"electrical-power\",\"description\":\"Electrical and power distribution equipment\"}],\"timestamp\":\"2026-09-02T10:30:00.000Z\"}"
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.2 GET Subcategories",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/subcategories?categoryId={{CATEGORY_ID}}",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "subcategories"],
+              "query": [
+                {
+                  "key": "categoryId",
+                  "value": "{{CATEGORY_ID}}"
+                }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "status": "OK",
+              "code": 200,
+              "body": {
+                "string": "{\"success\":true,\"statusCode\":200,\"message\":\"Subcategories retrieved successfully\",\"data\":[{\"id\":1,\"subcategoryId\":1,\"categoryId\":1,\"name\":\"TMT Steel & Rebars\",\"slug\":\"tmt-steel-rebars\"},{\"id\":2,\"subcategoryId\":2,\"categoryId\":1,\"name\":\"Cement & Concrete\",\"slug\":\"cement-concrete\"}],\"timestamp\":\"2026-09-02T10:30:00.000Z\"}"
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.3 GET Brands",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/brands?subcategoryId={{SUBCATEGORY_ID}}",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "brands"],
+              "query": [
+                {
+                  "key": "subcategoryId",
+                  "value": "{{SUBCATEGORY_ID}}"
+                }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "status": "OK",
+              "code": 200,
+              "body": {
+                "string": "{\"success\":true,\"statusCode\":200,\"message\":\"Brands retrieved successfully\",\"data\":[{\"id\":1,\"brandId\":1,\"subcategoryId\":1,\"name\":\"Tata Tiscon\",\"slug\":\"tata-tiscon\"},{\"id\":2,\"brandId\":2,\"subcategoryId\":1,\"name\":\"JSW Neosteel\",\"slug\":\"jsw-neosteel\"}],\"timestamp\":\"2026-09-02T10:30:00.000Z\"}"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Seller Products",
+      "item": [
+        {
+          "name": "2.1 GET List Products",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{JWT_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/seller/products?page=1&limit=12&status=APPROVED",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "seller", "products"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "12"
+                },
+                {
+                  "key": "status",
+                  "value": "APPROVED"
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "categoryId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sortBy",
+                  "value": "newest",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "2.2 GET Single Product",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{JWT_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/seller/products/{{PRODUCT_ID}}",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "seller", "products", "{{PRODUCT_ID}}"]
+            }
+          }
+        },
+        {
+          "name": "2.3 POST Create Product",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{JWT_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"Ultratech Super Cement 50kg Bag\",\"sku\":\"SKU-ULTRA-PPC-50KG\",\"description\":\"Engineered PPC cement designed for superior compressive strength and durability in all weather conditions.\",\"categoryId\":1,\"subcategoryId\":2,\"brandId\":2,\"price\":395,\"sellingPrice\":395,\"mrp\":440,\"unit\":\"Bags\",\"moq\":50,\"stockQty\":400,\"is24HourDelivery\":true,\"images\":[\"https://storage.hinchmart.com/products/ultra_cement_1.jpg\"],\"bulkPricingTiers\":[{\"minQty\":50,\"maxQty\":199,\"price\":395,\"discount\":0},{\"minQty\":200,\"maxQty\":1000,\"price\":380,\"discount\":3.8}],\"specifications\":{\"Grade\":\"PPC Grade\",\"Packaging\":\"50 kg HDPE Bag\"}}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/seller/products",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "seller", "products"]
+            }
+          }
+        },
+        {
+          "name": "2.4 PUT Update Product",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{JWT_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"Ultratech Super Cement 50kg Bag - Updated\",\"description\":\"Updated description with enhanced features\",\"sellingPrice\":410,\"mrp\":450,\"moq\":40,\"stockQty\":350,\"bulkPricingTiers\":[{\"minQty\":40,\"maxQty\":199,\"price\":410,\"discount\":0}],\"specifications\":{\"Grade\":\"PPC Grade\",\"Packaging\":\"50 kg HDPE Bag\"}}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/seller/products/sp_102",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "seller", "products", "sp_102"]
+            }
+          }
+        },
+        {
+          "name": "2.5 PATCH Update Stock",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{JWT_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"stockQty\":500}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/seller/products/{{PRODUCT_ID}}/stock",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "seller", "products", "{{PRODUCT_ID}}", "stock"]
+            }
+          }
+        },
+        {
+          "name": "2.6 PATCH Update Pricing",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{JWT_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"sellingPrice\":390,\"mrp\":440,\"bulkPricingTiers\":[{\"minQty\":50,\"maxQty\":199,\"price\":390,\"discount\":0},{\"minQty\":200,\"maxQty\":1000,\"price\":375,\"discount\":3.8}]}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/seller/products/{{PRODUCT_ID}}/pricing",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "seller", "products", "{{PRODUCT_ID}}", "pricing"]
+            }
+          }
+        },
+        {
+          "name": "2.7 DELETE Product",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{JWT_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/seller/products/{{PRODUCT_ID}}",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "seller", "products", "{{PRODUCT_ID}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Warehouses",
+      "item": [
+        {
+          "name": "3.1 GET List Warehouses",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{JWT_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/seller/warehouses",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "seller", "warehouses"]
+            }
+          }
+        },
+        {
+          "name": "3.2 POST Add Warehouse",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{JWT_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Chakan Industrial Depot\",\"contactPerson\":\"Mahesh Deshmukh\",\"phone\":\"+91 98202 22334\",\"city\":\"Pune\",\"state\":\"Maharashtra\",\"pincode\":\"410501\",\"address\":\"Phase 2 MIDC, Chakan Industrial Area, Pune\",\"capacityTons\":8000,\"isDefault\":false}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/seller/warehouses",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "seller", "warehouses"]
+            }
+          }
+        },
+        {
+          "name": "3.3 POST Adjust Inventory",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{JWT_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"productId\":\"{{PRODUCT_ID}}\",\"warehouseId\":\"{{WAREHOUSE_ID}}\",\"adjustmentType\":\"add\",\"quantity\":25,\"reason\":\"New mill batch received from Tata Steel plant\"}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/seller/inventory/adjust",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "seller", "inventory", "adjust"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Bulk Pricing",
+      "item": [
+        {
+          "name": "4.1 POST Bulk Price Adjust",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{JWT_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"categoryId\":{{CATEGORY_ID}},\"brandId\":null,\"adjustmentType\":\"percentage_increase\",\"value\":3.5,\"applyTo\":\"selling_price\"}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/seller/pricing/bulk-adjust",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "seller", "pricing", "bulk-adjust"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Documents",
+      "item": [
+        {
+          "name": "5.1 GET List Documents",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{JWT_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/seller/documents",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "seller", "documents"]
+            }
+          }
+        },
+        {
+          "name": "5.2 POST Upload Document",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{JWT_TOKEN}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "documentType",
+                  "value": "GSTIN",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/seller/documents",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "seller", "documents"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Enquiries & Quotations",
+      "item": [
+        {
+          "name": "6.1 GET List Enquiries",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{JWT_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/seller/enquiries?status=NEW&page=1&limit=12",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "seller", "enquiries"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "NEW"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "12"
+                },
+                {
+                  "key": "sortBy",
+                  "value": "newest",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "6.2 POST Create Quotation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{JWT_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"enquiryId\":\"enq_2026_01\",\"buyerName\":\"L&T Construction Infra Project\",\"buyerEmail\":\"procurement@intec.lnt.com\",\"validUntil\":\"2026-09-15\",\"items\":[{\"productId\":\"{{PRODUCT_ID}}\",\"name\":\"Tata Tiscon 550D TMT Steel Rebars 16mm\",\"quantity\":100,\"unit\":\"Ton\",\"quotedRate\":61500,\"gstRate\":18}],\"freightCharges\":25000,\"paymentTerms\":\"50% Advance, 50% on Delivery\",\"deliveryTimeline\":\"3 Business Days\",\"notes\":\"Special rate for project order. Valid for 14 days.\"}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/seller/quotations",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "seller", "quotations"]
+            }
+          }
+        },
+        {
+          "name": "6.3 GET List Quotations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{JWT_TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/seller/quotations?status=SENT&page=1&limit=12",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "seller", "quotations"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "SENT"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "12"
+                },
+                {
+                  "key": "sortBy",
+                  "value": "newest",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
