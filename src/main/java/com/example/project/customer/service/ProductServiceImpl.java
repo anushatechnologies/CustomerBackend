@@ -48,6 +48,7 @@ public class ProductServiceImpl implements ProductService {
     private final CategoryRepository categoryRepository;
     private final StoreRepository storeRepository;
     private final S3ImageService s3ImageService;
+    private final ProductSpecificationValidator productSpecificationValidator;
 
     @Override
     public ProductResponse create(ProductRequest request) {
@@ -73,6 +74,14 @@ public class ProductServiceImpl implements ProductService {
         }
 
         Brand brand = resolveBrand(request);
+
+        Integer categoryId = request.getCategoryId();
+        if (categoryId == null && brand.getSubcategory() != null && brand.getSubcategory().getCategory() != null) {
+            categoryId = brand.getSubcategory().getCategory().getCategoryId();
+        }
+        if (productSpecificationValidator != null) {
+            productSpecificationValidator.validateProductSpecifications(categoryId, request.getSpecifications());
+        }
 
         Product product = new Product();
         mapRequestToProduct(product, request, brand);
@@ -322,6 +331,14 @@ public class ProductServiceImpl implements ProductService {
         }
 
         Brand brand = resolveBrand(request);
+
+        Integer categoryId = request.getCategoryId();
+        if (categoryId == null && brand.getSubcategory() != null && brand.getSubcategory().getCategory() != null) {
+            categoryId = brand.getSubcategory().getCategory().getCategoryId();
+        }
+        if (productSpecificationValidator != null && request.getSpecifications() != null) {
+            productSpecificationValidator.validateProductSpecifications(categoryId, request.getSpecifications());
+        }
 
         mapRequestToProduct(
                 product,

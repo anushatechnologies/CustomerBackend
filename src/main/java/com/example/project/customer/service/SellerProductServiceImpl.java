@@ -34,13 +34,37 @@ import java.util.List;
 @Slf4j
 @Service
 @Transactional
-@RequiredArgsConstructor
 public class SellerProductServiceImpl implements SellerProductService {
 
     private final ProductRepository productRepository;
     private final BrandRepository brandRepository;
     private final SellerRepository sellerRepository;
     private final StoreRepository storeRepository;
+    private final ProductSpecificationValidator productSpecificationValidator;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public SellerProductServiceImpl(
+            ProductRepository productRepository,
+            BrandRepository brandRepository,
+            SellerRepository sellerRepository,
+            StoreRepository storeRepository,
+            ProductSpecificationValidator productSpecificationValidator
+    ) {
+        this.productRepository = productRepository;
+        this.brandRepository = brandRepository;
+        this.sellerRepository = sellerRepository;
+        this.storeRepository = storeRepository;
+        this.productSpecificationValidator = productSpecificationValidator;
+    }
+
+    public SellerProductServiceImpl(
+            ProductRepository productRepository,
+            BrandRepository brandRepository,
+            SellerRepository sellerRepository,
+            StoreRepository storeRepository
+    ) {
+        this(productRepository, brandRepository, sellerRepository, storeRepository, null);
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -153,6 +177,14 @@ public class SellerProductServiceImpl implements SellerProductService {
         Brand brand = brandRepository.findById(request.getBrandId())
                 .orElseThrow(() -> new ResourceNotFoundException("Brand not found with id: " + request.getBrandId()));
 
+        Integer categoryId = request.getCategoryId();
+        if (categoryId == null && brand.getSubcategory() != null && brand.getSubcategory().getCategory() != null) {
+            categoryId = brand.getSubcategory().getCategory().getCategoryId();
+        }
+        if (productSpecificationValidator != null) {
+            productSpecificationValidator.validateProductSpecifications(categoryId, request.getSpecifications());
+        }
+
         String slug = request.getTitle().toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "")
                 + "-" + System.currentTimeMillis();
 
@@ -252,6 +284,17 @@ public class SellerProductServiceImpl implements SellerProductService {
             product.setBulkPricingTiers(request.getBulkPricingTiers());
         }
         if (request.getSpecifications() != null) {
+            if (productSpecificationValidator != null) {
+                Integer categoryId = null;
+                Brand targetBrand = product.getBrand();
+                if (request.getBrandId() != null) {
+                    targetBrand = brandRepository.findById(request.getBrandId()).orElse(product.getBrand());
+                }
+                if (targetBrand != null && targetBrand.getSubcategory() != null && targetBrand.getSubcategory().getCategory() != null) {
+                    categoryId = targetBrand.getSubcategory().getCategory().getCategoryId();
+                }
+                productSpecificationValidator.validateProductSpecifications(categoryId, request.getSpecifications());
+            }
             product.setSpecifications(request.getSpecifications());
         }
         product.setUpdatedAt(LocalDateTime.now());

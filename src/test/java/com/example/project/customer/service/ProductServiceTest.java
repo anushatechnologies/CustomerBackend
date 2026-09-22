@@ -57,6 +57,9 @@ class ProductServiceTest {
     @Mock
     private S3ImageService s3ImageService;
 
+    @Mock
+    private ProductSpecificationValidator productSpecificationValidator;
+
     @InjectMocks
     private ProductServiceImpl service;
 
