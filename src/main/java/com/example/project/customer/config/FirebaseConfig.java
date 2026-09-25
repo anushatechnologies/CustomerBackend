@@ -29,8 +29,14 @@ public class FirebaseConfig {
     @Value("${firebase.client-email:${FIREBASE_CLIENT_EMAIL:}}")
     private String clientEmail;
 
+    @Value("${firebase.client-id:${FIREBASE_CLIENT_ID:}}")
+    private String clientId;
+
     @Value("${firebase.private-key:${FIREBASE_PRIVATE_KEY:}}")
     private String privateKey;
+
+    @Value("${firebase.private-key-id:${FIREBASE_PRIVATE_KEY_ID:}}")
+    private String privateKeyId;
 
     @Value("${firebase.credentials-json:${FIREBASE_CREDENTIALS_JSON:}}")
     private String credentialsJson;
@@ -66,14 +72,14 @@ public class FirebaseConfig {
                 if (isDevProfile()) {
                     // In dev mode, Firebase is optional. Return null — the filter handles a null FirebaseApp gracefully.
                     log.warn("[DEV] No Firebase credentials configured. Firebase token verification is DISABLED. "
-                            + "Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY to enable it.");
+                            + "Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_CLIENT_ID, FIREBASE_PRIVATE_KEY, FIREBASE_PRIVATE_KEY_ID to enable it.");
                     return null;
                 }
                 // In production, missing credentials is a fatal misconfiguration.
                 throw new IllegalStateException(
                     "Firebase credentials are required in production but none were found. "
                     + "Ensure the following GitHub Secrets are set and injected via CI/CD: "
-                    + "FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY "
+                    + "FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_CLIENT_ID, FIREBASE_PRIVATE_KEY, FIREBASE_PRIVATE_KEY_ID "
                     + "(or FIREBASE_CREDENTIALS_JSON / FIREBASE_CREDENTIALS_BASE64)."
                 );
             }
@@ -150,20 +156,38 @@ public class FirebaseConfig {
                 return GoogleCredentials.fromStream(cpStream);
             }
 
-            // 5. Discrete environment variables: FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY
-            if (clientEmail != null && !clientEmail.isBlank() && privateKey != null && !privateKey.isBlank()) {
-                log.info("Initializing Firebase using discrete environment variables (Client Email: {})", clientEmail);
-                String formattedKey = privateKey.replace("\\n", "\n").trim();
+            // 5. Discrete environment variables: FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY + FIREBASE_CLIENT_ID + FIREBASE_PRIVATE_KEY_ID
+            log.info(
+                "Firebase credential inputs: projectIdPresent={}, clientEmailPresent={}, clientIdPresent={}, privateKeyIdPresent={}, privateKeyLength={}",
+                projectId != null && !projectId.isBlank(),
+                clientEmail != null && !clientEmail.isBlank(),
+                clientId != null && !clientId.isBlank(),
+                privateKeyId != null && !privateKeyId.isBlank(),
+                privateKey == null ? 0 : privateKey.length()
+            );
+
+            if (clientEmail != null && !clientEmail.isBlank()
+                    && privateKey != null && !privateKey.isBlank()
+                    && clientId != null && !clientId.isBlank()
+                    && privateKeyId != null && !privateKeyId.isBlank()) {
+                log.info("Initializing Firebase using discrete environment variables");
+                String formattedKey = privateKey.replace("\\n", "\n").replace("\r", "").trim();
                 String jsonCredentials = String.format(
-                        "{%n"
-                        + "  \"type\": \"service_account\",%n"
-                        + "  \"project_id\": \"%s\",%n"
-                        + "  \"client_email\": \"%s\",%n"
-                        + "  \"private_key\": \"%s\"%n"
+                        "{\n"
+                        + "  \"type\": \"service_account\",\n"
+                        + "  \"project_id\": \"%s\",\n"
+                        + "  \"private_key_id\": \"%s\",\n"
+                        + "  \"private_key\": \"%s\",\n"
+                        + "  \"client_email\": \"%s\",\n"
+                        + "  \"client_id\": \"%s\",\n"
+                        + "  \"auth_uri\": \"https://accounts.google.com/o/oauth2/auth\",\n"
+                        + "  \"token_uri\": \"https://oauth2.googleapis.com/token\"\n"
                         + "}",
                         projectId != null ? projectId.trim() : "",
+                        privateKeyId.trim(),
+                        formattedKey.replace("\n", "\\n"),
                         clientEmail.trim(),
-                        formattedKey.replace("\n", "\\n")
+                        clientId.trim()
                 );
                 InputStream stream = new ByteArrayInputStream(jsonCredentials.getBytes(StandardCharsets.UTF_8));
                 return GoogleCredentials.fromStream(stream);

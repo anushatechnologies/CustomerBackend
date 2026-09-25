@@ -41,7 +41,9 @@ services:
       # Firebase / JWT Authentication & Authorization Credentials
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
+      FIREBASE_CLIENT_ID: ${FIREBASE_CLIENT_ID:-}
       FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
+      FIREBASE_PRIVATE_KEY_ID: ${FIREBASE_PRIVATE_KEY_ID:-}
       # Admin email allow-list (injected from ADMIN_EMAILS GitHub Secret)
       ADMIN_EMAILS: ${ADMIN_EMAILS:-admin@hinchmart.com}
 
