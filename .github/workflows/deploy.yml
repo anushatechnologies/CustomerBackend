@@ -102,8 +102,8 @@ jobs:
               DB_DDL_AUTO="validate"
             fi
 
-            # Normalize multiline private key to a safe single-line string with literal \n for .env
-            FORMATTED_FIREBASE_KEY=$(printf '%s' "$FIREBASE_PRIVATE_KEY" | sed ':a;N;$!ba;s/\r//g;s/\n/\\n/g')
+            # Normalize multiline or pre-quoted private key to a clean single-line string with literal \n for .env
+            FORMATTED_FIREBASE_KEY=$(printf '%s' "$FIREBASE_PRIVATE_KEY" | sed ':a;N;$!ba;s/\r//g;s/\n/\\n/g' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//" | sed 's/\\\\n/\\n/g')
 
             # Create production .env with safe quoting for all values
             cat << 'EOF' > .env
