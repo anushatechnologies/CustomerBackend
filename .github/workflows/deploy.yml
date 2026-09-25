@@ -103,7 +103,7 @@ jobs:
             fi
 
             # Normalize multiline private key to a safe single-line string with literal \n for .env
-            FORMATTED_FIREBASE_KEY=$(printf '%s' "$FIREBASE_PRIVATE_KEY" | awk '{printf "%s\\n", $0}' | sed 's/\\n$//' | sed 's/\\\\n/\\n/g')
+            FORMATTED_FIREBASE_KEY=$(printf '%s' "$FIREBASE_PRIVATE_KEY" | sed ':a;N;$!ba;s/\r//g;s/\n/\\n/g')
 
             # Create production .env with safe quoting for all values
             cat << 'EOF' > .env
