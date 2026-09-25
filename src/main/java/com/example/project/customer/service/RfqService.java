@@ -21,4 +21,7 @@ public interface RfqService {
     List<RfqQuestionResponse> getRfqQuestions(Integer rfqId);
     RfqQuestionResponse addRfqQuestion(Integer rfqId, RfqQuestionRequest request);
     RfqQuestionResponse answerRfqQuestion(Integer questionId, String responseText);
+    QuotationResponse rejectQuotation(Integer quoteId, String reason);
+    QuotationResponse counterQuotation(Integer quoteId, com.example.project.customer.dto.RfqCounterOfferRequest request);
+    RfqResponse closeRfq(Integer rfqId, String reason);
 }

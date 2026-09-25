@@ -90,8 +90,10 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/news/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/coupons/**").permitAll()
 
-                // ── Public: Location reverse-geocode (POST — used before login for address) ─
+                // ── Public: Location reverse-geocode and serviceability ─
                 .requestMatchers("/api/location/**").permitAll()
+                .requestMatchers("/api/locations/**").permitAll()
+                .requestMatchers("/api/serviceability/**").permitAll()
 
                 // ── Public: Image downloads (product/banner images are public) ──────────
                 .requestMatchers(HttpMethod.GET, "/api/images/**").permitAll()

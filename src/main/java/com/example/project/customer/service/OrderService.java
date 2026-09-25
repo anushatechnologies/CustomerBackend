@@ -18,4 +18,6 @@ public interface OrderService {
     byte[] generateInvoicePdf(Integer id);
     OrderResponse updateOrderStatus(Integer id, String status, String location, String description);
     OrderResponse cancelOrder(Integer id, String location, String description);
+    com.example.project.customer.dto.OrderDisputeResponse raiseDispute(Integer id, com.example.project.customer.dto.OrderDisputeRequest request);
+    com.example.project.customer.dto.OrderMtcResponse getOrderMtc(Integer id);
 }

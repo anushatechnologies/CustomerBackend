@@ -273,6 +273,45 @@ public class RfqServiceImpl implements RfqService {
         return mapToQuestionResponse(rfqQuestionRepository.save(question));
     }
 
+    @Override
+    public QuotationResponse rejectQuotation(Integer quoteId, String reason) {
+        Quotation quote = quotationRepository.findById(quoteId)
+                .orElseThrow(() -> new ResourceNotFoundException("Quotation not found with id: " + quoteId));
+
+        quote.setStatus("REJECTED");
+        Quotation saved = quotationRepository.save(quote);
+        log.info("Quotation #{} marked as REJECTED. Reason: {}", quoteId, reason);
+        return mapToQuotationResponse(saved);
+    }
+
+    @Override
+    public QuotationResponse counterQuotation(Integer quoteId, com.example.project.customer.dto.RfqCounterOfferRequest request) {
+        Quotation quote = quotationRepository.findById(quoteId)
+                .orElseThrow(() -> new ResourceNotFoundException("Quotation not found with id: " + quoteId));
+
+        quote.setStatus("COUNTERED");
+        if (request != null) {
+            if (request.getCounterPrice() != null) {
+                quote.setUnitPrice(request.getCounterPrice());
+                if (request.getQuantity() != null) {
+                    quote.setTotalAmount(request.getCounterPrice().multiply(request.getQuantity()));
+                }
+            }
+        }
+        Quotation saved = quotationRepository.save(quote);
+        log.info("Quotation #{} marked as COUNTERED. Counter price: {}", quoteId, request != null ? request.getCounterPrice() : "N/A");
+        return mapToQuotationResponse(saved);
+    }
+
+    @Override
+    public RfqResponse closeRfq(Integer rfqId, String reason) {
+        Rfq rfq = findRfq(rfqId);
+        rfq.setStatus("CLOSED");
+        Rfq saved = rfqRepository.save(rfq);
+        log.info("RFQ #{} marked as CLOSED. Reason: {}", rfqId, reason);
+        return mapToRfqResponse(saved);
+    }
+
     private Rfq findRfq(Integer id) {
         return rfqRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("RFQ not found with id: " + id));

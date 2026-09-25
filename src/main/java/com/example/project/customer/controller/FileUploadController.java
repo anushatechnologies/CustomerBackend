@@ -19,9 +19,8 @@ import java.util.Arrays;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/upload")
+@RequestMapping({"/api/upload", "/api/documents/upload"})
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('ADMIN', 'SELLER')")
 public class FileUploadController {
 
     private static final List<String> ALLOWED_EXTENSIONS = Arrays.asList(
@@ -40,7 +39,29 @@ public class FileUploadController {
 
     private final S3ImageService s3ImageService;
 
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<com.example.project.customer.dto.FileUploadResultResponse> uploadDirect(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "folder", defaultValue = "kyc") String folder) {
+        validateUploadFile(file);
+        ImageUploadResponse response = s3ImageService.uploadImage(file, folder);
+        com.example.project.customer.dto.FileUploadResultResponse result = com.example.project.customer.dto.FileUploadResultResponse.builder()
+                .success(true)
+                .statusCode(HttpStatus.OK.value())
+                .message("File uploaded successfully")
+                .url(response.getFileUrl())
+                .fileUrl(response.getFileUrl())
+                .fileName(response.getFileName())
+                .fileSize(formatFileSize(file.getSize()))
+                .sizeBytes(file.getSize())
+                .data(response)
+                .build();
+        return ResponseEntity.ok(result);
+    }
+
     @PostMapping(value = "/file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('ADMIN', 'SELLER')")
     public ResponseEntity<ApiResponse<ImageUploadResponse>> uploadFile(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "folder", defaultValue = "products") String folder) {
@@ -51,6 +72,7 @@ public class FileUploadController {
     }
 
     @PostMapping(value = "/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('ADMIN', 'SELLER')")
     public ResponseEntity<ApiResponse<ImageUploadResponse>> uploadImage(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "folder", defaultValue = "products") String folder) {
@@ -58,6 +80,13 @@ public class FileUploadController {
         ImageUploadResponse response = s3ImageService.uploadImage(file, folder);
         return ResponseEntity.status(HttpStatus.OK)
                 .body(ApiResponse.ok("File uploaded successfully", response));
+    }
+
+    private String formatFileSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        int exp = (int) (Math.log(bytes) / Math.log(1024));
+        String pre = "KMGTPE".charAt(exp - 1) + "";
+        return String.format(java.util.Locale.US, "%.1f %sB", bytes / Math.pow(1024, exp), pre);
     }
 
     private void validateUploadFile(MultipartFile file) {

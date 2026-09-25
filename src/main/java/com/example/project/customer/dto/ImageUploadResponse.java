@@ -38,6 +38,16 @@ public class ImageUploadResponse {
         this.fileUrl = imageUrl;
     }
 
+    @JsonProperty("url")
+    public String getUrl() {
+        return fileUrl;
+    }
+
+    @JsonProperty("url")
+    public void setUrl(String url) {
+        this.fileUrl = url;
+    }
+
     @JsonProperty("originalFileName")
     public String getOriginalFileName() {
         return fileName;

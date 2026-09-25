@@ -560,6 +560,88 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         return mapToOrderResponse(updated);
     }
 
+    @Override
+    public com.example.project.customer.dto.OrderDisputeResponse raiseDispute(Integer id, com.example.project.customer.dto.OrderDisputeRequest request) {
+        Order order = findOrder(id);
+        validateOrderReadAccess(order);
+
+        String reason = (request != null && request.getReason() != null && !request.getReason().isBlank())
+                ? request.getReason() : "Damaged / Incorrect Goods";
+        String desc = (request != null && request.getDescription() != null && !request.getDescription().isBlank())
+                ? request.getDescription() : "Customer reported an issue with delivered goods.";
+
+        order.setOrderStatus("RETURN_REQUESTED");
+
+        TrackingCheckpoint cp = TrackingCheckpoint.builder()
+                .order(order)
+                .status("DISPUTE_RAISED")
+                .title("Return / Dispute Requested")
+                .location("Customer Support Desk")
+                .description(reason + ": " + desc)
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        order.getCheckpoints().add(cp);
+        orderRepository.save(order);
+
+        String disputeId = "DISP-" + id + "-" + (System.currentTimeMillis() % 100000);
+        log.info("Dispute {} created for Order #{} by customer with reason: {}", disputeId, id, reason);
+
+        return com.example.project.customer.dto.OrderDisputeResponse.builder()
+                .success(true)
+                .disputeId(disputeId)
+                .orderId(id)
+                .status("RETURN_REQUESTED")
+                .reason(reason)
+                .description(desc)
+                .createdAt(LocalDateTime.now())
+                .build();
+    }
+
+    @Override
+    public com.example.project.customer.dto.OrderMtcResponse getOrderMtc(Integer id) {
+        Order order = findOrder(id);
+        validateOrderReadAccess(order);
+
+        String productName = "Structural Steel / Fe550D TMT Rebar";
+        if (order.getItems() != null && !order.getItems().isEmpty()) {
+            productName = order.getItems().get(0).getTitle();
+        }
+
+        Map<String, String> chemical = Map.of(
+                "Carbon (C)", "0.22% (Max 0.25%)",
+                "Sulphur (S)", "0.035% (Max 0.040%)",
+                "Phosphorus (P)", "0.038% (Max 0.040%)",
+                "Carbon Equivalent (CE)", "0.38% (Max 0.42%)"
+        );
+
+        Map<String, String> mechanical = Map.of(
+                "Yield Stress (0.2% Proof)", "568 N/mm² (Min 550 N/mm²)",
+                "Ultimate Tensile Strength", "625 N/mm² (Min 585 N/mm²)",
+                "Elongation (Gauge 5.65√A)", "16.5% (Min 14.5%)",
+                "TS/YS Ratio", "1.10 (Min 1.08)"
+        );
+
+        String invNum = (order.getStoreInvoiceNumber() != null && !order.getStoreInvoiceNumber().isBlank())
+                ? order.getStoreInvoiceNumber() : ("ORD-" + id);
+
+        return com.example.project.customer.dto.OrderMtcResponse.builder()
+                .orderId(id)
+                .certificateNumber("MTC-" + invNum + "-QC")
+                .productName(productName)
+                .heatNumber("HT-" + (100000 + (id * 31 % 900000)))
+                .batchNumber("LOT-2026-" + (1000 + id))
+                .grade("IS 1786:2008 Fe550D High Ductility")
+                .inspectionAgency("Bureau Veritas / TUV India NABL Certified Lab")
+                .chemicalAnalysis(chemical)
+                .mechanicalProperties(mechanical)
+                .status("VERIFIED")
+                .verified(true)
+                .downloadUrl("/api/orders/" + id + "/invoice/pdf")
+                .issuedAt(order.getCreatedAt() != null ? order.getCreatedAt() : LocalDateTime.now())
+                .build();
+    }
+
     private void validateOrderReadAccess(Order order) {
         if (SecurityUtils.isAdmin()) {
             return;

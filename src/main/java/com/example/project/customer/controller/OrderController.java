@@ -105,7 +105,7 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.ok("Order status updated successfully", updated));
     }
 
-    @PatchMapping("/{id}/cancel")
+    @org.springframework.web.bind.annotation.RequestMapping(value = "/{id}/cancel", method = {org.springframework.web.bind.annotation.RequestMethod.PATCH, org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<OrderResponse>> cancelOrder(
             @PathVariable Integer id,
@@ -119,5 +119,22 @@ public class OrderController {
         );
 
         return ResponseEntity.ok(ApiResponse.ok("Order cancelled successfully", cancelled));
+    }
+
+    @PostMapping(value = {"/{id}/return", "/{id}/dispute"})
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<com.example.project.customer.dto.OrderDisputeResponse>> raiseDispute(
+            @PathVariable Integer id,
+            @RequestBody(required = false) com.example.project.customer.dto.OrderDisputeRequest request) {
+        com.example.project.customer.dto.OrderDisputeResponse response = orderService.raiseDispute(id, request);
+        return ResponseEntity.ok(ApiResponse.ok("Return/dispute request registered successfully", response));
+    }
+
+    @GetMapping("/{id}/mtc")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<com.example.project.customer.dto.OrderMtcResponse>> getOrderMtc(
+            @PathVariable Integer id) {
+        com.example.project.customer.dto.OrderMtcResponse response = orderService.getOrderMtc(id);
+        return ResponseEntity.ok(ApiResponse.ok("Mill Test Certificate retrieved successfully", response));
     }
 }

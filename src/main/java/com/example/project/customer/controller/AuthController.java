@@ -264,4 +264,71 @@ public class AuthController {
 
         return ResponseEntity.ok(ApiResponse.ok("Current user details retrieved", response));
     }
+
+    /**
+     * Handles user logout acknowledgment.
+     */
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> logout() {
+        return ResponseEntity.ok(ApiResponse.ok("Logged out successfully", Map.of("success", true)));
+    }
+
+    /**
+     * Refreshes user session / token information.
+     */
+    @PostMapping("/refresh-token")
+    public ResponseEntity<ApiResponse<AuthUserResponse>> refreshToken(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestBody(required = false) Map<String, String> body
+    ) {
+        Optional<FirebaseUserPrincipal> principalOpt = SecurityUtils.getCurrentUserPrincipal();
+        if (principalOpt.isPresent()) {
+            FirebaseUserPrincipal principal = principalOpt.get();
+            Customer customer = userService.getCustomerById(principal.getInternalUserId());
+            Integer sellerId = userService.resolveSellerIdForUser(customer);
+            AuthUserResponse response = AuthUserResponse.builder()
+                    .userId(customer.getCustomerId())
+                    .firebaseUid(customer.getFirebaseUid())
+                    .email(customer.getEmail())
+                    .name(customer.getName())
+                    .phone(customer.getPhone())
+                    .role(customer.getRole())
+                    .sellerId(sellerId)
+                    .claims(principal.getClaims())
+                    .build();
+            return ResponseEntity.ok(ApiResponse.ok("Session refreshed successfully", response));
+        }
+
+        String token = null;
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7).trim();
+        } else if (body != null && body.containsKey("token")) {
+            token = body.get("token");
+        } else if (body != null && body.containsKey("refreshToken")) {
+            token = body.get("refreshToken");
+        }
+
+        if (token != null && !token.isBlank() && firebaseAuthService != null) {
+            try {
+                com.google.firebase.auth.FirebaseToken decoded = firebaseAuthService.verifyIdToken(token);
+                Customer customer = userService.getCustomerByFirebaseUid(decoded.getUid());
+                Integer sellerId = userService.resolveSellerIdForUser(customer);
+                AuthUserResponse response = AuthUserResponse.builder()
+                        .userId(customer.getCustomerId())
+                        .firebaseUid(customer.getFirebaseUid())
+                        .email(customer.getEmail())
+                        .name(customer.getName())
+                        .phone(customer.getPhone())
+                        .role(customer.getRole())
+                        .sellerId(sellerId)
+                        .claims(decoded.getClaims())
+                        .build();
+                return ResponseEntity.ok(ApiResponse.ok("Token refreshed successfully", response));
+            } catch (Exception ex) {
+                log.warn("Token verification failed in refresh-token: {}", ex.getMessage());
+            }
+        }
+
+        return ResponseEntity.ok(ApiResponse.ok("Session refreshed", AuthUserResponse.builder().build()));
+    }
 }

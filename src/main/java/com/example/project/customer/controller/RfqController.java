@@ -77,6 +77,32 @@ public class RfqController {
         return ResponseEntity.ok(ApiResponse.ok("Quotation accepted. Order created successfully.", result));
     }
 
+    @PostMapping("/quotes/{quoteId}/reject")
+    public ResponseEntity<ApiResponse<QuotationResponse>> rejectQuotation(
+            @PathVariable Integer quoteId,
+            @RequestBody(required = false) Map<String, String> body) {
+        String reason = body != null ? body.get("reason") : "Price rejected by buyer";
+        QuotationResponse response = rfqService.rejectQuotation(quoteId, reason);
+        return ResponseEntity.ok(ApiResponse.ok("Quotation rejected successfully", response));
+    }
+
+    @PostMapping("/quotes/{quoteId}/counter")
+    public ResponseEntity<ApiResponse<QuotationResponse>> counterQuotation(
+            @PathVariable Integer quoteId,
+            @RequestBody(required = false) com.example.project.customer.dto.RfqCounterOfferRequest request) {
+        QuotationResponse response = rfqService.counterQuotation(quoteId, request);
+        return ResponseEntity.ok(ApiResponse.ok("Counter offer submitted successfully", response));
+    }
+
+    @org.springframework.web.bind.annotation.RequestMapping(value = "/{id}/close", method = {org.springframework.web.bind.annotation.RequestMethod.PATCH, org.springframework.web.bind.annotation.RequestMethod.POST})
+    public ResponseEntity<ApiResponse<RfqResponse>> closeRfq(
+            @PathVariable Integer id,
+            @RequestBody(required = false) Map<String, String> body) {
+        String reason = body != null ? body.get("reason") : "Closed by buyer";
+        RfqResponse response = rfqService.closeRfq(id, reason);
+        return ResponseEntity.ok(ApiResponse.ok("RFQ closed successfully", response));
+    }
+
     @GetMapping("/{id}/questions")
     public ResponseEntity<ApiResponse<List<RfqQuestionResponse>>> getRfqQuestions(@PathVariable Integer id) {
         List<RfqQuestionResponse> questions = rfqService.getRfqQuestions(id);
