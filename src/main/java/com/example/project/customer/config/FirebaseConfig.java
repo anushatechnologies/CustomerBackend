@@ -77,10 +77,18 @@ public class FirebaseConfig {
                 }
                 // In production, missing credentials is a fatal misconfiguration.
                 throw new IllegalStateException(
-                    "Firebase credentials are required in production but none were found. "
-                    + "Ensure the following GitHub Secrets are set and injected via CI/CD: "
-                    + "FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_CLIENT_ID, FIREBASE_PRIVATE_KEY, FIREBASE_PRIVATE_KEY_ID "
-                    + "(or FIREBASE_CREDENTIALS_JSON / FIREBASE_CREDENTIALS_BASE64)."
+                    String.format(
+                        "Firebase credentials are required in production but none were found. "
+                        + "Inputs: [projectId=%b, clientEmail=%b, clientId=%b, privateKeyId=%b, privateKeyLength=%d]. "
+                        + "Ensure the following GitHub Secrets are set and injected via CI/CD: "
+                        + "FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_CLIENT_ID, FIREBASE_PRIVATE_KEY, FIREBASE_PRIVATE_KEY_ID "
+                        + "(or FIREBASE_CREDENTIALS_JSON / FIREBASE_CREDENTIALS_BASE64).",
+                        projectId != null && !projectId.isBlank(),
+                        clientEmail != null && !clientEmail.isBlank(),
+                        clientId != null && !clientId.isBlank(),
+                        privateKeyId != null && !privateKeyId.isBlank(),
+                        privateKey == null ? 0 : privateKey.length()
+                    )
                 );
             }
 
@@ -88,7 +96,7 @@ public class FirebaseConfig {
                     .setCredentials(credentials);
 
             if (projectId != null && !projectId.isBlank()) {
-                optionsBuilder.setProjectId(projectId.trim());
+                optionsBuilder.setProjectId(cleanValue(projectId));
             }
 
             FirebaseApp app = FirebaseApp.initializeApp(optionsBuilder.build());
@@ -124,6 +132,20 @@ public class FirebaseConfig {
         }
     }
 
+    private String cleanValue(String val) {
+        if (val == null) {
+            return "";
+        }
+        String trimmed = val.trim();
+        while ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+            if (trimmed.length() < 2) {
+                break;
+            }
+            trimmed = trimmed.substring(1, trimmed.length() - 1).trim();
+        }
+        return trimmed;
+    }
+
     private GoogleCredentials resolveCredentials() {
         try {
             // 1. Direct Service Account JSON string
@@ -156,22 +178,27 @@ public class FirebaseConfig {
                 return GoogleCredentials.fromStream(cpStream);
             }
 
+            String cleanProjectId = cleanValue(projectId);
+            String cleanClientEmail = cleanValue(clientEmail);
+            String cleanClientId = cleanValue(clientId);
+            String cleanPrivateKeyId = cleanValue(privateKeyId);
+            String cleanPrivateKey = cleanValue(privateKey);
+
             // 5. Discrete environment variables: FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY + FIREBASE_CLIENT_ID + FIREBASE_PRIVATE_KEY_ID
             log.info(
                 "Firebase credential inputs: projectIdPresent={}, clientEmailPresent={}, clientIdPresent={}, privateKeyIdPresent={}, privateKeyLength={}",
-                projectId != null && !projectId.isBlank(),
-                clientEmail != null && !clientEmail.isBlank(),
-                clientId != null && !clientId.isBlank(),
-                privateKeyId != null && !privateKeyId.isBlank(),
-                privateKey == null ? 0 : privateKey.length()
+                !cleanProjectId.isBlank(),
+                !cleanClientEmail.isBlank(),
+                !cleanClientId.isBlank(),
+                !cleanPrivateKeyId.isBlank(),
+                cleanPrivateKey.length()
             );
 
-            if (clientEmail != null && !clientEmail.isBlank()
-                    && privateKey != null && !privateKey.isBlank()
-                    && clientId != null && !clientId.isBlank()
-                    && privateKeyId != null && !privateKeyId.isBlank()) {
+            if (!cleanClientEmail.isBlank() && !cleanPrivateKey.isBlank()
+                    && !cleanClientId.isBlank() && !cleanPrivateKeyId.isBlank()) {
                 log.info("Initializing Firebase using discrete environment variables");
-                String formattedKey = privateKey.replace("\\n", "\n").replace("\r", "").trim();
+                String formattedKey = cleanPrivateKey.replace("\\n", "\n").replace("\r", "").trim();
+                formattedKey = cleanValue(formattedKey);
                 String jsonCredentials = String.format(
                         "{\n"
                         + "  \"type\": \"service_account\",\n"
@@ -183,20 +210,27 @@ public class FirebaseConfig {
                         + "  \"auth_uri\": \"https://accounts.google.com/o/oauth2/auth\",\n"
                         + "  \"token_uri\": \"https://oauth2.googleapis.com/token\"\n"
                         + "}",
-                        projectId != null ? projectId.trim() : "",
-                        privateKeyId.trim(),
+                        cleanProjectId,
+                        cleanPrivateKeyId,
                         formattedKey.replace("\n", "\\n"),
-                        clientEmail.trim(),
-                        clientId.trim()
+                        cleanClientEmail,
+                        cleanClientId
                 );
-                InputStream stream = new ByteArrayInputStream(jsonCredentials.getBytes(StandardCharsets.UTF_8));
-                return GoogleCredentials.fromStream(stream);
+                try {
+                    InputStream stream = new ByteArrayInputStream(jsonCredentials.getBytes(StandardCharsets.UTF_8));
+                    return GoogleCredentials.fromStream(stream);
+                } catch (Exception e) {
+                    log.error("Failed to parse discrete GoogleCredentials: {}", e.getMessage(), e);
+                    throw new IllegalStateException("Failed to parse discrete GoogleCredentials: " + e.getMessage(), e);
+                }
             }
 
             // 6. Application Default Credentials (GCP-hosted environments)
             log.info("Attempting to initialize Firebase using Application Default Credentials");
             return GoogleCredentials.getApplicationDefault();
 
+        } catch (IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Could not load GoogleCredentials from configured sources", e);
             return null;

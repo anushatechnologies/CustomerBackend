@@ -171,8 +171,8 @@ jobs:
 
             if [ "$SUCCESS" != "true" ]; then
               echo "ERROR: Health check failed to reach UP status after $MAX_ATTEMPTS attempts!"
-              echo "Showing last 100 Docker logs for customer-backend:"
-              docker logs --tail 100 customer-backend
+              echo "Showing last 300 Docker logs for customer-backend:"
+              docker logs --tail 300 customer-backend
               exit 1
             fi
 
