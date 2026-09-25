@@ -174,7 +174,7 @@ public class FirebaseConfig {
             return GoogleCredentials.getApplicationDefault();
 
         } catch (Exception e) {
-            log.warn("Could not load GoogleCredentials from configured sources: {}", e.getMessage());
+            log.error("Could not load GoogleCredentials from configured sources", e);
             return null;
         }
     }
