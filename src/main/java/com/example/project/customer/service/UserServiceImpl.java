@@ -137,12 +137,11 @@ private String configuredAdminEmails = "admin@hinchmart.com";
 private boolean isAdminEmail(String email) {
     if (email == null || email.isBlank()) return false;
     String clean = email.trim().toLowerCase();
-    if (clean.equals("admin@hinchmart.com") || clean.contains("admin")) {
-        return true;
-    }
+    // SECURITY: Only exact-match comparisons are permitted.
+    // Do NOT use contains/startsWith/endsWith checks — they allow privilege escalation
+    // (e.g., "notanadmin@gmail.com" or "myadmin@evil.com" would incorrectly match).
     if (configuredAdminEmails != null && !configuredAdminEmails.isBlank()) {
-        String[] admins = configuredAdminEmails.split(",");
-        for (String adm : admins) {
+        for (String adm : configuredAdminEmails.split(",")) {
             if (clean.equalsIgnoreCase(adm.trim())) {
                 return true;
             }

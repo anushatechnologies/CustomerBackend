@@ -34,6 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(AddressController.class)
 @Import({GlobalExceptionHandler.class, SecurityConfig.class})
 @SuppressWarnings("null")
+@org.springframework.security.test.context.support.WithMockUser
 class AddressControllerTest {
 
     @Autowired

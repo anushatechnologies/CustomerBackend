@@ -51,6 +51,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         SellerQuotationController.class
 })
 @Import({GlobalExceptionHandler.class, SecurityConfig.class})
+@org.springframework.security.test.context.support.WithMockUser(roles = "SELLER")
 class SellerWarehouseAndInventoryControllerTest {
 
     @Autowired

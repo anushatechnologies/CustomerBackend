@@ -42,4 +42,6 @@ services:
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
       FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
+      # Admin email allow-list (injected from ADMIN_EMAILS GitHub Secret)
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-admin@hinchmart.com}
 

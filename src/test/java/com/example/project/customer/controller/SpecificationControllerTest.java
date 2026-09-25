@@ -35,6 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest({SpecificationController.class, CategoryController.class})
 @Import({GlobalExceptionHandler.class, SecurityConfig.class})
+@org.springframework.security.test.context.support.WithMockUser(roles = "ADMIN")
 class SpecificationControllerTest {
 
     @Autowired

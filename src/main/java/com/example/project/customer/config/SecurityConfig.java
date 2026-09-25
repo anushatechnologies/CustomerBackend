@@ -65,9 +65,41 @@ public class SecurityConfig {
         }
 
         http.authorizeHttpRequests(authorize -> authorize
+                // Allow preflight CORS requests
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+                // ── Public: Authentication ──────────────────────────────────────────────
+                // /api/auth/** is permitAll here; AuthController handles its own 401 logic
+                // for endpoints that truly require a token (e.g. /me).
                 .requestMatchers("/api/auth/**").permitAll()
-                .anyRequest().permitAll()
+
+                // ── Public: Actuator health (used by deployment health-check) ───────────
+                .requestMatchers("/actuator/health").permitAll()
+
+                // ── Public: Product catalogue (read-only GET) ────────────────────────────
+                .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/categories/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/subcategories/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/brands/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/banners/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/search/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/stores/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/specifications/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/reviews/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/blog/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/news/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/coupons/**").permitAll()
+
+                // ── Public: Location reverse-geocode (POST — used before login for address) ─
+                .requestMatchers("/api/location/**").permitAll()
+
+                // ── Public: Image downloads (product/banner images are public) ──────────
+                .requestMatchers(HttpMethod.GET, "/api/images/**").permitAll()
+                // ── Admin-only routes (defence-in-depth; controllers also use @PreAuthorize) ─
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
+                // ── Everything else requires authentication ──────────────────────────────
+                .anyRequest().authenticated()
         );
 
         if (firebaseAuthenticationFilter != null) {

@@ -33,6 +33,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import org.springframework.security.test.context.support.WithMockUser;
 
 @WebMvcTest(BannerController.class)
 @Import({GlobalExceptionHandler.class, SecurityConfig.class})
@@ -49,6 +50,7 @@ class BannerControllerTest {
     private BannerService bannerService;
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     @DisplayName("POST /api/banners - Should create banner and return 201 Created wrapped in ApiResponse")
     void createBanner_Success() throws Exception {
         BannerRequest request = BannerRequest.builder()
@@ -98,6 +100,7 @@ class BannerControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     @DisplayName("POST /api/banners - Should return 400 Bad Request when title is blank")
     void createBanner_InvalidRequest_BlankTitle() throws Exception {
         BannerRequest request = BannerRequest.builder().title("").build();
@@ -180,6 +183,7 @@ class BannerControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     @DisplayName("PUT /api/banners/{id} - Should update and return banner")
     void updateBanner_Success() throws Exception {
         BannerRequest request = BannerRequest.builder()
@@ -211,6 +215,7 @@ class BannerControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     @DisplayName("POST /api/banners/{id}/image - Should upload banner image and return updated banner")
     void uploadBannerImage_Success() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
@@ -243,6 +248,7 @@ class BannerControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     @DisplayName("DELETE /api/banners/{id} - Should delete banner and return 200 OK with ApiResponse")
     void deleteBanner_Success() throws Exception {
         doNothing().when(bannerService).deleteBanner(1);
@@ -255,6 +261,7 @@ class BannerControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     @DisplayName("DELETE /api/banners/{id} - Should return 404 when banner to delete does not exist")
     void deleteBanner_NotFound() throws Exception {
         doThrow(new BannerNotFoundException("Banner not found with id: 99"))

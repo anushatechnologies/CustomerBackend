@@ -30,6 +30,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import org.springframework.security.test.context.support.WithMockUser;
 
 @WebMvcTest(BrandController.class)
 @Import({GlobalExceptionHandler.class, SecurityConfig.class})
@@ -45,6 +46,7 @@ class BrandControllerTest {
     private BrandService brandService;
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     @DisplayName("POST /api/brands - Should create brand and return 201 Created")
     void createBrand_Success() throws Exception {
         BrandRequest request = BrandRequest.builder()
@@ -85,6 +87,7 @@ class BrandControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     @DisplayName("POST /api/brands - Should return 400 Bad Request when name is blank")
     void createBrand_InvalidRequest_BlankName() throws Exception {
         BrandRequest request = BrandRequest.builder()
@@ -146,6 +149,7 @@ class BrandControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     @DisplayName("PUT /api/brands/{id} - Should update and return brand")
     void updateBrand_Success() throws Exception {
         BrandRequest request = BrandRequest.builder()
@@ -170,6 +174,7 @@ class BrandControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     @DisplayName("DELETE /api/brands/{id} - Should delete brand")
     void deleteBrand_Success() throws Exception {
         doNothing().when(brandService).delete(1);

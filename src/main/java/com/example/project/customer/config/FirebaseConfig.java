@@ -8,6 +8,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 
 import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
@@ -18,6 +20,8 @@ import java.util.Base64;
 @Slf4j
 @Configuration
 public class FirebaseConfig {
+
+    private final Environment environment;
 
     @Value("${firebase.project-id:${FIREBASE_PROJECT_ID:}}")
     private String projectId;
@@ -37,6 +41,18 @@ public class FirebaseConfig {
     @Value("${firebase.config-path:${FIREBASE_CONFIG_PATH:}}")
     private String configPath;
 
+    public FirebaseConfig(Environment environment) {
+        this.environment = environment;
+    }
+
+    /**
+     * Returns true if the current active profile is the 'dev' profile, where Firebase
+     * credentials are optional (H2 in-memory DB is used and token verification is skipped).
+     */
+    private boolean isDevProfile() {
+        return environment.acceptsProfiles(Profiles.of("dev"));
+    }
+
     @Bean
     public FirebaseApp firebaseApp() {
         if (!FirebaseApp.getApps().isEmpty()) {
@@ -45,9 +61,21 @@ public class FirebaseConfig {
 
         try {
             GoogleCredentials credentials = resolveCredentials();
+
             if (credentials == null) {
-                // Fallback token to allow FirebaseApp initialization for public key ID token verification
-                credentials = GoogleCredentials.create(new com.google.auth.oauth2.AccessToken("public-verify-token", new java.util.Date(System.currentTimeMillis() + 86400000000L)));
+                if (isDevProfile()) {
+                    // In dev mode, Firebase is optional. Return null — the filter handles a null FirebaseApp gracefully.
+                    log.warn("[DEV] No Firebase credentials configured. Firebase token verification is DISABLED. "
+                            + "Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY to enable it.");
+                    return null;
+                }
+                // In production, missing credentials is a fatal misconfiguration.
+                throw new IllegalStateException(
+                    "Firebase credentials are required in production but none were found. "
+                    + "Ensure the following GitHub Secrets are set and injected via CI/CD: "
+                    + "FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY "
+                    + "(or FIREBASE_CREDENTIALS_JSON / FIREBASE_CREDENTIALS_BASE64)."
+                );
             }
 
             FirebaseOptions.Builder optionsBuilder = FirebaseOptions.builder()
@@ -60,30 +88,32 @@ public class FirebaseConfig {
             FirebaseApp app = FirebaseApp.initializeApp(optionsBuilder.build());
             log.info("Firebase Admin SDK successfully initialized (Project ID: {})", projectId);
             return app;
+
+        } catch (IllegalStateException e) {
+            // Re-throw fatal configuration errors immediately — do NOT swallow.
+            throw e;
         } catch (Exception e) {
-            log.warn("Firebase Admin SDK initialization skipped or encountered warning: {}. Running with default/fallback credentials.", e.getMessage());
-            try {
-                // Fallback attempt with empty/default options for local dev
-                if (FirebaseApp.getApps().isEmpty()) {
-                    return FirebaseApp.initializeApp();
-                }
-                return FirebaseApp.getInstance();
-            } catch (Exception ex) {
-                log.error("Unable to initialize FirebaseApp: {}", ex.getMessage());
+            if (isDevProfile()) {
+                log.warn("[DEV] Firebase Admin SDK initialization failed: {}. Firebase token verification is DISABLED.", e.getMessage());
                 return null;
             }
+            // In production, any initialization failure is fatal.
+            throw new IllegalStateException(
+                "Failed to initialize Firebase Admin SDK. Check FIREBASE_* environment variables injected from GitHub Secrets. Cause: " + e.getMessage(), e
+            );
         }
     }
 
     @Bean
     public FirebaseAuth firebaseAuth(FirebaseApp firebaseApp) {
-        if (firebaseApp != null) {
-            return FirebaseAuth.getInstance(firebaseApp);
+        if (firebaseApp == null) {
+            log.warn("FirebaseApp is null — FirebaseAuth bean will be null. Token verification is disabled.");
+            return null;
         }
         try {
-            return FirebaseAuth.getInstance();
+            return FirebaseAuth.getInstance(firebaseApp);
         } catch (Exception e) {
-            log.warn("FirebaseAuth instance could not be retrieved directly: {}", e.getMessage());
+            log.warn("FirebaseAuth instance could not be retrieved: {}", e.getMessage());
             return null;
         }
     }
@@ -105,7 +135,7 @@ public class FirebaseConfig {
                 return GoogleCredentials.fromStream(stream);
             }
 
-            // 3. File path from environment or properties
+            // 3. File path
             if (configPath != null && !configPath.isBlank()) {
                 log.info("Initializing Firebase using config file path: {}", configPath);
                 try (InputStream stream = new FileInputStream(configPath)) {
@@ -113,24 +143,24 @@ public class FirebaseConfig {
                 }
             }
 
-            // 4. Classpath resource: firebase-service-account.json
+            // 4. Classpath resource
             InputStream cpStream = getClass().getClassLoader().getResourceAsStream("firebase-service-account.json");
             if (cpStream != null) {
                 log.info("Initializing Firebase using classpath:firebase-service-account.json");
                 return GoogleCredentials.fromStream(cpStream);
             }
 
-            // 5. Discrete Environment Variables: Project ID, Client Email, Private Key
+            // 5. Discrete environment variables: FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY
             if (clientEmail != null && !clientEmail.isBlank() && privateKey != null && !privateKey.isBlank()) {
                 log.info("Initializing Firebase using discrete environment variables (Client Email: {})", clientEmail);
                 String formattedKey = privateKey.replace("\\n", "\n").trim();
                 String jsonCredentials = String.format(
-                        "{\n" +
-                                "  \"type\": \"service_account\",\n" +
-                                "  \"project_id\": \"%s\",\n" +
-                                "  \"client_email\": \"%s\",\n" +
-                                "  \"private_key\": \"%s\"\n" +
-                                "}",
+                        "{%n"
+                        + "  \"type\": \"service_account\",%n"
+                        + "  \"project_id\": \"%s\",%n"
+                        + "  \"client_email\": \"%s\",%n"
+                        + "  \"private_key\": \"%s\"%n"
+                        + "}",
                         projectId != null ? projectId.trim() : "",
                         clientEmail.trim(),
                         formattedKey.replace("\n", "\\n")
@@ -139,9 +169,10 @@ public class FirebaseConfig {
                 return GoogleCredentials.fromStream(stream);
             }
 
-            // 6. Try Google Application Default Credentials (e.g., AWS EC2 with GCP connector or local gcloud auth)
+            // 6. Application Default Credentials (GCP-hosted environments)
             log.info("Attempting to initialize Firebase using Application Default Credentials");
             return GoogleCredentials.getApplicationDefault();
+
         } catch (Exception e) {
             log.warn("Could not load GoogleCredentials from configured sources: {}", e.getMessage());
             return null;
