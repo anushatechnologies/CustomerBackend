@@ -2,6 +2,7 @@ package com.example.project.customer.controller;
 
 import com.example.project.customer.config.SecurityConfig;
 import com.example.project.customer.config.UserContextUtil;
+import com.example.project.customer.dto.CheckPhoneResponse;
 import com.example.project.customer.dto.ImageUploadResponse;
 import com.example.project.customer.dto.OrderResponse;
 import com.example.project.customer.dto.QuotationResponse;
@@ -386,5 +387,50 @@ class NewMarketplaceEndpointsTest {
         mockMvc.perform(post("/api/auth/refresh-token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("GET /api/auth/check-phone - Returns exists=true when user exists")
+    void checkPhone_Exists_Success() throws Exception {
+        when(userService.checkPhoneExists("9876543210")).thenReturn(
+                CheckPhoneResponse.builder()
+                        .exists(true)
+                        .phone("+919876543210")
+                        .name("John Doe")
+                        .role("CUSTOMER")
+                        .build()
+        );
+
+        mockMvc.perform(get("/api/auth/check-phone").param("phone", "9876543210"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.exists").value(true))
+                .andExpect(jsonPath("$.data.phone").value("+919876543210"))
+                .andExpect(jsonPath("$.data.name").value("John Doe"))
+                .andExpect(jsonPath("$.data.role").value("CUSTOMER"));
+    }
+
+    @Test
+    @DisplayName("GET /api/auth/check-phone - Returns exists=false when user does not exist")
+    void checkPhone_DoesNotExist_Success() throws Exception {
+        when(userService.checkPhoneExists("9999999999")).thenReturn(
+                CheckPhoneResponse.builder()
+                        .exists(false)
+                        .phone("9999999999")
+                        .build()
+        );
+
+        mockMvc.perform(get("/api/auth/check-phone").param("phone", "9999999999"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.exists").value(false))
+                .andExpect(jsonPath("$.data.phone").value("9999999999"));
+    }
+
+    @Test
+    @DisplayName("GET /api/auth/check-phone - Returns 400 when phone parameter is missing")
+    void checkPhone_MissingParam_BadRequest() throws Exception {
+        mockMvc.perform(get("/api/auth/check-phone"))
+                .andExpect(status().isBadRequest());
     }
 }

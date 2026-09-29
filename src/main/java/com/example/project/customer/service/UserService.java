@@ -19,4 +19,8 @@ public interface UserService {
     UserProfileResponse updateUserProfile(Integer userId, UserProfileUpdateRequest request);
 
     Integer resolveSellerIdForUser(Customer customer);
+
+    com.example.project.customer.dto.CheckPhoneResponse checkPhoneExists(String phone);
+
+    boolean isProfileComplete(Customer customer);
 }

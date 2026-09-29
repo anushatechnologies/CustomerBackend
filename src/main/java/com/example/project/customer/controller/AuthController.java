@@ -13,11 +13,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import com.example.project.customer.dto.CheckPhoneResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
@@ -43,6 +45,16 @@ public class AuthController {
         this.userService = userService;
         this.firebaseAuthService = firebaseAuthService;
         this.adminUserRepository = adminUserRepository;
+    }
+
+    /**
+     * Pre-login phone check: checks if a customer/seller exists in the database for the given phone number.
+     * Publicly accessible pre-login endpoint (no token required).
+     */
+    @GetMapping("/check-phone")
+    public ResponseEntity<ApiResponse<CheckPhoneResponse>> checkPhone(@RequestParam(name = "phone") String phone) {
+        CheckPhoneResponse response = userService.checkPhoneExists(phone);
+        return ResponseEntity.ok(ApiResponse.ok("Phone check completed", response));
     }
 
     /**
@@ -80,9 +92,6 @@ public class AuthController {
                         name = decoded.getName();
                     }
                     claims = decoded.getClaims();
-                    if (phone == null && claims != null && claims.get("phone_number") != null) {
-                        phone = String.valueOf(claims.get("phone_number"));
-                    }
                 } catch (Exception ex) {
                     log.warn("Direct token verification in /api/auth/sync encountered: {}", ex.getMessage());
                 }
@@ -95,11 +104,18 @@ public class AuthController {
             );
         }
 
+        // Verified phone from Firebase token ALWAYS takes precedence over client-supplied phone
+        String verifiedPhone = null;
+        if (claims != null && claims.get("phone_number") != null) {
+            verifiedPhone = String.valueOf(claims.get("phone_number"));
+        }
+        String phoneToUse = (verifiedPhone != null && !verifiedPhone.isBlank()) ? verifiedPhone : phone;
+
         Customer customer = userService.syncUserWithFirebase(
                 firebaseUid,
                 email,
                 name,
-                phone,
+                phoneToUse,
                 request != null ? request.getRole() : null
         );
 
@@ -123,6 +139,7 @@ public class AuthController {
                 .role(customer.getRole())
                 .sellerId(sellerId)
                 .claims(claims)
+                .isProfileComplete(userService.isProfileComplete(customer))
                 .build();
 
         return ResponseEntity.status(HttpStatus.OK)
@@ -234,6 +251,7 @@ public class AuthController {
                 .role(customer.getRole())
                 .sellerId(null)
                 .claims(claims)
+                .isProfileComplete(userService.isProfileComplete(customer))
                 .build();
 
         return ResponseEntity.ok(ApiResponse.ok("Admin role assigned and verified successfully", response));
@@ -260,6 +278,7 @@ public class AuthController {
                 .role(customer.getRole())
                 .sellerId(sellerId)
                 .claims(principal.getClaims())
+                .isProfileComplete(userService.isProfileComplete(customer))
                 .build();
 
         return ResponseEntity.ok(ApiResponse.ok("Current user details retrieved", response));
@@ -295,6 +314,7 @@ public class AuthController {
                     .role(customer.getRole())
                     .sellerId(sellerId)
                     .claims(principal.getClaims())
+                    .isProfileComplete(userService.isProfileComplete(customer))
                     .build();
             return ResponseEntity.ok(ApiResponse.ok("Session refreshed successfully", response));
         }
@@ -322,6 +342,7 @@ public class AuthController {
                         .role(customer.getRole())
                         .sellerId(sellerId)
                         .claims(decoded.getClaims())
+                        .isProfileComplete(userService.isProfileComplete(customer))
                         .build();
                 return ResponseEntity.ok(ApiResponse.ok("Token refreshed successfully", response));
             } catch (Exception ex) {

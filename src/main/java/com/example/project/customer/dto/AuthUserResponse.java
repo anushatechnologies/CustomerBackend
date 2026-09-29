@@ -25,4 +25,5 @@ public class AuthUserResponse {
     private String role;
     private Integer sellerId;
     private Map<String, Object> claims;
+    private Boolean isProfileComplete;
 }
