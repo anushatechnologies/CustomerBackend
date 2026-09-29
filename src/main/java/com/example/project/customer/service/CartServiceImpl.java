@@ -2,7 +2,9 @@ package com.example.project.customer.service;
 
 import com.example.project.customer.dto.CartItemRequest;
 import com.example.project.customer.dto.CartItemResponse;
+import com.example.project.customer.dto.CartItemUpdateRequest;
 import com.example.project.customer.dto.CartResponse;
+import com.example.project.customer.dto.CartSyncRequest;
 import com.example.project.customer.dto.CouponResponse;
 import com.example.project.customer.dto.SwitchStoreRequest;
 import com.example.project.customer.entity.BulkPricingTier;
@@ -87,11 +89,14 @@ public class CartServiceImpl implements CartService {
             activeCart = getOrCreateCartForStore(uid, productStore);
         }
 
-        Optional<CartItem> existingItem = cartItemRepository.findByCart_CartIdAndProduct_ProductId(activeCart.getCartId(), product.getProductId());
-        if (existingItem.isPresent()) {
-            CartItem item = existingItem.get();
+        List<CartItem> existingItems = cartItemRepository.findAllByCart_CartIdAndProduct_ProductId(activeCart.getCartId(), product.getProductId());
+        if (!existingItems.isEmpty()) {
+            CartItem item = existingItems.get(0);
             item.setQuantity(request.getQuantity());
             cartItemRepository.save(item);
+            for (int i = 1; i < existingItems.size(); i++) {
+                cartItemRepository.delete(existingItems.get(i));
+            }
         } else {
             CartItem newItem = CartItem.builder()
                     .cart(activeCart)
@@ -168,12 +173,122 @@ public class CartServiceImpl implements CartService {
     }
 
     @Override
-    public CartResponse removeItem(Integer userId, Integer productId) {
+    public CartResponse updateItem(Integer userId, Integer id, CartItemUpdateRequest request) {
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
+        if (id == null) {
+            throw new IllegalArgumentException("Cart item ID must not be null.");
+        }
         Cart cart = getOrCreateActiveCart(userId);
-        cartItemRepository.findByCart_CartIdAndProduct_ProductId(cart.getCartId(), productId)
-                .ifPresent(cartItemRepository::delete);
+
+        // Prefer cartItemId as primary identifier; fallback to productId for backward compatibility
+        CartItem item = cartItemRepository.findByCart_CartIdAndCartItemId(cart.getCartId(), id)
+                .orElseGet(() -> cartItemRepository.findByCart_CartIdAndProduct_ProductId(cart.getCartId(), id)
+                        .orElseThrow(() -> new ResourceNotFoundException("Cart item not found with ID: " + id)));
+
+        if (request.getQuantity() == null || request.getQuantity() == 0) {
+            cartItemRepository.delete(item);
+        } else {
+            item.setQuantity(request.getQuantity());
+            cartItemRepository.save(item);
+        }
+
         revalidateAppliedCoupon(cart);
         return calculateCartResponse(cart);
+    }
+
+    @Override
+    public CartResponse removeItem(Integer userId, Integer id) {
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
+        if (id == null) {
+            throw new IllegalArgumentException("Cart item ID must not be null.");
+        }
+        Cart cart = getOrCreateActiveCart(userId);
+        // Prefer cartItemId as primary identifier; fallback to productId for backward compatibility
+        Optional<CartItem> itemOpt = cartItemRepository.findByCart_CartIdAndCartItemId(cart.getCartId(), id);
+        if (itemOpt.isEmpty()) {
+            itemOpt = cartItemRepository.findByCart_CartIdAndProduct_ProductId(cart.getCartId(), id);
+        }
+        itemOpt.ifPresent(cartItemRepository::delete);
+        revalidateAppliedCoupon(cart);
+        return calculateCartResponse(cart);
+    }
+
+    @Override
+    public CartResponse syncCart(Integer userId, CartSyncRequest request) {
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
+        int uid = userId;
+        if (request == null || request.getItems() == null || request.getItems().isEmpty()) {
+            return getCart(uid);
+        }
+
+        Cart activeCart = getOrCreateActiveCart(uid);
+
+        // Resolve store if targetStoreId provided
+        if (request.getTargetStoreId() != null) {
+            Store targetStore = storeRepository.findById(request.getTargetStoreId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Target store not found with id: " + request.getTargetStoreId()));
+            if (targetStore.getStatus() != StoreStatus.ACTIVE) {
+                throw new IllegalStateException("Cannot sync cart to store '" + targetStore.getName() + "': Store is currently " + targetStore.getStatus());
+            }
+            if (!activeCart.getStore().getStoreId().equals(targetStore.getStoreId())) {
+                activeCart = getOrCreateCartForStore(uid, targetStore);
+                activeCart.setIsActive(true);
+                cartRepository.save(activeCart);
+            }
+        }
+
+        for (CartItemRequest itemReq : request.getItems()) {
+            if (itemReq.getProductId() == null || itemReq.getQuantity() == null || itemReq.getQuantity() <= 0) {
+                continue;
+            }
+            Product product = productRepository.findById(itemReq.getProductId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + itemReq.getProductId()));
+
+            if (!product.isActive()) {
+                continue;
+            }
+
+            Store productStore = resolveProductStore(product);
+            if (productStore.getStatus() != StoreStatus.ACTIVE) {
+                continue;
+            }
+
+            List<CartItem> currentItems = cartItemRepository.findByCart_CartId(activeCart.getCartId());
+            if (currentItems.isEmpty()) {
+                activeCart.setStore(productStore);
+                activeCart = cartRepository.save(activeCart);
+            } else if (!activeCart.getStore().getStoreId().equals(productStore.getStoreId())) {
+                log.warn("Skipping product #{} during cart sync due to store mismatch with active cart (store #{} vs #{})",
+                        product.getProductId(), activeCart.getStore().getStoreId(), productStore.getStoreId());
+                continue;
+            }
+
+            List<CartItem> existingItems = cartItemRepository.findAllByCart_CartIdAndProduct_ProductId(activeCart.getCartId(), product.getProductId());
+            if (!existingItems.isEmpty()) {
+                CartItem item = existingItems.get(0);
+                item.setQuantity(itemReq.getQuantity());
+                cartItemRepository.save(item);
+                for (int i = 1; i < existingItems.size(); i++) {
+                    cartItemRepository.delete(existingItems.get(i));
+                }
+            } else {
+                CartItem newItem = CartItem.builder()
+                        .cart(activeCart)
+                        .product(product)
+                        .quantity(itemReq.getQuantity())
+                        .build();
+                cartItemRepository.save(newItem);
+            }
+        }
+
+        revalidateAppliedCoupon(activeCart);
+        return calculateCartResponse(activeCart);
     }
 
     @Override

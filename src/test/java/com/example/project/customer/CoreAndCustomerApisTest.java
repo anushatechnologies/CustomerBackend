@@ -13,7 +13,9 @@ import com.example.project.customer.controller.SubcategoryController;
 import com.example.project.customer.controller.WishlistController;
 import com.example.project.customer.dto.ApiResponse;
 import com.example.project.customer.dto.CartItemRequest;
+import com.example.project.customer.dto.CartItemUpdateRequest;
 import com.example.project.customer.dto.CartResponse;
+import com.example.project.customer.dto.CartSyncRequest;
 import com.example.project.customer.dto.CategoryRequest;
 import com.example.project.customer.dto.CategoryResponse;
 import com.example.project.customer.dto.CheckoutPreviewRequest;
@@ -152,7 +154,43 @@ public class CoreAndCustomerApisTest {
     }
 
     @Test
-    @DisplayName("Cart API: DELETE /api/cart/items/{productId} removes item")
+    @DisplayName("Cart API: PUT /api/cart/items/{id} updates item quantity")
+    void testUpdateCartItemQuantity() throws Exception {
+        when(userContextUtil.getCurrentUserId()).thenReturn(101);
+        CartItemUpdateRequest req = CartItemUpdateRequest.builder().quantity(3).build();
+        CartResponse mockCart = CartResponse.builder().cartId(1).grandTotal(BigDecimal.valueOf(15000.0)).build();
+        when(cartService.updateItem(eq(101), eq(10), any(CartItemUpdateRequest.class))).thenReturn(mockCart);
+
+        mockMvc.perform(put("/api/cart/items/10")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Cart item updated successfully"))
+                .andExpect(jsonPath("$.data.cartId").value(1));
+    }
+
+    @Test
+    @DisplayName("Cart API: POST /api/cart/sync synchronizes guest items")
+    void testSyncCart() throws Exception {
+        when(userContextUtil.getCurrentUserId()).thenReturn(101);
+        CartSyncRequest req = CartSyncRequest.builder()
+                .items(List.of(CartItemRequest.builder().productId(10).quantity(2).build()))
+                .build();
+        CartResponse mockCart = CartResponse.builder().cartId(1).grandTotal(BigDecimal.valueOf(10000.0)).build();
+        when(cartService.syncCart(eq(101), any(CartSyncRequest.class))).thenReturn(mockCart);
+
+        mockMvc.perform(post("/api/cart/sync")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Cart synchronized successfully"))
+                .andExpect(jsonPath("$.data.cartId").value(1));
+    }
+
+    @Test
+    @DisplayName("Cart API: DELETE /api/cart/items/{id} removes item")
     void testRemoveCartItem() throws Exception {
         when(userContextUtil.getCurrentUserId()).thenReturn(101);
         CartResponse mockCart = CartResponse.builder().cartId(1).grandTotal(BigDecimal.ZERO).build();
