@@ -814,3 +814,237 @@ const newProduct  = await sellerApi('/api/seller/products', {
 | **Documents** | `GET /api/seller/documents` + `POST /api/seller/documents` |
 | **Enquiries** | `GET /api/seller/enquiries` |
 | **Quotations** | `POST /api/seller/quotations` + `GET /api/seller/quotations` |
+| **Orders** | `GET /api/seller/orders` + `POST .../accept` + `POST .../reject` |
+
+---
+
+## Module 7 — Seller Orders & Rider Delivery Dispatch
+
+> **Use case:** Manage incoming customer orders for the seller store, accept/reject orders, trigger customer OTP generation, and initiate automated sequential nearby rider dispatch.
+
+### 7.1 List Seller Orders
+
+```
+GET /api/seller/orders?status=PLACED&page=1&limit=20
+```
+
+**Headers:** `X-Seller-Id: 1001`
+
+**Response:**
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Seller orders retrieved successfully",
+  "data": [
+    {
+      "orderId": 501,
+      "orderNumber": "ORD-20260918-A1B2C3",
+      "orderStatus": "PLACED",
+      "totalAmount": 1850.00,
+      "paymentMethod": "RAZORPAY",
+      "paymentStatus": "PAID",
+      "deliveryLocation": "Plot 55, Gachibowli, Hyderabad",
+      "itemCount": 2,
+      "firstItemTitle": "Ultratech Cement 50kg"
+    }
+  ]
+}
+```
+
+---
+
+### 7.2 Accept Order (With Vehicle Type Selection & Customer Delivery OTP Generation)
+
+```
+POST /api/seller/orders/{orderId}/accept
+```
+
+**Headers:** 
+- `X-Seller-Id: 1001`
+- `Content-Type: application/json`
+
+**Body (Optional):**
+> 💡 *Sellers evaluate order weight/dimensions and pick the appropriate vehicle type. If omitted, the system automatically infers the vehicle type based on package weight.*
+
+```json
+{
+  "vehicleTypeCode": "THREE_WHEELER"
+}
+```
+
+*Available standard codes:* `TWO_WHEELER`, `THREE_WHEELER`, `TATA_ACE`, `PICKUP_8FT`, `TATA_407`.
+
+**Response:**
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Order accepted successfully. Customer Delivery OTP generated and rider dispatch initiated.",
+  "data": {
+    "orderId": 501,
+    "orderNumber": "ORD-20260918-A1B2C3",
+    "orderStatus": "ACCEPTED_BY_SELLER",
+    "selectedVehicleType": "THREE_WHEELER",
+    "deliveryOtp": "482910",
+    "sellerAcceptedAt": "2026-09-18T15:30:00"
+  }
+}
+```
+
+---
+
+### 7.3 Reject Order
+
+```
+POST /api/seller/orders/{orderId}/reject
+```
+
+**Headers:** `X-Seller-Id: 1001`
+
+**Body:**
+```json
+{
+  "reason": "Out of stock / Warehouse closed"
+}
+```
+
+---
+
+## Module 8 — Vehicle Types & Fare Configuration
+
+### 8.1 Seller: Get Active Vehicle Types & Fare Options
+```
+GET /api/seller/vehicle-types
+```
+*(Also available at `GET /api/vehicle-types`)*
+
+**Response:**
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Active vehicle types and fare options retrieved successfully",
+  "data": [
+    {
+      "id": 1,
+      "code": "TWO_WHEELER",
+      "name": "Two Wheeler / Bike",
+      "description": "Standard motorcycle or scooter for light packages up to 20kg",
+      "maxWeightKg": 20.0,
+      "sizeDimensions": "40 x 40 x 40 cm",
+      "baseFare": 35.0,
+      "baseDistanceKm": 2.0,
+      "perKmRate": 10.0,
+      "minimumFare": 35.0,
+      "active": true,
+      "sortOrder": 1,
+      "imageUrl": "https://cdn.hinchmart.com/vehicles/two_wheeler.png",
+      "fareSummary": "₹35 base fare (includes 2.0 km) + ₹10.00/km thereafter (Min ₹35)"
+    },
+    {
+      "id": 2,
+      "code": "THREE_WHEELER",
+      "name": "Three Wheeler / Auto",
+      "description": "Electric or CNG auto cargo for medium loads up to 300kg",
+      "maxWeightKg": 300.0,
+      "sizeDimensions": "120 x 90 x 90 cm",
+      "baseFare": 80.0,
+      "baseDistanceKm": 2.0,
+      "perKmRate": 18.0,
+      "minimumFare": 80.0,
+      "active": true,
+      "sortOrder": 2,
+      "imageUrl": "https://cdn.hinchmart.com/vehicles/three_wheeler.png",
+      "fareSummary": "₹80 base fare (includes 2.0 km) + ₹18.00/km thereafter (Min ₹80)"
+    },
+    {
+      "id": 3,
+      "code": "TATA_ACE",
+      "name": "Tata Ace (Chota Hathi)",
+      "description": "Mini truck for heavy construction material, tiles, and hardware up to 750kg",
+      "maxWeightKg": 750.0,
+      "sizeDimensions": "7 x 4.5 x 5 ft",
+      "baseFare": 250.0,
+      "baseDistanceKm": 3.0,
+      "perKmRate": 28.0,
+      "minimumFare": 250.0,
+      "active": true,
+      "sortOrder": 3,
+      "imageUrl": "https://cdn.hinchmart.com/vehicles/tata_ace.png",
+      "fareSummary": "₹250 base fare (includes 3.0 km) + ₹28.00/km thereafter (Min ₹250)"
+    }
+  ]
+}
+```
+
+### 8.2 Dynamic Delivery Fare Estimator
+```
+GET /api/vehicle-types/{code}/estimate-fare?distanceKm=6.5
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Fare estimated successfully",
+  "data": {
+    "vehicleTypeCode": "THREE_WHEELER",
+    "vehicleTypeName": "Three Wheeler / Auto",
+    "distanceKm": 6.5,
+    "baseFare": 80.0,
+    "baseDistanceKm": 2.0,
+    "perKmRate": 18.0,
+    "minimumFare": 80.0,
+    "estimatedFare": 161.0
+  }
+}
+```
+
+### 8.3 Admin: Manage Vehicle Types & Fare Options (CRUD)
+> Requires `ADMIN` authority.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/admin/vehicle-types` | Add new vehicle type with custom weight/size limits & base/per-km fare rates |
+| `GET` | `/api/admin/vehicle-types` | List all vehicle types (including inactive) |
+| `GET` | `/api/admin/vehicle-types/{id}` | Get single vehicle type details |
+| `PUT` | `/api/admin/vehicle-types/{id}` | Update vehicle specifications and fare pricing formulas |
+| `DELETE` | `/api/admin/vehicle-types/{id}` | Soft-delete / deactivate vehicle type |
+
+**Admin Create / Update Payload:**
+```json
+{
+  "code": "ELECTRIC_CARGO_VAN",
+  "name": "Electric Cargo Van",
+  "description": "Eco-friendly medium van for urban delivery",
+  "maxWeightKg": 500.0,
+  "sizeDimensions": "6 x 4 x 4 ft",
+  "baseFare": 180.0,
+  "baseDistanceKm": 3.0,
+  "perKmRate": 22.0,
+  "minimumFare": 180.0,
+  "active": true,
+  "sortOrder": 4,
+  "imageUrl": "https://cdn.hinchmart.com/vehicles/ev_van.png"
+}
+```
+
+---
+
+## Module 9 — Rider Delivery APIs & Vehicle-Filtered Dispatch
+
+> 🚀 **How Vehicle Matching Works:**
+> When the seller selects e.g. `THREE_WHEELER`, the backend filters the online pool and **only sends dispatch notifications to riders whose registered `vehicleType == "THREE_WHEELER"`**. Other vehicle drivers (e.g. 2-wheelers or heavy trucks) will NOT be pinged.
+> The offered fare is calculated dynamically using the vehicle type's fare options.
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/rider/status` | Update rider location (`latitude`, `longitude`) & online availability |
+| `GET` | `/api/rider/offers/active` | Retrieve current dispatch offer with countdown timer (`remainingSeconds`) and `offeredFare` |
+| `POST` | `/api/rider/offers/{offerId}/respond` | Accept or reject offer (`{ "action": "ACCEPT" | "REJECT" }`) |
+| `POST` | `/api/rider/orders/{orderId}/pickup` | Mark items picked up from seller store (`IN_TRANSIT`) |
+| `POST` | `/api/rider/orders/{orderId}/arrived` | Mark rider arrived at customer location (`OUT_FOR_DELIVERY`) |
+| `POST` | `/api/rider/orders/{orderId}/verify-delivery` | Validate customer 6-digit OTP & payment confirmation (`DELIVERED`) |
+

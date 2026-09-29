@@ -146,6 +146,49 @@ public class Order {
     @Column(name = "driver_name")
     private String driverName;
 
+    @Column(name = "seller_accepted_at")
+    private LocalDateTime sellerAcceptedAt;
+
+    @Column(name = "seller_rejection_reason")
+    private String sellerRejectionReason;
+
+    @Column(name = "delivery_otp", length = 6)
+    private String deliveryOtp;
+
+    @Column(name = "selected_vehicle_type", length = 50)
+    private String selectedVehicleType;
+
+    @Column(name = "delivery_otp_generated_at")
+    private LocalDateTime deliveryOtpGeneratedAt;
+
+    @Column(name = "delivery_otp_attempts")
+    @Builder.Default
+    private int deliveryOtpAttempts = 0;
+
+    @Column(name = "delivery_otp_verified_at")
+    private LocalDateTime deliveryOtpVerifiedAt;
+
+    @Column(name = "rider_id")
+    private Long riderId;
+
+    @Column(name = "rider_name", length = 150)
+    private String riderName;
+
+    @Column(name = "rider_phone", length = 20)
+    private String riderPhone;
+
+    @Column(name = "rider_assigned_at")
+    private LocalDateTime riderAssignedAt;
+
+    @Column(name = "picked_up_at")
+    private LocalDateTime pickedUpAt;
+
+    @Column(name = "delivered_at")
+    private LocalDateTime deliveredAt;
+
+    @Column(name = "cod_amount_collected", precision = 14, scale = 2)
+    private BigDecimal codAmountCollected;
+
     @Column(name = "tracking_number")
     private String trackingNumber;
 

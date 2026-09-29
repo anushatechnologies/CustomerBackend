@@ -48,6 +48,27 @@ public class OrderResponse {
     private List<OrderItemDto> items;
     private LocalDateTime createdAt;
     private LocalDateTime estimatedDelivery;
+    private String deliveryOtp;
+    private String selectedVehicleType;
+    private LocalDateTime sellerAcceptedAt;
+    private Long riderId;
+    private String riderName;
+    private String riderPhone;
+    private String vehicleNumber;
+    private LocalDateTime deliveredAt;
+    private BigDecimal codAmountCollected;
+
+    // Delivery & Map Navigation Details
+    private String deliveryLocation;
+    private Double deliveryLatitude;
+    private Double deliveryLongitude;
+    private Double storeLatitude;
+    private Double storeLongitude;
+    private String pickupNavigationUrl;
+    private String deliveryNavigationUrl;
+    private String recipientName;
+    private String recipientPhone;
+    private String landmark;
 
     @Data
     @Builder

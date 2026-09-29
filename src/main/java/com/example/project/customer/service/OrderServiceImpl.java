@@ -676,6 +676,34 @@ public class OrderServiceImpl implements OrderService {
         String firstTitle = itemDtos.isEmpty() ? null : itemDtos.get(0).getTitle();
         String firstImage = itemDtos.isEmpty() ? null : itemDtos.get(0).getImageUrl();
         Store store = o.getStore();
+        Double storeLat = store != null ? store.getLatitude() : null;
+        Double storeLng = store != null ? store.getLongitude() : null;
+
+        Double delivLat = null;
+        Double delivLng = null;
+        String recipientName = null;
+        String recipientPhone = null;
+        String landmark = null;
+
+        if (o.getAddressId() != null) {
+            Optional<Address> addrOpt = addressRepository.findById(o.getAddressId());
+            if (addrOpt.isPresent()) {
+                Address addr = addrOpt.get();
+                delivLat = addr.getLatitude();
+                delivLng = addr.getLongitude();
+                recipientName = addr.getRecipientName();
+                recipientPhone = addr.getPhone();
+                landmark = addr.getLandmark();
+            }
+        }
+
+        String pickupNavUrl = (storeLat != null && storeLng != null)
+                ? String.format(java.util.Locale.ROOT, "https://www.google.com/maps/dir/?api=1&destination=%.6f,%.6f", storeLat, storeLng)
+                : null;
+
+        String delivNavUrl = (delivLat != null && delivLng != null)
+                ? String.format(java.util.Locale.ROOT, "https://www.google.com/maps/dir/?api=1&destination=%.6f,%.6f", delivLat, delivLng)
+                : null;
 
         return OrderResponse.builder()
                 .orderId(o.getOrderId())
@@ -710,6 +738,25 @@ public class OrderServiceImpl implements OrderService {
                 .items(itemDtos)
                 .createdAt(o.getCreatedAt())
                 .estimatedDelivery(o.getEstimatedDelivery())
+                .deliveryOtp(o.getDeliveryOtp())
+                .selectedVehicleType(o.getSelectedVehicleType())
+                .sellerAcceptedAt(o.getSellerAcceptedAt())
+                .riderId(o.getRiderId())
+                .riderName(o.getRiderName())
+                .riderPhone(o.getRiderPhone())
+                .vehicleNumber(o.getVehicleNumber())
+                .deliveredAt(o.getDeliveredAt())
+                .codAmountCollected(o.getCodAmountCollected())
+                .deliveryLocation(o.getDeliveryLocation())
+                .deliveryLatitude(delivLat)
+                .deliveryLongitude(delivLng)
+                .storeLatitude(storeLat)
+                .storeLongitude(storeLng)
+                .pickupNavigationUrl(pickupNavUrl)
+                .deliveryNavigationUrl(delivNavUrl)
+                .recipientName(recipientName)
+                .recipientPhone(recipientPhone)
+                .landmark(landmark)
                 .build();
     }
 }
