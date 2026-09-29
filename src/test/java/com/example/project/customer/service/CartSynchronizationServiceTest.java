@@ -115,6 +115,7 @@ class CartSynchronizationServiceTest {
                 .build();
 
         when(cartRepository.findByCustomer_CustomerIdAndIsActiveTrue(101)).thenReturn(Optional.of(testCart));
+        when(cartRepository.save(any(Cart.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(storeRepository.findById(1)).thenReturn(Optional.of(testStore));
         when(productRepository.findById(201)).thenReturn(Optional.of(testProduct));
         when(productRepository.findByIdForStockUpdate(201)).thenReturn(Optional.of(testProduct));
@@ -314,4 +315,42 @@ class CartSynchronizationServiceTest {
         // Verify cart is cleared after order creation
         verify(cartItemRepository).deleteByCart_CartId(50);
     }
+
+    @Test
+    @DisplayName("clearCart: clears items list on Cart entity and deletes rows from repository")
+    void testClearCart_ClearsItemsListAndDeletesFromRepository() {
+        testCart.setItems(new ArrayList<>(List.of(testCartItem)));
+        testCart.setAppliedCoupon("TESTCOUPON");
+
+        cartService.clearCart(101);
+
+        assertThat(testCart.getItems()).isEmpty();
+        assertThat(testCart.getAppliedCoupon()).isNull();
+        verify(cartItemRepository).deleteByCart_CartId(50);
+        verify(cartRepository).save(testCart);
+    }
+
+    @Test
+    @DisplayName("syncCart: auto-switches active store when targetStoreId is null but items belong to another store")
+    void testSyncCart_InfersStoreAndSwitchesWhenTargetStoreIdNull() {
+        Store store2 = Store.builder().storeId(2).name("Store 2").status(StoreStatus.ACTIVE).build();
+        Product product2 = Product.builder().productId(202).store(store2).stockQty(50).active(true).build();
+        Cart store2Cart = Cart.builder().cartId(52).customer(testCustomer).store(store2).isActive(true).items(new ArrayList<>()).build();
+
+        when(productRepository.findById(202)).thenReturn(Optional.of(product2));
+        when(cartRepository.findByCustomer_CustomerIdAndStore_StoreId(101, 2)).thenReturn(Optional.of(store2Cart));
+        when(cartItemRepository.findAllByCart_CartIdAndProduct_ProductId(52, 202)).thenReturn(List.of());
+        when(cartItemRepository.findByCart_CartId(52)).thenReturn(List.of());
+
+        CartSyncRequest syncReq = CartSyncRequest.builder()
+                .items(List.of(CartItemRequest.builder().productId(202).quantity(1).build()))
+                .build();
+
+        CartResponse response = cartService.syncCart(101, syncReq);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStoreId()).isEqualTo(2);
+        verify(cartItemRepository).save(any(CartItem.class));
+    }
 }
+

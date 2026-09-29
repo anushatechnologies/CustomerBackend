@@ -95,7 +95,11 @@ public class CartServiceImpl implements CartService {
             item.setQuantity(request.getQuantity());
             cartItemRepository.save(item);
             for (int i = 1; i < existingItems.size(); i++) {
-                cartItemRepository.delete(existingItems.get(i));
+                CartItem extra = existingItems.get(i);
+                if (activeCart.getItems() != null) {
+                    activeCart.getItems().remove(extra);
+                }
+                cartItemRepository.delete(extra);
             }
         } else {
             CartItem newItem = CartItem.builder()
@@ -188,6 +192,9 @@ public class CartServiceImpl implements CartService {
                         .orElseThrow(() -> new ResourceNotFoundException("Cart item not found with ID: " + id)));
 
         if (request.getQuantity() == null || request.getQuantity() == 0) {
+            if (cart.getItems() != null) {
+                cart.getItems().remove(item);
+            }
             cartItemRepository.delete(item);
         } else {
             item.setQuantity(request.getQuantity());
@@ -212,7 +219,12 @@ public class CartServiceImpl implements CartService {
         if (itemOpt.isEmpty()) {
             itemOpt = cartItemRepository.findByCart_CartIdAndProduct_ProductId(cart.getCartId(), id);
         }
-        itemOpt.ifPresent(cartItemRepository::delete);
+        itemOpt.ifPresent(item -> {
+            if (cart.getItems() != null) {
+                cart.getItems().remove(item);
+            }
+            cartItemRepository.delete(item);
+        });
         revalidateAppliedCoupon(cart);
         return calculateCartResponse(cart);
     }
@@ -229,7 +241,7 @@ public class CartServiceImpl implements CartService {
 
         Cart activeCart = getOrCreateActiveCart(uid);
 
-        // Resolve store if targetStoreId provided
+        // Resolve store if targetStoreId provided, or infer from incoming items if not provided
         if (request.getTargetStoreId() != null) {
             Store targetStore = storeRepository.findById(request.getTargetStoreId())
                     .orElseThrow(() -> new ResourceNotFoundException("Target store not found with id: " + request.getTargetStoreId()));
@@ -240,6 +252,21 @@ public class CartServiceImpl implements CartService {
                 activeCart = getOrCreateCartForStore(uid, targetStore);
                 activeCart.setIsActive(true);
                 cartRepository.save(activeCart);
+            }
+        } else if (!request.getItems().isEmpty()) {
+            for (CartItemRequest itemReq : request.getItems()) {
+                if (itemReq.getProductId() != null) {
+                    Product product = productRepository.findById(itemReq.getProductId()).orElse(null);
+                    if (product != null && product.isActive()) {
+                        Store productStore = resolveProductStore(product);
+                        if (productStore.getStatus() == StoreStatus.ACTIVE
+                                && activeCart.getStore() != null
+                                && !activeCart.getStore().getStoreId().equals(productStore.getStoreId())) {
+                            activeCart = getOrCreateCartForStore(uid, productStore);
+                            break;
+                        }
+                    }
+                }
             }
         }
 
@@ -275,7 +302,11 @@ public class CartServiceImpl implements CartService {
                 item.setQuantity(itemReq.getQuantity());
                 cartItemRepository.save(item);
                 for (int i = 1; i < existingItems.size(); i++) {
-                    cartItemRepository.delete(existingItems.get(i));
+                    CartItem extra = existingItems.get(i);
+                    if (activeCart.getItems() != null) {
+                        activeCart.getItems().remove(extra);
+                    }
+                    cartItemRepository.delete(extra);
                 }
             } else {
                 CartItem newItem = CartItem.builder()
@@ -294,6 +325,9 @@ public class CartServiceImpl implements CartService {
     @Override
     public void clearCart(Integer userId) {
         Cart cart = getOrCreateActiveCart(userId);
+        if (cart.getItems() != null) {
+            cart.getItems().clear();
+        }
         cartItemRepository.deleteByCart_CartId(cart.getCartId());
         cart.setAppliedCoupon(null);
         cartRepository.save(cart);
