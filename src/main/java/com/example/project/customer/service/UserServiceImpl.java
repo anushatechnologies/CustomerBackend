@@ -24,6 +24,8 @@ public class UserServiceImpl implements UserService {
 
     private final CustomerRepository customerRepository;
     private final SellerRepository sellerRepository;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.example.project.customer.repository.AdminUserRepository adminUserRepository;
     private final java.util.concurrent.locks.ReentrantLock[] stripedLocks = initStripedLocks(128);
 
     private static java.util.concurrent.locks.ReentrantLock[] initStripedLocks(int size) {
@@ -190,8 +192,10 @@ public class UserServiceImpl implements UserService {
         }
 
         // 4. Create new Customer record with appropriate role
+        // SECURITY: Role.ADMIN can NEVER be granted simply because requestedRole is "ADMIN".
+        // It must be verified against configured admin emails or AdminUserRepository.
         String resolvedRole = Role.CUSTOMER.name();
-        if ("ADMIN".equalsIgnoreCase(requestedRole) || isAdminEmail(checkEmail)) {
+        if (isAdminEmail(checkEmail)) {
             resolvedRole = Role.ADMIN.name();
         } else if ("SELLER".equalsIgnoreCase(requestedRole) || (checkEmail != null && sellerRepository.findFirstByEmailIgnoreCase(checkEmail).isPresent())) {
             resolvedRole = Role.SELLER.name();
@@ -231,6 +235,9 @@ private boolean isAdminEmail(String email) {
                 return true;
             }
         }
+    }
+    if (adminUserRepository != null && adminUserRepository.findByEmailIgnoreCase(clean).isPresent()) {
+        return true;
     }
     return false;
 }
@@ -387,7 +394,8 @@ private boolean isAdminEmail(String email) {
 
     private boolean updateRoleIfEligible(Customer customer, String requestedRole, String checkEmail) {
         String currentRole = customer.getRole();
-        if ("ADMIN".equalsIgnoreCase(requestedRole) || isAdminEmail(checkEmail)) {
+        // SECURITY: Role.ADMIN can NEVER be granted simply because requestedRole is "ADMIN".
+        if (isAdminEmail(checkEmail)) {
             if (!Role.ADMIN.name().equalsIgnoreCase(currentRole)) {
                 customer.setRole(Role.ADMIN.name());
                 return true;

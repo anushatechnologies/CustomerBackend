@@ -128,4 +128,31 @@ class UserServiceAdminEmailSecurityTest {
         assertEquals(Role.CUSTOMER.name(), result.getRole(),
                 "Normal customer email must remain CUSTOMER");
     }
+
+    @Test
+    @DisplayName("Security: Client-requested role 'ADMIN' for non-admin email MUST be ignored during registration")
+    void requestedRoleAdmin_forNonAdminEmail_doesNotGrantAdminRole() {
+        stubSave();
+        Customer result = userService.syncUserWithFirebase("uid8", "attacker@evil.com", "Attacker", null, "ADMIN");
+        assertNotEquals(Role.ADMIN.name(), result.getRole(),
+                "Client cannot self-assign ADMIN role via requestedRole parameter");
+        assertEquals(Role.CUSTOMER.name(), result.getRole());
+    }
+
+    @Test
+    @DisplayName("Security: Client-requested role 'ADMIN' for existing customer MUST NOT escalate role")
+    void requestedRoleAdmin_forExistingCustomer_doesNotEscalateRole() {
+        Customer existing = Customer.builder()
+                .customerId(99)
+                .firebaseUid("uid9")
+                .email("user@example.com")
+                .role(Role.CUSTOMER.name())
+                .name("Normal User")
+                .build();
+        when(customerRepository.findByFirebaseUid("uid9")).thenReturn(Optional.of(existing));
+
+        Customer result = userService.syncUserWithFirebase("uid9", "user@example.com", "Normal User", null, "ADMIN");
+        assertEquals(Role.CUSTOMER.name(), result.getRole(),
+                "Existing customer must not be escalated to ADMIN via requestedRole");
+    }
 }

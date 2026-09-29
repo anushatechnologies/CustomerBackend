@@ -67,8 +67,23 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                             ? String.valueOf(claims.get("phone_number")) 
                             : null;
 
-                    // Synchronize or load internal customer from MySQL database
-                    Customer customer = userService.syncUserWithFirebase(firebaseUid, email, name, phone);
+                    // Fast path: load internal customer by Firebase UID if already synced
+                    Customer customer = null;
+                    try {
+                        customer = userService.getCustomerByFirebaseUid(firebaseUid);
+                    } catch (Exception ex) {
+                        log.debug("Customer not found for Firebase UID {}, synchronizing with Firebase...", firebaseUid);
+                    }
+                    if (customer == null) {
+                        customer = userService.syncUserWithFirebase(firebaseUid, email, name, phone);
+                    }
+
+                    if (customer == null) {
+                        log.warn("Unable to resolve customer for Firebase UID: {}", firebaseUid);
+                        SecurityContextHolder.clearContext();
+                        filterChain.doFilter(request, response);
+                        return;
+                    }
 
                     // Resolve internal sellerId if applicable
                     Integer sellerId = userService.resolveSellerIdForUser(customer);
