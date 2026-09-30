@@ -49,15 +49,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Copy docker-compose.yml to EC2
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          source: "docker-compose.yml"
-          target: "~/customer-backend/"
-
       - name: Deploy Container via SSH
         uses: appleboy/ssh-action@v1.0.3
         env:
@@ -94,62 +85,67 @@ jobs:
           envs: AWS_REGION,ECR_REGISTRY,DB_HOST,DB_PORT,DB_NAME,DB_USERNAME,DB_PASSWORD,DB_DDL_AUTO,AWS_S3_BUCKET_NAME,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,LOCATION_PROVIDER,MAPS_API_KEY,RAZORPAY_KEY_ID,RAZORPAY_KEY_SECRET,RAZORPAY_WEBHOOK_SECRET,RESEND_API_KEY,RESEND_FROM_EMAIL,RESEND_FROM_NAME,RESEND_REPLY_TO,FIREBASE_PROJECT_ID,FIREBASE_CLIENT_EMAIL,FIREBASE_CLIENT_ID,FIREBASE_PRIVATE_KEY,FIREBASE_PRIVATE_KEY_ID,ADMIN_EMAILS
           script: |
             set -e
-            mkdir -p ~/customer-backend
-            cd ~/customer-backend
 
             # Ensure safe Hibernate DDL mode in production (Flyway manages schema migrations)
             if [ "$DB_DDL_AUTO" = "update" ] || [ -z "$DB_DDL_AUTO" ]; then
               DB_DDL_AUTO="validate"
             fi
 
-            # Normalize multiline or pre-quoted private key to a clean single-line string with literal \n for .env
+            # Normalize multiline or pre-quoted Firebase private key
             FORMATTED_FIREBASE_KEY=$(printf '%s' "$FIREBASE_PRIVATE_KEY" | sed ':a;N;$!ba;s/\r//g;s/\n/\\n/g' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//" | sed 's/\\\\n/\\n/g')
 
-            # Create production .env with safe quoting for all values
-            cat << 'EOF' > .env
-            SERVER_PORT=9000
-            SHOW_SQL=false
-            FORMAT_SQL=false
-            EOF
-
-            cat << EOF >> .env
-            DB_HOST="$DB_HOST"
-            DB_PORT="$DB_PORT"
-            DB_NAME="$DB_NAME"
-            DB_USERNAME="$DB_USERNAME"
-            DB_PASSWORD="$DB_PASSWORD"
-            DB_DDL_AUTO="$DB_DDL_AUTO"
-            AWS_REGION="$AWS_REGION"
-            AWS_S3_BUCKET_NAME="$AWS_S3_BUCKET_NAME"
-            AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID"
-            AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"
-            LOCATION_PROVIDER="$LOCATION_PROVIDER"
-            MAPS_API_KEY="$MAPS_API_KEY"
-            RAZORPAY_KEY_ID="$RAZORPAY_KEY_ID"
-            RAZORPAY_KEY_SECRET="$RAZORPAY_KEY_SECRET"
-            RAZORPAY_WEBHOOK_SECRET="$RAZORPAY_WEBHOOK_SECRET"
-            RESEND_API_KEY="$RESEND_API_KEY"
-            RESEND_FROM_EMAIL="$RESEND_FROM_EMAIL"
-            RESEND_FROM_NAME="$RESEND_FROM_NAME"
-            RESEND_REPLY_TO="$RESEND_REPLY_TO"
-            FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID"
-            FIREBASE_CLIENT_EMAIL="$FIREBASE_CLIENT_EMAIL"
-            FIREBASE_CLIENT_ID="$FIREBASE_CLIENT_ID"
-            FIREBASE_PRIVATE_KEY="$FORMATTED_FIREBASE_KEY"
-            FIREBASE_PRIVATE_KEY_ID="$FIREBASE_PRIVATE_KEY_ID"
-            ADMIN_EMAILS="$ADMIN_EMAILS"
-            EOF
-
-            # Apply strict file permissions
-            chmod 600 .env
+            # Clean up any legacy .env file from disk to ensure zero plaintext secrets on EC2
+            rm -f ~/customer-backend/.env
 
             # Authenticate with Amazon ECR
             aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
 
-            # Pull latest image and recreate container
-            docker compose pull
-            docker compose down || true
-            docker compose up -d
+            # Tag existing running image as backup before pulling new image (for automated rollback)
+            if docker image inspect "$ECR_REGISTRY/$ECR_REPOSITORY:latest" >/dev/null 2>&1; then
+              docker tag "$ECR_REGISTRY/$ECR_REPOSITORY:latest" "$ECR_REGISTRY/$ECR_REPOSITORY:backup"
+              echo "Created local backup tag: $ECR_REGISTRY/$ECR_REPOSITORY:backup"
+            fi
+
+            # Pull latest image before stopping old container (minimizes transition window)
+            docker pull "$ECR_REGISTRY/$ECR_REPOSITORY:latest"
+
+            # Recreate container with GitHub Secrets passed directly in memory (No .env file on disk)
+            docker stop customer-backend 2>/dev/null || true
+            docker rm customer-backend 2>/dev/null || true
+
+            docker run -d \
+              --name customer-backend \
+              --restart always \
+              -p 9000:9000 \
+              -e SERVER_PORT="9000" \
+              -e SHOW_SQL="false" \
+              -e FORMAT_SQL="false" \
+              -e DB_HOST="$DB_HOST" \
+              -e DB_PORT="$DB_PORT" \
+              -e DB_NAME="$DB_NAME" \
+              -e DB_USERNAME="$DB_USERNAME" \
+              -e DB_PASSWORD="$DB_PASSWORD" \
+              -e DB_DDL_AUTO="$DB_DDL_AUTO" \
+              -e AWS_REGION="$AWS_REGION" \
+              -e AWS_S3_BUCKET_NAME="$AWS_S3_BUCKET_NAME" \
+              -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
+              -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
+              -e LOCATION_PROVIDER="$LOCATION_PROVIDER" \
+              -e MAPS_API_KEY="$MAPS_API_KEY" \
+              -e RAZORPAY_KEY_ID="$RAZORPAY_KEY_ID" \
+              -e RAZORPAY_KEY_SECRET="$RAZORPAY_KEY_SECRET" \
+              -e RAZORPAY_WEBHOOK_SECRET="$RAZORPAY_WEBHOOK_SECRET" \
+              -e RESEND_API_KEY="$RESEND_API_KEY" \
+              -e RESEND_FROM_EMAIL="$RESEND_FROM_EMAIL" \
+              -e RESEND_FROM_NAME="$RESEND_FROM_NAME" \
+              -e RESEND_REPLY_TO="$RESEND_REPLY_TO" \
+              -e FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID" \
+              -e FIREBASE_CLIENT_EMAIL="$FIREBASE_CLIENT_EMAIL" \
+              -e FIREBASE_CLIENT_ID="$FIREBASE_CLIENT_ID" \
+              -e FIREBASE_PRIVATE_KEY="$FORMATTED_FIREBASE_KEY" \
+              -e FIREBASE_PRIVATE_KEY_ID="$FIREBASE_PRIVATE_KEY_ID" \
+              -e ADMIN_EMAILS="$ADMIN_EMAILS" \
+              "$ECR_REGISTRY/$ECR_REPOSITORY:latest"
 
             # Wait for Spring Boot Actuator health endpoint to return UP
             echo "Waiting for application to be UP at http://localhost:9000/actuator/health..."
@@ -159,7 +155,7 @@ jobs:
             SUCCESS=false
 
             while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
-              RESPONSE=$(curl -s $HEALTH_CHECK_URL || true)
+              RESPONSE=$(curl -s --connect-timeout 2 --max-time 5 $HEALTH_CHECK_URL || true)
               echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: Response -> $RESPONSE"
               if echo "$RESPONSE" | grep -q '"status":"UP"'; then
                 SUCCESS=true
@@ -173,7 +169,51 @@ jobs:
               echo "ERROR: Health check failed to reach UP status after $MAX_ATTEMPTS attempts!"
               echo "Showing last 300 Docker logs for customer-backend:"
               docker logs --tail 300 customer-backend
+
+              # Automated rollback to previous backup image if available
+              if docker image inspect "$ECR_REGISTRY/$ECR_REPOSITORY:backup" >/dev/null 2>&1; then
+                echo "Initiating automated rollback to previous backup image..."
+                docker stop customer-backend 2>/dev/null || true
+                docker rm customer-backend 2>/dev/null || true
+                docker run -d \
+                  --name customer-backend \
+                  --restart always \
+                  -p 9000:9000 \
+                  -e SERVER_PORT="9000" \
+                  -e SHOW_SQL="false" \
+                  -e FORMAT_SQL="false" \
+                  -e DB_HOST="$DB_HOST" \
+                  -e DB_PORT="$DB_PORT" \
+                  -e DB_NAME="$DB_NAME" \
+                  -e DB_USERNAME="$DB_USERNAME" \
+                  -e DB_PASSWORD="$DB_PASSWORD" \
+                  -e DB_DDL_AUTO="$DB_DDL_AUTO" \
+                  -e AWS_REGION="$AWS_REGION" \
+                  -e AWS_S3_BUCKET_NAME="$AWS_S3_BUCKET_NAME" \
+                  -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
+                  -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
+                  -e LOCATION_PROVIDER="$LOCATION_PROVIDER" \
+                  -e MAPS_API_KEY="$MAPS_API_KEY" \
+                  -e RAZORPAY_KEY_ID="$RAZORPAY_KEY_ID" \
+                  -e RAZORPAY_KEY_SECRET="$RAZORPAY_KEY_SECRET" \
+                  -e RAZORPAY_WEBHOOK_SECRET="$RAZORPAY_WEBHOOK_SECRET" \
+                  -e RESEND_API_KEY="$RESEND_API_KEY" \
+                  -e RESEND_FROM_EMAIL="$RESEND_FROM_EMAIL" \
+                  -e RESEND_FROM_NAME="$RESEND_FROM_NAME" \
+                  -e RESEND_REPLY_TO="$RESEND_REPLY_TO" \
+                  -e FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID" \
+                  -e FIREBASE_CLIENT_EMAIL="$FIREBASE_CLIENT_EMAIL" \
+                  -e FIREBASE_CLIENT_ID="$FIREBASE_CLIENT_ID" \
+                  -e FIREBASE_PRIVATE_KEY="$FORMATTED_FIREBASE_KEY" \
+                  -e FIREBASE_PRIVATE_KEY_ID="$FIREBASE_PRIVATE_KEY_ID" \
+                  -e ADMIN_EMAILS="$ADMIN_EMAILS" \
+                  "$ECR_REGISTRY/$ECR_REPOSITORY:backup"
+                echo "Rollback complete. Restored previous stable container."
+              fi
               exit 1
             fi
+
+            # Clean up temporary backup tag after successful verification
+            docker rmi "$ECR_REGISTRY/$ECR_REPOSITORY:backup" 2>/dev/null || true
 
             echo "customer-backend container deployed and verified UP on http://localhost:9000/actuator/health."

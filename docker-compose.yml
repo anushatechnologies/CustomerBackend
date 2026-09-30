@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   customer-backend:
-    image: 191481838776.dkr.ecr.ap-south-2.amazonaws.com/hinchmart:latest
+    image: 191481838776.dkr.ecr.ap-south-2.amazonaws.com/hinchmart:${IMAGE_TAG:-latest}
     container_name: customer-backend
     restart: always
     ports:
