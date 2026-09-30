@@ -15,6 +15,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -89,7 +91,16 @@ public class BrandServiceImpl implements BrandService {
             list = repository.findAllByOrderBySortOrderAsc();
         }
 
-        return list.stream().map(this::mapToResponse).toList();
+        // Batch aggregate product counts across all brands in 1 single query instead of N separate queries
+        Map<Integer, Integer> countMap = productRepository.countProductsGroupByBrand().stream()
+                .filter(row -> row != null && row.length >= 2 && row[0] != null)
+                .collect(Collectors.toMap(
+                        row -> (Integer) row[0],
+                        row -> ((Number) row[1]).intValue(),
+                        (existing, replacement) -> existing
+                ));
+
+        return list.stream().map(b -> mapToResponse(b, countMap)).toList();
     }
 
     @Override
@@ -162,7 +173,13 @@ public class BrandServiceImpl implements BrandService {
     }
 
     private BrandResponse mapToResponse(Brand b) {
-        int count = productRepository.countByBrand_BrandId(b.getBrandId());
+        return mapToResponse(b, null);
+    }
+
+    private BrandResponse mapToResponse(Brand b, Map<Integer, Integer> countMap) {
+        int count = countMap != null
+                ? countMap.getOrDefault(b.getBrandId(), 0)
+                : productRepository.countByBrand_BrandId(b.getBrandId());
         String subcategoryName = b.getSubcategory() != null ? b.getSubcategory().getName() : null;
         Integer categoryId = b.getSubcategory() != null && b.getSubcategory().getCategory() != null
                 ? b.getSubcategory().getCategory().getCategoryId() : null;

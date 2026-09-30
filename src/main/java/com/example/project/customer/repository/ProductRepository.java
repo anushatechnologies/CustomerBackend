@@ -113,4 +113,7 @@ public interface ProductRepository
 
     @Query("SELECT p FROM Product p WHERE p.imageUrl LIKE CONCAT('%', :key, '%')")
     List<Product> findByImageUrlContainingKey(@Param("key") String key);
+
+    @Query("SELECT p.brand.brandId, COUNT(p) FROM Product p WHERE p.brand IS NOT NULL GROUP BY p.brand.brandId")
+    List<Object[]> countProductsGroupByBrand();
 }
