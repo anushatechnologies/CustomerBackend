@@ -35,7 +35,6 @@ public class OutboxEventRelay {
     private static final int BATCH_SIZE = 50;
 
     @Scheduled(fixedDelayString = "${app.outbox.relay.fixed-delay-ms:3000}")
-    @Transactional
     public void relayPendingEvents() {
         if (kafkaTemplate == null) {
             log.debug("KafkaTemplate is not available. Skipping outbox relay cycle.");
