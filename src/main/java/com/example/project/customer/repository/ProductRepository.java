@@ -3,6 +3,10 @@ package com.example.project.customer.repository;
 import com.example.project.customer.entity.ApprovalStatus;
 import com.example.project.customer.entity.Product;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
@@ -17,6 +21,16 @@ import java.util.Optional;
 public interface ProductRepository
         extends JpaRepository<Product, Integer>,
                 JpaSpecificationExecutor<Product> {
+
+    @Override
+    @EntityGraph(attributePaths = {
+            "brand",
+            "brand.subcategory",
+            "brand.subcategory.category",
+            "store",
+            "seller"
+    })
+    Page<Product> findAll(Specification<Product> spec, Pageable pageable);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from Product p where p.productId = :productId")
@@ -44,6 +58,13 @@ public interface ProductRepository
             ApprovalStatus approvalStatus
     );
 
+    @EntityGraph(attributePaths = {
+            "brand",
+            "brand.subcategory",
+            "brand.subcategory.category",
+            "store",
+            "seller"
+    })
     Optional<Product> findByProductIdAndApprovalStatusAndActive(
             Integer productId,
             ApprovalStatus approvalStatus,
