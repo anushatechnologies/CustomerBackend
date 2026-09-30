@@ -1,4 +1,5 @@
-target/
+target/*
+!target/app.jar
 .git/
 .gitignore
 .idea/
