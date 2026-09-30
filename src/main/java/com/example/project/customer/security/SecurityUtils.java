@@ -62,6 +62,10 @@ public final class SecurityUtils {
     }
 
     public static boolean isCustomer() {
-        return hasRole(Role.CUSTOMER);
+        return hasRole(Role.CUSTOMER) || hasRole(Role.BUYER);
+    }
+
+    public static boolean isBuyer() {
+        return hasRole(Role.BUYER) || hasRole(Role.CUSTOMER);
     }
 }

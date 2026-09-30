@@ -34,9 +34,7 @@ public class SellerOrderServiceImpl implements SellerOrderService {
     private final StoreRepository storeRepository;
     private final ProductRepository productRepository;
     private final SellerPayoutLedgerRepository sellerPayoutLedgerRepository;
-    private final RiderDispatchService riderDispatchService;
     private final OrderService orderService;
-
     private final VehicleTypeService vehicleTypeService;
 
     private final SecureRandom secureRandom = new SecureRandom();
@@ -115,11 +113,8 @@ public class SellerOrderServiceImpl implements SellerOrderService {
         order.getCheckpoints().add(cp);
 
         Order saved = orderRepository.save(order);
-        log.info("Seller #{} ACCEPTED Order #{}. Vehicle selected: '{}'. Generated Delivery OTP. Triggering sequential rider dispatch...",
+        log.info("Seller #{} ACCEPTED Order #{}. Vehicle selected: '{}'. Generated Delivery OTP.",
                 sellerId, orderId, selectedVehicle);
-
-        // 3. Asynchronously trigger sequential (one-by-one) rider dispatch
-        riderDispatchService.startSequentialDispatch(saved.getOrderId());
 
         return orderService.getOrderById(saved.getOrderId());
     }

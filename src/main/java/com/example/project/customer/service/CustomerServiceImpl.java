@@ -27,6 +27,9 @@ public class CustomerServiceImpl implements CustomerService {
         if (customerRepository.existsByEmailIgnoreCase(request.getEmail())) {
             throw new CustomerConflictException("Customer already exists with email: " + request.getEmail());
         }
+        if (request.getPhone() != null && !request.getPhone().isBlank() && customerRepository.existsByPhone(request.getPhone().trim())) {
+            throw new CustomerConflictException("Customer already exists with phone: " + request.getPhone());
+        }
         Customer customer = new Customer();
         applyRequest(customer, request);
         return toResponse(customerRepository.save(customer));
@@ -49,6 +52,10 @@ public class CustomerServiceImpl implements CustomerService {
         Customer customer = findCustomer(id);
         if (customerRepository.existsByEmailIgnoreCaseAndCustomerIdNot(request.getEmail(), id)) {
             throw new CustomerConflictException("Customer already exists with email: " + request.getEmail());
+        }
+        if (request.getPhone() != null && !request.getPhone().isBlank() 
+                && customerRepository.existsByPhoneAndCustomerIdNot(request.getPhone().trim(), id)) {
+            throw new CustomerConflictException("Customer already exists with phone: " + request.getPhone());
         }
         applyRequest(customer, request);
         return toResponse(customerRepository.save(customer));

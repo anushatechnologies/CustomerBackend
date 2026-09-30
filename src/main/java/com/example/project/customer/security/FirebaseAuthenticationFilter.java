@@ -60,11 +60,17 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                 try {
                     FirebaseToken decodedToken = firebaseAuthService.verifyIdToken(token);
                     String firebaseUid = decodedToken.getUid();
-                    String email = decodedToken.getEmail();
-                    String name = decodedToken.getName();
+                    String email = (decodedToken.getEmail() != null && !decodedToken.getEmail().isBlank()) ? decodedToken.getEmail().trim() : null;
+                    String name = (decodedToken.getName() != null && !decodedToken.getName().isBlank()) ? decodedToken.getName().trim() : null;
                     Map<String, Object> claims = decodedToken.getClaims();
+                    if (name == null && claims != null && claims.get("name") != null) {
+                        String claimName = String.valueOf(claims.get("name")).trim();
+                        if (!claimName.isBlank()) {
+                            name = claimName;
+                        }
+                    }
                     String phone = (claims != null && claims.get("phone_number") != null) 
-                            ? String.valueOf(claims.get("phone_number")) 
+                            ? String.valueOf(claims.get("phone_number")).trim() 
                             : null;
 
                     // Synchronize or load internal customer from MySQL database
@@ -174,13 +180,13 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
         if (customer != null) {
             return customer.getRoleEnum();
         }
-        return Role.CUSTOMER;
+        return Role.BUYER;
     }
 
     private boolean isAdminEmail(String email) {
         if (email == null || email.isBlank()) return false;
         String clean = email.trim().toLowerCase();
-        if (clean.equals("admin@hinchmart.com") || clean.contains("admin")) {
+        if (clean.equals("admin@hinchmart.com")) {
             return true;
         }
         if (configuredAdminEmails != null && !configuredAdminEmails.isBlank()) {

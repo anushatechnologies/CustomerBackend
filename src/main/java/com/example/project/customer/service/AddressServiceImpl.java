@@ -46,7 +46,8 @@ public class AddressServiceImpl implements AddressService {
                 userId, request.getAddressType(), request.getLatitude() != null);
 
         // Check if customer already has any address
-        List<Address> existingAddresses = addressRepository.findByCustomer_CustomerIdOrderByIsDefaultDescCreatedAtDesc(userId);
+        List<Address> existingAddresses = addressRepository
+                .findByCustomer_CustomerIdOrderByIsDefaultDescCreatedAtDesc(userId);
         boolean isFirstAddress = existingAddresses.isEmpty();
 
         boolean shouldBeDefault = isFirstAddress || Boolean.TRUE.equals(request.getIsDefault());
@@ -56,12 +57,15 @@ public class AddressServiceImpl implements AddressService {
         }
 
         Customer customer = customerRepository.findById(userId)
-                .orElseGet(() -> Customer.builder().customerId(userId).name("Primary Customer").phone("9876543210").build());
+                .orElseGet(() -> Customer.builder().customerId(userId).name("Primary Customer").phone("9876543210")
+                        .build());
 
         String recipientName = request.getRecipientName() != null && !request.getRecipientName().isBlank()
-                ? request.getRecipientName() : customer.getName();
+                ? request.getRecipientName()
+                : customer.getName();
         String phone = request.getPhone() != null && !request.getPhone().isBlank()
-                ? request.getPhone() : (customer.getPhone() != null ? customer.getPhone() : "9876543210");
+                ? request.getPhone()
+                : (customer.getPhone() != null ? customer.getPhone() : "9876543210");
         String siteName = resolveSiteName(request);
 
         Address address = Address.builder()
@@ -75,14 +79,16 @@ public class AddressServiceImpl implements AddressService {
                 .areaLocality(request.getAreaLocality())
                 .city(request.getCity())
                 .state(request.getState())
-                .country(request.getCountry() != null && !request.getCountry().isBlank() ? request.getCountry() : "India")
+                .country(request.getCountry() != null && !request.getCountry().isBlank() ? request.getCountry()
+                        : "India")
                 .pincode(request.getPincode())
                 .landmark(request.getLandmark())
                 .latitude(request.getLatitude())
                 .longitude(request.getLongitude())
                 .addressType(request.getAddressType() != null ? request.getAddressType().toUpperCase() : "OTHER")
                 .isDefault(shouldBeDefault)
-                .hasHeavyVehicleAccess(request.getHasHeavyVehicleAccess() != null ? request.getHasHeavyVehicleAccess() : true)
+                .hasHeavyVehicleAccess(
+                        request.getHasHeavyVehicleAccess() != null ? request.getHasHeavyVehicleAccess() : true)
                 .build();
 
         Address saved = addressRepository.save(address);
@@ -155,7 +161,8 @@ public class AddressServiceImpl implements AddressService {
 
         addressRepository.delete(address);
 
-        // If default address was deleted, promote most recent remaining address to default
+        // If default address was deleted, promote most recent remaining address to
+        // default
         if (wasDefault) {
             addressRepository.findFirstByCustomer_CustomerIdOrderByCreatedAtDesc(userId)
                     .ifPresent(next -> {

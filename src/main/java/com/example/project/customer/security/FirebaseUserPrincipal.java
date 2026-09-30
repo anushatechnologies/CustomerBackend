@@ -39,10 +39,18 @@ public class FirebaseUserPrincipal implements UserDetails, Serializable {
             boolean active,
             Map<String, Object> claims
     ) {
-        Role resolvedRole = role != null ? role : Role.CUSTOMER;
-        List<GrantedAuthority> auths = Collections.singletonList(
-                new SimpleGrantedAuthority(resolvedRole.getAuthority())
-        );
+        Role resolvedRole = role != null ? role : Role.BUYER;
+        List<GrantedAuthority> auths;
+        if (resolvedRole == Role.BUYER || resolvedRole == Role.CUSTOMER) {
+            auths = List.of(
+                    new SimpleGrantedAuthority("ROLE_BUYER"),
+                    new SimpleGrantedAuthority("ROLE_CUSTOMER")
+            );
+        } else {
+            auths = Collections.singletonList(
+                    new SimpleGrantedAuthority(resolvedRole.getAuthority())
+            );
+        }
 
         return FirebaseUserPrincipal.builder()
                 .internalUserId(internalUserId)
