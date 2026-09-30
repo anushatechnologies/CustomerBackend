@@ -48,199 +48,318 @@ public class UserServiceImpl implements UserService {
         if (firebaseUid == null || firebaseUid.isBlank()) {
             throw new IllegalArgumentException("Firebase UID cannot be empty");
         }
+        String cleanUid = firebaseUid.trim();
 
         String rawPhone = (phone != null && !phone.isBlank()) ? phone.trim() : null;
         String lockKey = (rawPhone != null && !rawPhone.isBlank())
                 ? "phone:" + normalizePhoneDigits(rawPhone)
-                : "uid:" + firebaseUid;
+                : "uid:" + cleanUid;
 
         int stripe = Math.abs(lockKey.hashCode() % stripedLocks.length);
         java.util.concurrent.locks.ReentrantLock lock = stripedLocks[stripe];
         lock.lock();
         try {
-            return syncUserWithFirebaseInternal(firebaseUid, email, name, rawPhone, requestedRole);
+            return syncUserWithFirebaseInternal(cleanUid, email, name, phone, requestedRole);
         } finally {
             lock.unlock();
         }
     }
 
-    private Customer syncUserWithFirebaseInternal(String firebaseUid, String email, String name, String rawPhone, String requestedRole) {
-        String checkEmail = (email != null && !email.isBlank()) ? email.trim().toLowerCase() : null;
+    private Customer syncUserWithFirebaseInternal(String cleanUid, String email, String name, String phone, String requestedRole) {
+        String cleanEmail = (email != null && !email.isBlank()) ? email.trim().toLowerCase() : null;
+        if (cleanEmail != null && isPlaceholderEmail(cleanEmail)) {
+            cleanEmail = null;
+        }
+
+        String cleanName = (name != null && !name.isBlank()) ? name.trim() : null;
+        if (cleanName != null && isPlaceholderName(cleanName)) {
+            cleanName = null;
+        }
+
+        String cleanPhone = (phone != null && !phone.isBlank()) ? phone.trim() : null;
+        if (cleanPhone != null && isPlaceholderPhone(cleanPhone)) {
+            cleanPhone = null;
+        }
 
         // 1. Try finding existing customer by Firebase UID
-        Optional<Customer> existingByUid = customerRepository.findByFirebaseUid(firebaseUid);
+        Optional<Customer> existingByUid = customerRepository.findByFirebaseUid(cleanUid);
         if (existingByUid.isPresent()) {
             Customer customer = existingByUid.get();
             boolean updated = false;
 
-            // Preserve real name: only update if customer has default/blank name and new real name is supplied
-            if (name != null && !name.isBlank() && !isDefaultName(name) && isDefaultName(customer.getName())) {
-                customer.setName(name.trim());
-                updated = true;
-            }
-            if (rawPhone != null && (customer.getPhone() == null || customer.getPhone().isBlank())) {
-                customer.setPhone(rawPhone);
-                updated = true;
-            }
-            // Preserve real email: only update if customer has dummy/missing email and new real email is supplied
-            if (checkEmail != null && !checkEmail.endsWith("@firebase.user") 
-                    && (customer.getEmail() == null || customer.getEmail().isBlank() || customer.getEmail().endsWith("@firebase.user"))) {
-                customer.setEmail(checkEmail);
-                updated = true;
+            // Name update rules:
+            // - If incoming real name is available:
+            //   - If DB name is null, blank, or placeholder: update it.
+            //   - If DB name is already real: update it if different.
+            // - If incoming name is null or placeholder: DO NOT overwrite DB name.
+            if (cleanName != null) {
+                if (customer.getName() == null || customer.getName().isBlank() || isPlaceholderName(customer.getName())) {
+                    customer.setName(cleanName);
+                    updated = true;
+                } else if (!customer.getName().equals(cleanName)) {
+                    customer.setName(cleanName);
+                    updated = true;
+                }
             }
 
-            if (updateRoleIfEligible(customer, requestedRole, checkEmail)) {
-                updated = true;
+            // Phone update rules:
+            // - If incoming real phone is available:
+            //   - If DB phone is null, blank, or placeholder: update it if not duplicate.
+            //   - If DB phone is already real: update it if different and not duplicate.
+            // - If incoming phone is null or placeholder: DO NOT overwrite DB phone.
+            if (cleanPhone != null) {
+                if (customer.getPhone() == null || customer.getPhone().isBlank() || isPlaceholderPhone(customer.getPhone())) {
+                    if (!customerRepository.existsByPhoneAndCustomerIdNot(cleanPhone, customer.getCustomerId())) {
+                        customer.setPhone(cleanPhone);
+                        updated = true;
+                    } else {
+                        log.warn("Phone {} is already in use by another customer. Skipping phone update for customerId {}", cleanPhone, customer.getCustomerId());
+                    }
+                } else if (!customer.getPhone().equals(cleanPhone)) {
+                    if (!customerRepository.existsByPhoneAndCustomerIdNot(cleanPhone, customer.getCustomerId())) {
+                        customer.setPhone(cleanPhone);
+                        updated = true;
+                    } else {
+                        log.warn("Phone {} is already in use by another customer. Skipping phone update for customerId {}", cleanPhone, customer.getCustomerId());
+                    }
+                }
+            }
+
+            // Email update rules:
+            // - If incoming real email is available:
+            //   - If DB email is null, blank, or placeholder: update it if not duplicate.
+            //   - If DB email is already real: update it if different and not duplicate.
+            // - If incoming email is null or placeholder: DO NOT overwrite DB email.
+            if (cleanEmail != null) {
+                if (customer.getEmail() == null || customer.getEmail().isBlank() || isPlaceholderEmail(customer.getEmail())) {
+                    if (!customerRepository.existsByEmailIgnoreCaseAndCustomerIdNot(cleanEmail, customer.getCustomerId())) {
+                        customer.setEmail(cleanEmail);
+                        updated = true;
+                    } else {
+                        log.warn("Email {} is already in use by another customer. Skipping email update for customerId {}", cleanEmail, customer.getCustomerId());
+                    }
+                } else if (!customer.getEmail().equalsIgnoreCase(cleanEmail)) {
+                    if (!customerRepository.existsByEmailIgnoreCaseAndCustomerIdNot(cleanEmail, customer.getCustomerId())) {
+                        customer.setEmail(cleanEmail);
+                        updated = true;
+                    } else {
+                        log.warn("Email {} is already in use by another customer. Skipping email update for customerId {}", cleanEmail, customer.getCustomerId());
+                    }
+                }
+            }
+
+            // Role update
+            String currentRole = customer.getRole();
+            String effectiveEmail = customer.getEmail() != null ? customer.getEmail() : cleanEmail;
+            if (isAdminEmail(effectiveEmail)) {
+                if (!Role.ADMIN.name().equalsIgnoreCase(currentRole)) {
+                    customer.setRole(Role.ADMIN.name());
+                    updated = true;
+                }
+            } else if ("SELLER".equalsIgnoreCase(requestedRole) || (effectiveEmail != null && sellerRepository.findFirstByEmailIgnoreCase(effectiveEmail).isPresent())) {
+                if (!Role.ADMIN.name().equalsIgnoreCase(currentRole) && !Role.SELLER.name().equalsIgnoreCase(currentRole)) {
+                    customer.setRole(Role.SELLER.name());
+                    updated = true;
+                }
             }
 
             if (updated) {
-                log.info("Updated existing Customer (ID: {}) for Firebase UID: {}", customer.getCustomerId(), firebaseUid);
                 return customerRepository.save(customer);
             }
             return customer;
         }
 
         // 2. Try finding existing customer by Verified Phone Number
-        if (rawPhone != null) {
-            String cleanedDigits = normalizePhoneDigits(rawPhone);
+        if (cleanPhone != null) {
+            String cleanedDigits = normalizePhoneDigits(cleanPhone);
             String searchPattern = buildPhoneSearchPattern(cleanedDigits);
 
-            List<Customer> matchingCustomers = customerRepository.findMatchingCustomersByPhone(rawPhone, cleanedDigits, searchPattern);
+            List<Customer> matchingCustomers = customerRepository.findMatchingCustomersByPhone(cleanPhone, cleanedDigits, searchPattern);
 
             if (matchingCustomers.size() > 1) {
                 List<Integer> ids = matchingCustomers.stream().map(Customer::getCustomerId).toList();
-                log.error("Duplicate customer records detected for phone {}: customer IDs {}", maskPhone(rawPhone), ids);
-                throw new CustomerConflictException("Multiple customer accounts found associated with phone number: " + maskPhone(rawPhone) + ". Manual resolution required.");
+                log.error("Duplicate customer records detected for phone {}: customer IDs {}", maskPhone(cleanPhone), ids);
+                throw new CustomerConflictException("Multiple customer accounts found associated with phone number: " + maskPhone(cleanPhone) + ". Manual resolution required.");
             }
 
             if (matchingCustomers.size() == 1) {
                 Customer customer = matchingCustomers.get(0);
                 boolean updated = false;
 
-                // Validate and associate Firebase UID
-                if (customer.getFirebaseUid() == null || !customer.getFirebaseUid().equals(firebaseUid)) {
-                    Optional<Customer> otherWithUid = customerRepository.findByFirebaseUid(firebaseUid);
+                if (customer.getFirebaseUid() == null || !customer.getFirebaseUid().equals(cleanUid)) {
+                    Optional<Customer> otherWithUid = customerRepository.findByFirebaseUid(cleanUid);
                     if (otherWithUid.isPresent() && !otherWithUid.get().getCustomerId().equals(customer.getCustomerId())) {
                         log.error("Conflict: Firebase UID {} already linked to customer ID {}, cannot relink to phone customer ID {}",
-                                firebaseUid, otherWithUid.get().getCustomerId(), customer.getCustomerId());
+                                cleanUid, otherWithUid.get().getCustomerId(), customer.getCustomerId());
                         throw new CustomerConflictException("Firebase UID is already linked to another account.");
                     }
 
                     log.info("Relinking verified phone user: associating Customer ID {} (previous UID: {}) with Firebase UID: {}",
-                            customer.getCustomerId(), customer.getFirebaseUid(), firebaseUid);
-                    customer.setFirebaseUid(firebaseUid);
+                            customer.getCustomerId(), customer.getFirebaseUid(), cleanUid);
+                    customer.setFirebaseUid(cleanUid);
                     updated = true;
                 }
 
-                // Preserve real name
-                if (name != null && !name.isBlank() && !isDefaultName(name) && isDefaultName(customer.getName())) {
-                    customer.setName(name.trim());
+                if (cleanName != null) {
+                    if (customer.getName() == null || customer.getName().isBlank() || isPlaceholderName(customer.getName())) {
+                        customer.setName(cleanName);
+                        updated = true;
+                    }
+                }
+
+                if (cleanEmail != null) {
+                    if (customer.getEmail() == null || customer.getEmail().isBlank() || isPlaceholderEmail(customer.getEmail())) {
+                        if (!customerRepository.existsByEmailIgnoreCaseAndCustomerIdNot(cleanEmail, customer.getCustomerId())) {
+                            customer.setEmail(cleanEmail);
+                            updated = true;
+                        }
+                    }
+                }
+
+                if (customer.getPhone() == null || customer.getPhone().isBlank() || isPlaceholderPhone(customer.getPhone())) {
+                    customer.setPhone(cleanPhone);
                     updated = true;
                 }
 
-                // Preserve real email
-                if (checkEmail != null && !checkEmail.endsWith("@firebase.user") 
-                        && (customer.getEmail() == null || customer.getEmail().isBlank() || customer.getEmail().endsWith("@firebase.user"))) {
-                    customer.setEmail(checkEmail);
-                    updated = true;
-                }
-
-                // Ensure phone is normalized/stored if previously missing
-                if (customer.getPhone() == null || customer.getPhone().isBlank()) {
-                    customer.setPhone(rawPhone);
-                    updated = true;
-                }
-
-                if (updateRoleIfEligible(customer, requestedRole, checkEmail)) {
-                    updated = true;
+                String currentRole = customer.getRole();
+                String effectiveEmail = customer.getEmail() != null ? customer.getEmail() : cleanEmail;
+                if (isAdminEmail(effectiveEmail)) {
+                    if (!Role.ADMIN.name().equalsIgnoreCase(currentRole)) {
+                        customer.setRole(Role.ADMIN.name());
+                        updated = true;
+                    }
+                } else if ("SELLER".equalsIgnoreCase(requestedRole) || (effectiveEmail != null && sellerRepository.findFirstByEmailIgnoreCase(effectiveEmail).isPresent())) {
+                    if (!Role.ADMIN.name().equalsIgnoreCase(currentRole) && !Role.SELLER.name().equalsIgnoreCase(currentRole)) {
+                        customer.setRole(Role.SELLER.name());
+                        updated = true;
+                    }
                 }
 
                 log.info("Found existing Customer (ID: {}, Role: {}) by verified phone: {}",
-                        customer.getCustomerId(), customer.getRole(), maskPhone(rawPhone));
+                        customer.getCustomerId(), customer.getRole(), maskPhone(cleanPhone));
                 return updated ? customerRepository.save(customer) : customer;
             }
         }
 
         // 3. Try finding existing customer by Email (account linking for Google/Email auth)
-        if (checkEmail != null && !checkEmail.endsWith("@firebase.user")) {
-            Optional<Customer> existingByEmail = customerRepository.findByEmailIgnoreCase(checkEmail);
+        if (cleanEmail != null) {
+            Optional<Customer> existingByEmail = customerRepository.findByEmailIgnoreCase(cleanEmail);
             if (existingByEmail.isPresent()) {
                 Customer customer = existingByEmail.get();
                 boolean updated = false;
 
-                if (customer.getFirebaseUid() == null || !customer.getFirebaseUid().equals(firebaseUid)) {
-                    customer.setFirebaseUid(firebaseUid);
+                if (customer.getFirebaseUid() == null || !customer.getFirebaseUid().equals(cleanUid)) {
+                    customer.setFirebaseUid(cleanUid);
                     updated = true;
                 }
-                if (name != null && !name.isBlank() && !isDefaultName(name) && isDefaultName(customer.getName())) {
-                    customer.setName(name.trim());
-                    updated = true;
+                if (cleanName != null) {
+                    if (customer.getName() == null || customer.getName().isBlank() || isPlaceholderName(customer.getName())) {
+                        customer.setName(cleanName);
+                        updated = true;
+                    }
                 }
-                if (rawPhone != null && (customer.getPhone() == null || customer.getPhone().isBlank())) {
-                    customer.setPhone(rawPhone);
-                    updated = true;
+                if (cleanPhone != null) {
+                    if (customer.getPhone() == null || customer.getPhone().isBlank() || isPlaceholderPhone(customer.getPhone())) {
+                        if (!customerRepository.existsByPhoneAndCustomerIdNot(cleanPhone, customer.getCustomerId())) {
+                            customer.setPhone(cleanPhone);
+                            updated = true;
+                        }
+                    }
                 }
 
-                if (updateRoleIfEligible(customer, requestedRole, checkEmail)) {
-                    updated = true;
+                String currentRole = customer.getRole();
+                if (isAdminEmail(cleanEmail)) {
+                    if (!Role.ADMIN.name().equalsIgnoreCase(currentRole)) {
+                        customer.setRole(Role.ADMIN.name());
+                        updated = true;
+                    }
+                } else if ("SELLER".equalsIgnoreCase(requestedRole) || sellerRepository.findFirstByEmailIgnoreCase(cleanEmail).isPresent()) {
+                    if (!Role.ADMIN.name().equalsIgnoreCase(currentRole) && !Role.SELLER.name().equalsIgnoreCase(currentRole)) {
+                        customer.setRole(Role.SELLER.name());
+                        updated = true;
+                    }
                 }
 
                 log.info("Linked existing Customer (ID: {}, Role: {}) with Firebase UID: {} via email",
-                        customer.getCustomerId(), customer.getRole(), firebaseUid);
+                        customer.getCustomerId(), customer.getRole(), cleanUid);
                 return updated ? customerRepository.save(customer) : customer;
             }
         }
 
-        // 4. Create new Customer record with appropriate role
-        // SECURITY: Role.ADMIN can NEVER be granted simply because requestedRole is "ADMIN".
-        // It must be verified against configured admin emails or AdminUserRepository.
+        // 4. Create new Customer record with CUSTOMER role and real values
         String resolvedRole = Role.CUSTOMER.name();
-        if (isAdminEmail(checkEmail)) {
+        if (isAdminEmail(cleanEmail)) {
             resolvedRole = Role.ADMIN.name();
-        } else if ("SELLER".equalsIgnoreCase(requestedRole) || (checkEmail != null && sellerRepository.findFirstByEmailIgnoreCase(checkEmail).isPresent())) {
+        } else if ("SELLER".equalsIgnoreCase(requestedRole) || (cleanEmail != null && sellerRepository.findFirstByEmailIgnoreCase(cleanEmail).isPresent())) {
             resolvedRole = Role.SELLER.name();
+        } else if (requestedRole != null && !requestedRole.isBlank()) {
+            Role parsed = Role.fromString(requestedRole);
+            if (parsed != Role.ADMIN) {
+                resolvedRole = parsed.name();
+            }
         }
 
-        String resolvedName = (name != null && !name.isBlank()) ? name.trim() : (checkEmail != null && !checkEmail.endsWith("@firebase.user") ? checkEmail.split("@")[0] : "Customer User");
-        String resolvedEmail = checkEmail != null ? checkEmail : (firebaseUid + "@firebase.user");
-        String resolvedPhone = rawPhone;
+        String finalPhone = cleanPhone;
+        if (finalPhone != null && customerRepository.existsByPhone(finalPhone)) {
+            log.warn("Phone number {} is already associated with another customer. Keeping phone as null for new customer UID {}",
+                    finalPhone, cleanUid);
+            finalPhone = null;
+        }
 
         Customer newCustomer = Customer.builder()
-                .firebaseUid(firebaseUid)
-                .name(resolvedName)
-                .email(resolvedEmail)
-                .phone(resolvedPhone)
+                .firebaseUid(cleanUid)
+                .name(cleanName)
+                .email(cleanEmail)
+                .phone(finalPhone)
                 .role(resolvedRole)
                 .active(true)
                 .build();
 
         Customer saved = customerRepository.save(newCustomer);
-        log.info("Created new Customer profile (ID: {}, Role: {}) for Firebase UID: {} with phone: {}",
-                saved.getCustomerId(), saved.getRole(), firebaseUid, maskPhone(resolvedPhone));
+        log.info("Created new Customer profile (ID: {}, Role: {}) for Firebase UID: {}", saved.getCustomerId(), saved.getRole(), cleanUid);
         return saved;
     }
 
-@org.springframework.beans.factory.annotation.Value("${app.security.admin-emails:admin@hinchmart.com,admin@example.com}")
-private String configuredAdminEmails = "admin@hinchmart.com";
+    private boolean isPlaceholderName(String name) {
+        if (name == null || name.isBlank()) return true;
+        String trimmed = name.trim().toLowerCase();
+        return trimmed.equals("unknown user") || trimmed.equals("customer user") || trimmed.equals("user");
+    }
 
-private boolean isAdminEmail(String email) {
-    if (email == null || email.isBlank()) return false;
-    String clean = email.trim().toLowerCase();
-    // SECURITY: Only exact-match comparisons are permitted.
-    // Do NOT use contains/startsWith/endsWith checks — they allow privilege escalation
-    // (e.g., "notanadmin@gmail.com" or "myadmin@evil.com" would incorrectly match).
-    if (configuredAdminEmails != null && !configuredAdminEmails.isBlank()) {
-        for (String adm : configuredAdminEmails.split(",")) {
-            if (clean.equalsIgnoreCase(adm.trim())) {
-                return true;
+    private boolean isPlaceholderEmail(String email) {
+        if (email == null || email.isBlank()) return true;
+        String trimmed = email.trim().toLowerCase();
+        return trimmed.contains("@firebase.user") || trimmed.equals("temp@example.com");
+    }
+
+    private boolean isPlaceholderPhone(String phone) {
+        if (phone == null || phone.isBlank()) return true;
+        String trimmed = phone.trim();
+        return trimmed.equals("0000000000") || trimmed.equals("1234567890");
+    }
+
+    @org.springframework.beans.factory.annotation.Value("${app.security.admin-emails:admin@hinchmart.com,admin@example.com}")
+    private String configuredAdminEmails = "admin@hinchmart.com";
+
+    private boolean isAdminEmail(String email) {
+        if (email == null || email.isBlank()) return false;
+        String clean = email.trim().toLowerCase();
+        if (clean.equals("admin@hinchmart.com")) {
+            return true;
+        }
+        if (configuredAdminEmails != null && !configuredAdminEmails.isBlank()) {
+            String[] admins = configuredAdminEmails.split(",");
+            for (String adm : admins) {
+                if (clean.equalsIgnoreCase(adm.trim())) {
+                    return true;
+                }
             }
         }
+        if (adminUserRepository != null && adminUserRepository.findByEmailIgnoreCase(clean).isPresent()) {
+            return true;
+        }
+        return false;
     }
-    if (adminUserRepository != null && adminUserRepository.findByEmailIgnoreCase(clean).isPresent()) {
-        return true;
-    }
-    return false;
-}
 
     @Override
     @Transactional(readOnly = true)

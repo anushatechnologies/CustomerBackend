@@ -19,9 +19,13 @@ public interface CustomerRepository extends JpaRepository<Customer, Integer> {
 
     boolean existsByEmailIgnoreCaseAndCustomerIdNot(String email, Integer customerId);
 
+    Optional<Customer> findByPhone(String phone);
+
     Optional<Customer> findFirstByPhone(String phone);
 
     boolean existsByPhone(String phone);
+
+    boolean existsByPhoneAndCustomerIdNot(String phone, Integer customerId);
 
     @org.springframework.data.jpa.repository.Query("SELECT c FROM Customer c WHERE c.phone IS NOT NULL AND (" +
             "c.phone = :rawPhone OR " +

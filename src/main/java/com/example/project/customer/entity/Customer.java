@@ -33,10 +33,10 @@ public class Customer {
     @Column(name = "firebase_uid", unique = true, length = 128)
     private String firebaseUid;
 
-    @Column(nullable = false)
+    @Column
     private String name;
 
-    @Column(nullable = false, unique = true)
+    @Column(unique = true)
     private String email;
 
     @Column(name = "phone")
@@ -47,7 +47,7 @@ public class Customer {
 
     @Column(nullable = false)
     @Builder.Default
-    private String role = "CUSTOMER";  // CUSTOMER | SELLER | ADMIN | BUYER
+    private String role = "CUSTOMER";  // CUSTOMER | SELLER | ADMIN
 
     @Column(name = "is_active")
     @Builder.Default

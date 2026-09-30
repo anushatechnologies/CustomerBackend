@@ -56,12 +56,12 @@ public class AddressServiceImpl implements AddressService {
         }
 
         Customer customer = customerRepository.findById(userId)
-                .orElseGet(() -> Customer.builder().customerId(userId).name("Primary Customer").phone("9876543210").build());
+                .orElse(null);
 
         String recipientName = request.getRecipientName() != null && !request.getRecipientName().isBlank()
-                ? request.getRecipientName() : customer.getName();
+                ? request.getRecipientName() : (customer != null ? customer.getName() : null);
         String phone = request.getPhone() != null && !request.getPhone().isBlank()
-                ? request.getPhone() : (customer.getPhone() != null ? customer.getPhone() : "9876543210");
+                ? request.getPhone() : (customer != null ? customer.getPhone() : null);
         String siteName = resolveSiteName(request);
 
         Address address = Address.builder()

@@ -92,6 +92,12 @@ public class AuthController {
                         name = decoded.getName();
                     }
                     claims = decoded.getClaims();
+                    if ((name == null || name.isBlank()) && claims != null && claims.get("name") != null) {
+                        name = String.valueOf(claims.get("name"));
+                    }
+                    if (phone == null && claims != null && claims.get("phone_number") != null) {
+                        phone = String.valueOf(claims.get("phone_number"));
+                    }
                 } catch (Exception ex) {
                     log.warn("Direct token verification in /api/auth/sync encountered: {}", ex.getMessage());
                 }

@@ -63,6 +63,9 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                     String email = decodedToken.getEmail();
                     String name = decodedToken.getName();
                     Map<String, Object> claims = decodedToken.getClaims();
+                    if ((name == null || name.isBlank()) && claims != null && claims.get("name") != null) {
+                        name = String.valueOf(claims.get("name"));
+                    }
                     String phone = (claims != null && claims.get("phone_number") != null) 
                             ? String.valueOf(claims.get("phone_number")) 
                             : null;
