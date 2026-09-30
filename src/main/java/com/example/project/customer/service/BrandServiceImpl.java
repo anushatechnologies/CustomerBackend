@@ -11,6 +11,8 @@ import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.repository.SubcategoryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +32,7 @@ public class BrandServiceImpl implements BrandService {
     private final S3ImageService s3ImageService;
 
     @Override
+    @CacheEvict(value = "brands", allEntries = true)
     public BrandResponse create(BrandRequest request) {
         Subcategory subcategory = subcategoryRepository.findById(request.getSubcategoryId())
                 .orElseThrow(() -> new ResourceNotFoundException("Subcategory not found with id: " + request.getSubcategoryId()));
@@ -70,6 +73,7 @@ public class BrandServiceImpl implements BrandService {
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(value = "brands", key = "T(java.util.Objects).hash(#categoryId, #subcategoryId, #active)")
     public List<BrandResponse> getAll(Integer categoryId, Integer subcategoryId, Boolean active) {
         List<Brand> list;
 
@@ -104,6 +108,7 @@ public class BrandServiceImpl implements BrandService {
     }
 
     @Override
+    @CacheEvict(value = "brands", allEntries = true)
     public BrandResponse update(Integer id, BrandRequest request) {
         Brand brand = findBrand(id);
         String oldImageUrl = brand.getImageUrl();
@@ -150,6 +155,7 @@ public class BrandServiceImpl implements BrandService {
     }
 
     @Override
+    @CacheEvict(value = "brands", allEntries = true)
     public void delete(Integer id) {
         Brand brand = findBrand(id);
         String imageUrl = brand.getImageUrl();
