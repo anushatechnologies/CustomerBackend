@@ -159,12 +159,14 @@ class BrandServiceTest {
     void getAll_FilterBySubcategoryAndActive() {
         when(repository.findBySubcategory_SubcategoryIdAndActiveOrderBySortOrderAsc(10, true))
                 .thenReturn(List.of(brand));
-        when(productRepository.countByBrand_BrandId(100)).thenReturn(5);
+        when(productRepository.countProductsGroupByBrand())
+                .thenReturn(List.<Object[]>of(new Object[]{100, 5L}));
 
         List<BrandResponse> list = brandService.getAll(null, 10, true);
 
         assertThat(list).hasSize(1);
         assertThat(list.get(0).getName()).isEqualTo("Tata Tiscon");
+        assertThat(list.get(0).getProductCount()).isEqualTo(5);
     }
 
     @Test
@@ -172,12 +174,14 @@ class BrandServiceTest {
     void getAll_FilterByCategoryId() {
         when(repository.findBySubcategory_Category_CategoryIdOrderBySortOrderAsc(1))
                 .thenReturn(List.of(brand));
-        when(productRepository.countByBrand_BrandId(100)).thenReturn(5);
+        when(productRepository.countProductsGroupByBrand())
+                .thenReturn(List.<Object[]>of(new Object[]{100, 5L}));
 
         List<BrandResponse> list = brandService.getAll(1, null, null);
 
         assertThat(list).hasSize(1);
         assertThat(list.get(0).getName()).isEqualTo("Tata Tiscon");
+        assertThat(list.get(0).getProductCount()).isEqualTo(5);
     }
 
     @Test

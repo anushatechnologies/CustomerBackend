@@ -1,6 +1,7 @@
 package com.example.project.customer.repository;
 
 import com.example.project.customer.entity.WishlistItem;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -13,7 +14,10 @@ import java.util.Optional;
 
 @Repository
 public interface WishlistRepository extends JpaRepository<WishlistItem, Integer> {
+    @EntityGraph(attributePaths = {"product"})
     List<WishlistItem> findByCustomer_CustomerIdOrderByCreatedAtDesc(Integer userId);
+
+    @EntityGraph(attributePaths = {"product"})
     Optional<WishlistItem> findByCustomer_CustomerIdAndProduct_ProductId(Integer userId, Integer productId);
 
     @Modifying

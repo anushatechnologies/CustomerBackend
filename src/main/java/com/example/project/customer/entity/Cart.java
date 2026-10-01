@@ -57,7 +57,7 @@ public class Cart {
     @Builder.Default
     private BigDecimal deliveryCharge = BigDecimal.valueOf(4500.0);
 
-    @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<CartItem> items = new ArrayList<>();
 

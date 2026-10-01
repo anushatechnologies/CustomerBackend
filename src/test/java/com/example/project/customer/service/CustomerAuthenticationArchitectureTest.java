@@ -40,6 +40,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -119,8 +120,8 @@ class CustomerAuthenticationArchitectureTest {
         assertNotNull(result);
         assertEquals(140, result.getCustomerId());
         assertEquals(uid, result.getFirebaseUid());
-        assertEquals("Customer User", result.getName());
-        assertEquals(uid + "@firebase.user", result.getEmail());
+        assertNull(result.getName());
+        assertNull(result.getEmail());
         assertEquals(phone, result.getPhone());
         assertEquals(Role.CUSTOMER.name(), result.getRole());
         assertTrue(result.isActive());
