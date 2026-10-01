@@ -2,8 +2,10 @@ package com.example.project.customer.service;
 
 import com.example.project.customer.dto.BannerRequest;
 import com.example.project.customer.dto.BannerResponse;
+import com.example.project.customer.dto.BannerVideoUploadResponse;
 import com.example.project.customer.dto.ImageFolder;
 import com.example.project.customer.dto.ImageUploadResponse;
+import com.example.project.customer.dto.PromotionalVideoResponse;
 import com.example.project.customer.entity.Banner;
 import com.example.project.customer.exception.BannerNotFoundException;
 import com.example.project.customer.repository.BannerRepository;
@@ -13,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Slf4j
@@ -27,10 +30,19 @@ public class BannerServiceImpl implements BannerService {
 
     @Override
     public BannerResponse createBanner(BannerRequest request) {
+        String effectivePoster = request.getPosterUrl();
+        if (effectivePoster == null && request.getThumbnailUrl() != null) {
+            effectivePoster = request.getThumbnailUrl();
+        }
+
         Banner banner = Banner.builder()
                 .title(request.getTitle())
                 .subtitle(request.getSubtitle())
                 .imageUrl(request.getImageUrl())
+                .videoUrl(request.getVideoUrl())
+                .posterUrl(effectivePoster)
+                .badge(request.getBadge() != null ? request.getBadge() : "24-HOUR DISPATCH")
+                .ctaText(request.getCtaText() != null ? request.getCtaText() : "Explore 24H Catalog")
                 .linkType(request.getLinkType())
                 .linkValue(request.getLinkValue())
                 .position(request.getPosition())
@@ -73,13 +85,31 @@ public class BannerServiceImpl implements BannerService {
     public BannerResponse updateBanner(Integer id, BannerRequest request) {
         Banner banner = findBanner(id);
         String oldImageUrl = banner.getImageUrl();
+        String oldVideoUrl = banner.getVideoUrl();
+        String oldPosterUrl = banner.getPosterUrl();
 
-        banner.setTitle(request.getTitle());
+        if (request.getTitle() != null && !request.getTitle().isBlank()) {
+            banner.setTitle(request.getTitle());
+        }
         if (request.getSubtitle() != null) {
             banner.setSubtitle(request.getSubtitle());
         }
         if (request.getImageUrl() != null) {
             banner.setImageUrl(request.getImageUrl());
+        }
+        if (request.getVideoUrl() != null) {
+            banner.setVideoUrl(request.getVideoUrl());
+        }
+        if (request.getPosterUrl() != null) {
+            banner.setPosterUrl(request.getPosterUrl());
+        } else if (request.getThumbnailUrl() != null) {
+            banner.setPosterUrl(request.getThumbnailUrl());
+        }
+        if (request.getBadge() != null) {
+            banner.setBadge(request.getBadge());
+        }
+        if (request.getCtaText() != null) {
+            banner.setCtaText(request.getCtaText());
         }
         if (request.getLinkType() != null) {
             banner.setLinkType(request.getLinkType());
@@ -108,6 +138,12 @@ public class BannerServiceImpl implements BannerService {
         if (request.getImageUrl() != null && oldImageUrl != null && !oldImageUrl.isBlank() && !oldImageUrl.equals(request.getImageUrl())) {
             s3ImageService.deleteImage(oldImageUrl);
         }
+        if (request.getVideoUrl() != null && oldVideoUrl != null && !oldVideoUrl.isBlank() && !oldVideoUrl.equals(request.getVideoUrl())) {
+            s3ImageService.deleteImage(oldVideoUrl);
+        }
+        if (request.getPosterUrl() != null && oldPosterUrl != null && !oldPosterUrl.isBlank() && !oldPosterUrl.equals(request.getPosterUrl()) && !oldPosterUrl.equals(oldImageUrl)) {
+            s3ImageService.deleteImage(oldPosterUrl);
+        }
 
         return mapToResponse(saved);
     }
@@ -129,13 +165,74 @@ public class BannerServiceImpl implements BannerService {
     }
 
     @Override
+    public BannerVideoUploadResponse uploadBannerVideo(Integer id, MultipartFile file) {
+        Banner banner = findBanner(id);
+        String oldVideoUrl = banner.getVideoUrl();
+
+        ImageUploadResponse uploadResponse = s3ImageService.uploadVideo(file, ImageFolder.BANNERS);
+        banner.setVideoUrl(uploadResponse.getFileUrl());
+        Banner saved = bannerRepository.save(banner);
+
+        if (oldVideoUrl != null && !oldVideoUrl.isBlank() && !oldVideoUrl.equals(uploadResponse.getFileUrl())) {
+            s3ImageService.deleteImage(oldVideoUrl);
+        }
+
+        return BannerVideoUploadResponse.builder()
+                .bannerId(saved.getBannerId())
+                .videoUrl(saved.getVideoUrl())
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PromotionalVideoResponse getActivePromotionalVideo() {
+        List<Banner> banners = bannerRepository.findByPositionAndActiveTrueOrderBySortOrderAsc("HOME_VIDEO");
+        LocalDateTime now = LocalDateTime.now();
+
+        Banner activeVideoBanner = banners.stream()
+                .filter(b -> b.getVideoUrl() != null && !b.getVideoUrl().isBlank())
+                .filter(b -> b.getStartDate() == null || !b.getStartDate().isAfter(now))
+                .filter(b -> b.getEndDate() == null || !b.getEndDate().isBefore(now))
+                .findFirst()
+                .orElse(null);
+
+        if (activeVideoBanner == null) {
+            return null;
+        }
+
+        String effectivePoster = activeVideoBanner.getPosterUrl() != null && !activeVideoBanner.getPosterUrl().isBlank()
+                ? activeVideoBanner.getPosterUrl()
+                : activeVideoBanner.getImageUrl();
+
+        return PromotionalVideoResponse.builder()
+                .id(activeVideoBanner.getBannerId())
+                .videoUrl(activeVideoBanner.getVideoUrl())
+                .posterUrl(effectivePoster)
+                .title(activeVideoBanner.getTitle())
+                .subtitle(activeVideoBanner.getSubtitle())
+                .badge(activeVideoBanner.getBadge() != null ? activeVideoBanner.getBadge() : "24-HOUR DISPATCH")
+                .ctaText(activeVideoBanner.getCtaText() != null ? activeVideoBanner.getCtaText() : "Explore 24H Catalog")
+                .targetScreen(activeVideoBanner.getLinkValue() != null ? activeVideoBanner.getLinkValue() : "TwentyFourHourDelivery")
+                .active(Boolean.TRUE.equals(activeVideoBanner.getActive()))
+                .build();
+    }
+
+    @Override
     public void deleteBanner(Integer id) {
         Banner banner = findBanner(id);
         String imageUrl = banner.getImageUrl();
+        String videoUrl = banner.getVideoUrl();
+        String posterUrl = banner.getPosterUrl();
         bannerRepository.delete(banner);
 
         if (imageUrl != null && !imageUrl.isBlank()) {
             s3ImageService.deleteImage(imageUrl);
+        }
+        if (videoUrl != null && !videoUrl.isBlank()) {
+            s3ImageService.deleteImage(videoUrl);
+        }
+        if (posterUrl != null && !posterUrl.isBlank() && !posterUrl.equals(imageUrl)) {
+            s3ImageService.deleteImage(posterUrl);
         }
     }
 
@@ -145,11 +242,20 @@ public class BannerServiceImpl implements BannerService {
     }
 
     private BannerResponse mapToResponse(Banner banner) {
+        String effectivePoster = banner.getPosterUrl() != null && !banner.getPosterUrl().isBlank()
+                ? banner.getPosterUrl()
+                : banner.getImageUrl();
+
         return BannerResponse.builder()
                 .bannerId(banner.getBannerId())
                 .title(banner.getTitle())
                 .subtitle(banner.getSubtitle())
                 .imageUrl(banner.getImageUrl())
+                .videoUrl(banner.getVideoUrl())
+                .posterUrl(banner.getPosterUrl())
+                .thumbnailUrl(effectivePoster)
+                .badge(banner.getBadge())
+                .ctaText(banner.getCtaText())
                 .linkType(banner.getLinkType())
                 .linkValue(banner.getLinkValue())
                 .position(banner.getPosition())
@@ -158,6 +264,7 @@ public class BannerServiceImpl implements BannerService {
                 .startDate(banner.getStartDate())
                 .endDate(banner.getEndDate())
                 .createdAt(banner.getCreatedAt())
+                .updatedAt(banner.getUpdatedAt() != null ? banner.getUpdatedAt() : banner.getCreatedAt())
                 .build();
     }
 }

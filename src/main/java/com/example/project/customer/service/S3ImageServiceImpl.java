@@ -36,7 +36,19 @@ public class S3ImageServiceImpl implements S3ImageService {
             "application/pdf"
     );
 
+    private static final List<String> ALLOWED_VIDEO_CONTENT_TYPES = Arrays.asList(
+            "video/mp4",
+            "video/webm",
+            "video/quicktime",
+            "video/x-m4v"
+    );
+
+    private static final List<String> ALLOWED_VIDEO_EXTENSIONS = Arrays.asList(
+            ".mp4", ".webm", ".mov", ".m4v"
+    );
+
     private static final long MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
+    private static final long MAX_VIDEO_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
 
     private final S3Client s3Client;
     private final String bucketName;
@@ -133,6 +145,60 @@ public class S3ImageServiceImpl implements S3ImageService {
     @Override
     public ImageUploadResponse uploadFile(MultipartFile file, String folderName) {
         return uploadImage(file, folderName != null ? folderName : ImageFolder.DOCUMENTS.getFolderName());
+    }
+
+    @Override
+    public ImageUploadResponse uploadVideo(MultipartFile file, ImageFolder folder) {
+        ImageFolder targetFolder = folder != null ? folder : ImageFolder.BANNERS;
+        return uploadVideo(file, targetFolder.getFolderName());
+    }
+
+    @Override
+    public ImageUploadResponse uploadVideo(MultipartFile file, String folderName) {
+        validateVideoFile(file);
+
+        String cleanFolder = sanitizeFolderName(folderName);
+        String extension = getFileExtension(file.getOriginalFilename());
+        String uniqueFileName = UUID.randomUUID().toString() + extension;
+        String s3Key = cleanFolder + "/" + uniqueFileName;
+
+        String contentType = file.getContentType();
+        if (contentType == null || contentType.isBlank() || "application/octet-stream".equalsIgnoreCase(contentType)) {
+            if (".webm".equalsIgnoreCase(extension)) {
+                contentType = "video/webm";
+            } else {
+                contentType = "video/mp4";
+            }
+        }
+
+        log.info("[S3_VIDEO_UPLOAD_START] bucket={}, key={}, size={}, contentType={}", bucketName, s3Key, file.getSize(), contentType);
+        String videoUrl;
+        try {
+            PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(s3Key)
+                    .contentType(contentType)
+                    .cacheControl("public, max-age=31536000, immutable")
+                    .build();
+
+            s3Client.putObject(putObjectRequest, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
+            videoUrl = buildImageUrl(s3Key);
+            log.info("[S3_VIDEO_UPLOAD_SUCCESS] bucket={}, key={}, url={}", bucketName, s3Key, videoUrl);
+        } catch (SdkException e) {
+            log.error("[S3_VIDEO_UPLOAD_FAILED] bucket={}, key={}, error={}", bucketName, s3Key, e.getMessage(), e);
+            throw new ImageStorageException("Failed to upload video to S3 storage", e);
+        } catch (IOException e) {
+            log.error("[S3_VIDEO_UPLOAD_READ_FAILED] key={}, error={}", s3Key, e.getMessage(), e);
+            throw new ImageStorageException("Failed to read video content for upload", e);
+        }
+
+        return ImageUploadResponse.builder()
+                .imageKey(s3Key)
+                .fileUrl(videoUrl)
+                .fileName(file.getOriginalFilename())
+                .mimeType(contentType)
+                .fileSize(file.getSize())
+                .build();
     }
 
     @Override
@@ -337,6 +403,34 @@ public class S3ImageServiceImpl implements S3ImageService {
         String contentType = file.getContentType();
         if (contentType != null && !ALLOWED_CONTENT_TYPES.contains(contentType.toLowerCase())) {
             throw new InvalidImageException("Invalid or unsupported file content type: " + contentType);
+        }
+    }
+
+    private void validateVideoFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new InvalidImageException("File cannot be empty");
+        }
+
+        if (file.getSize() > MAX_VIDEO_FILE_SIZE) {
+            throw new InvalidImageException("Video file size exceeds the 50MB limit");
+        }
+
+        String originalFilename = file.getOriginalFilename();
+        if (originalFilename == null || originalFilename.isBlank()) {
+            throw new InvalidImageException("File original filename is missing");
+        }
+
+        String lowerName = originalFilename.toLowerCase();
+        boolean validExt = ALLOWED_VIDEO_EXTENSIONS.stream().anyMatch(lowerName::endsWith);
+        if (!validExt) {
+            throw new InvalidImageException("Invalid or unsupported video extension. Allowed extensions are: .mp4, .webm, .mov, .m4v");
+        }
+
+        String contentType = file.getContentType();
+        if (contentType != null && !contentType.isBlank() && !"application/octet-stream".equalsIgnoreCase(contentType)) {
+            if (!ALLOWED_VIDEO_CONTENT_TYPES.contains(contentType.toLowerCase())) {
+                throw new InvalidImageException("Invalid or unsupported video content type: " + contentType);
+            }
         }
     }
 

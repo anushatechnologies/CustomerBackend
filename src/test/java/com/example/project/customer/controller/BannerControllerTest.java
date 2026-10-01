@@ -272,4 +272,55 @@ class BannerControllerTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.message").value("Banner not found with id: 99"));
     }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("POST /api/banners/{id}/video - Should upload video and return BannerVideoUploadResponse")
+    void uploadBannerVideo_Success() throws Exception {
+        MockMultipartFile videoFile = new MockMultipartFile(
+                "file",
+                "hinchmart_promo_24h.mp4",
+                "video/mp4",
+                "video binary content".getBytes()
+        );
+
+        com.example.project.customer.dto.BannerVideoUploadResponse uploadResponse =
+                com.example.project.customer.dto.BannerVideoUploadResponse.builder()
+                        .bannerId(25)
+                        .videoUrl("https://hinchmart-storage-191481838776-ap-south-2-an.s3.ap-south-2.amazonaws.com/banners/7a9c1d0-video.mp4")
+                        .build();
+
+        when(bannerService.uploadBannerVideo(eq(25), any())).thenReturn(uploadResponse);
+
+        mockMvc.perform(multipart("/api/banners/25/video")
+                        .file(videoFile))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Video uploaded to S3 successfully"))
+                .andExpect(jsonPath("$.data.bannerId").value(25))
+                .andExpect(jsonPath("$.data.videoUrl").value("https://hinchmart-storage-191481838776-ap-south-2-an.s3.ap-south-2.amazonaws.com/banners/7a9c1d0-video.mp4"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("PUT /api/banners/{id} - Should support partial update (e.g. toggle active: false)")
+    void updateBanner_PartialUpdate_Success() throws Exception {
+        BannerResponse updated = BannerResponse.builder()
+                .bannerId(25)
+                .title("Need Materials Urgently on Site?")
+                .active(false)
+                .videoUrl("https://example.com/video.mp4")
+                .position("HOME_VIDEO")
+                .build();
+
+        when(bannerService.updateBanner(eq(25), any(BannerRequest.class))).thenReturn(updated);
+
+        mockMvc.perform(put("/api/banners/25")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"active\": false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.bannerId").value(25))
+                .andExpect(jsonPath("$.data.active").value(false));
+    }
 }

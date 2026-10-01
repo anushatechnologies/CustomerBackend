@@ -218,4 +218,24 @@ class S3ImageServiceTest {
 
         verify(s3Client, org.mockito.Mockito.times(2)).deleteObject(any(DeleteObjectRequest.class));
     }
+
+    @Test
+    @DisplayName("uploadVideo - Should upload video mp4 successfully to S3")
+    void uploadVideo_Success() {
+        MockMultipartFile file = new MockMultipartFile("file", "promo.mp4", "video/mp4", "video content".getBytes());
+
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(PutObjectResponse.builder().build());
+
+        ImageUploadResponse response = s3ImageService.uploadVideo(file, ImageFolder.BANNERS);
+
+        assertNotNull(response);
+        assertTrue(response.getImageKey().startsWith("banners/"));
+        assertTrue(response.getImageKey().endsWith(".mp4"));
+        assertEquals("video/mp4", response.getContentType());
+        ArgumentCaptor<PutObjectRequest> captor = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client).putObject(captor.capture(), any(RequestBody.class));
+        assertEquals(bucketName, captor.getValue().bucket());
+        assertEquals("video/mp4", captor.getValue().contentType());
+    }
 }

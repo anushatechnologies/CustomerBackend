@@ -3,6 +3,7 @@ package com.example.project.customer.controller;
 import com.example.project.customer.dto.ApiResponse;
 import com.example.project.customer.dto.BannerRequest;
 import com.example.project.customer.dto.BannerResponse;
+import com.example.project.customer.dto.BannerVideoUploadResponse;
 import com.example.project.customer.service.BannerService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -53,7 +54,7 @@ public class BannerController {
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<BannerResponse>> updateBanner(
             @PathVariable Integer id,
-            @Valid @RequestBody BannerRequest request) {
+            @RequestBody BannerRequest request) {
         BannerResponse updated = bannerService.updateBanner(id, request);
         return ResponseEntity.ok(ApiResponse.ok("Banner updated successfully", updated));
     }
@@ -64,6 +65,14 @@ public class BannerController {
             @RequestParam("file") MultipartFile file) {
         BannerResponse updated = bannerService.uploadBannerImage(id, file);
         return ResponseEntity.ok(ApiResponse.ok("Banner image uploaded successfully", updated));
+    }
+
+    @PostMapping(value = {"/{id}/video", "/{id}/media"}, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<BannerVideoUploadResponse>> uploadBannerVideo(
+            @PathVariable Integer id,
+            @RequestParam("file") MultipartFile file) {
+        BannerVideoUploadResponse response = bannerService.uploadBannerVideo(id, file);
+        return ResponseEntity.ok(ApiResponse.ok("Video uploaded to S3 successfully", response));
     }
 
     @DeleteMapping("/{id}")

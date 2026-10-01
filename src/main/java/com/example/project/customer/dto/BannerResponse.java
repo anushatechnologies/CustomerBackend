@@ -20,6 +20,11 @@ public class BannerResponse {
     private String title;
     private String subtitle;
     private String imageUrl;
+    private String videoUrl;
+    private String posterUrl;
+    private String thumbnailUrl;
+    private String badge;
+    private String ctaText;
     private String linkType;
     private String linkValue;
     private String position;
@@ -31,4 +36,5 @@ public class BannerResponse {
     private LocalDateTime startDate;
     private LocalDateTime endDate;
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

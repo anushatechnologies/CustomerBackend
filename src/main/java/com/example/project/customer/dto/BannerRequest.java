@@ -22,6 +22,16 @@ public class BannerRequest {
 
     private String imageUrl;
 
+    private String videoUrl;
+
+    private String posterUrl;
+
+    private String thumbnailUrl;
+
+    private String badge;
+
+    private String ctaText;
+
     private String linkType;
 
     private String linkValue;

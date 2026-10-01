@@ -20,6 +20,10 @@ public interface S3ImageService {
 
     ImageUploadResponse uploadFile(MultipartFile file, String folderName);
 
+    ImageUploadResponse uploadVideo(MultipartFile file, ImageFolder folder);
+
+    ImageUploadResponse uploadVideo(MultipartFile file, String folderName);
+
     ImageUploadResponse uploadFileToKey(MultipartFile file, String s3Key);
 
     ImageUploadResponse uploadBytesToKey(byte[] bytes, String s3Key, String contentType);

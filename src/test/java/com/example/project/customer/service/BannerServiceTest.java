@@ -22,6 +22,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -237,5 +238,73 @@ class BannerServiceTest {
         when(bannerRepository.findById(99)).thenReturn(Optional.empty());
 
         assertThrows(BannerNotFoundException.class, () -> bannerService.deleteBanner(99));
+    }
+
+    @Test
+    @DisplayName("uploadBannerVideo should upload video to S3 and update banner")
+    void uploadBannerVideo_Success() {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "promo.mp4",
+                "video/mp4",
+                "video bytes".getBytes()
+        );
+
+        ImageUploadResponse uploadResponse = ImageUploadResponse.builder()
+                .fileUrl("https://example.com/promo.mp4")
+                .imageKey("banners/promo.mp4")
+                .build();
+
+        when(bannerRepository.findById(1)).thenReturn(Optional.of(banner));
+        when(s3ImageService.uploadVideo(any(), any(ImageFolder.class))).thenReturn(uploadResponse);
+        when(bannerRepository.save(any(Banner.class))).thenReturn(banner);
+
+        com.example.project.customer.dto.BannerVideoUploadResponse response = bannerService.uploadBannerVideo(1, file);
+
+        assertNotNull(response);
+        assertEquals(1, response.getBannerId());
+        assertEquals("https://example.com/promo.mp4", response.getVideoUrl());
+        verify(s3ImageService).uploadVideo(file, ImageFolder.BANNERS);
+        verify(bannerRepository).save(banner);
+    }
+
+    @Test
+    @DisplayName("getActivePromotionalVideo should return active video when present")
+    void getActivePromotionalVideo_Success() {
+        banner.setPosition("HOME_VIDEO");
+        banner.setVideoUrl("https://example.com/promo.mp4");
+        banner.setPosterUrl("https://example.com/poster.jpg");
+        banner.setBadge("24-HOUR DISPATCH");
+        banner.setCtaText("Explore 24H Catalog");
+        banner.setLinkValue("TwentyFourHourDelivery");
+        banner.setActive(true);
+
+        when(bannerRepository.findByPositionAndActiveTrueOrderBySortOrderAsc("HOME_VIDEO"))
+                .thenReturn(List.of(banner));
+
+        com.example.project.customer.dto.PromotionalVideoResponse response = bannerService.getActivePromotionalVideo();
+
+        assertNotNull(response);
+        assertEquals(1, response.getId());
+        assertEquals("https://example.com/promo.mp4", response.getVideoUrl());
+        assertEquals("https://example.com/poster.jpg", response.getPosterUrl());
+        assertEquals("24-HOUR DISPATCH", response.getBadge());
+        assertEquals("Explore 24H Catalog", response.getCtaText());
+        assertEquals("TwentyFourHourDelivery", response.getTargetScreen());
+        assertTrue(response.getActive());
+    }
+
+    @Test
+    @DisplayName("getActivePromotionalVideo should return null when no HOME_VIDEO banner has videoUrl")
+    void getActivePromotionalVideo_NullWhenNoVideoUrl() {
+        banner.setPosition("HOME_VIDEO");
+        banner.setVideoUrl(null);
+
+        when(bannerRepository.findByPositionAndActiveTrueOrderBySortOrderAsc("HOME_VIDEO"))
+                .thenReturn(List.of(banner));
+
+        com.example.project.customer.dto.PromotionalVideoResponse response = bannerService.getActivePromotionalVideo();
+
+        assertNull(response);
     }
 }
