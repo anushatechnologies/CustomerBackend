@@ -27,14 +27,22 @@ public class StoreInvoiceSequenceServiceImpl implements StoreInvoiceSequenceServ
 
         String fy = getCurrentFinancialYear();
         StoreInvoiceSequence sequence = sequenceRepository.findByStoreIdAndFinancialYearForUpdate(store.getStoreId(), fy)
-                .orElseGet(() -> {
-                    StoreInvoiceSequence newSeq = StoreInvoiceSequence.builder()
-                            .store(store)
-                            .financialYear(fy)
-                            .lastSequenceNumber(0L)
-                            .build();
-                    return sequenceRepository.save(newSeq);
-                });
+                .orElse(null);
+
+        if (sequence == null) {
+            try {
+                StoreInvoiceSequence newSeq = StoreInvoiceSequence.builder()
+                        .store(store)
+                        .financialYear(fy)
+                        .lastSequenceNumber(0L)
+                        .build();
+                sequence = sequenceRepository.saveAndFlush(newSeq);
+            } catch (Exception ex) {
+                log.info("Handled concurrent sequence creation for store {} FY {}: {}", store.getStoreId(), fy, ex.getMessage());
+                sequence = sequenceRepository.findByStoreIdAndFinancialYearForUpdate(store.getStoreId(), fy)
+                        .orElseGet(() -> sequenceRepository.findByStore_StoreIdAndFinancialYear(store.getStoreId(), fy).orElse(null));
+            }
+        }
 
         long nextNumber = sequence.getLastSequenceNumber() + 1;
         sequence.setLastSequenceNumber(nextNumber);

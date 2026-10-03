@@ -65,7 +65,10 @@ public class CheckoutServiceImpl implements CheckoutService {
         }
 
         BigDecimal totalGst = cgst.add(sgst).add(igst);
-        BigDecimal freightCharge = cart.getDeliveryCharge() != null ? cart.getDeliveryCharge() : BigDecimal.valueOf(4500.0);
+        BigDecimal freightCharge = (cart.getDeliveryCharge() != null
+                && cart.getDeliveryCharge().compareTo(BigDecimal.valueOf(4500.0)) != 0)
+                ? cart.getDeliveryCharge()
+                : BigDecimal.ZERO;
         BigDecimal craneUnloadingCharge = Boolean.TRUE.equals(request.getRequiresCraneUnloading())
                 ? BigDecimal.valueOf(2500.0) : BigDecimal.ZERO;
 

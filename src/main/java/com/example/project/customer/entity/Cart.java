@@ -55,7 +55,7 @@ public class Cart {
 
     @Column(name = "delivery_charge", precision = 10, scale = 2)
     @Builder.Default
-    private BigDecimal deliveryCharge = BigDecimal.valueOf(4500.0);
+    private BigDecimal deliveryCharge = BigDecimal.ZERO;
 
     @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
@@ -73,8 +73,8 @@ public class Cart {
             this.createdAt = LocalDateTime.now();
         }
         this.updatedAt = LocalDateTime.now();
-        if (this.deliveryCharge == null) {
-            this.deliveryCharge = BigDecimal.valueOf(4500.0);
+        if (this.deliveryCharge == null || this.deliveryCharge.compareTo(BigDecimal.valueOf(4500.0)) == 0) {
+            this.deliveryCharge = BigDecimal.ZERO;
         }
     }
 

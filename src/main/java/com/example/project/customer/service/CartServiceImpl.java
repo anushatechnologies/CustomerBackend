@@ -392,7 +392,7 @@ public class CartServiceImpl implements CartService {
                 .orElseGet(() -> Cart.builder()
                         .customer(Customer.builder().customerId(customerId).build())
                         .store(store)
-                        .deliveryCharge(BigDecimal.valueOf(4500.0))
+                        .deliveryCharge(BigDecimal.ZERO)
                         .isActive(true)
                         .build());
 
@@ -498,8 +498,10 @@ public class CartServiceImpl implements CartService {
             }
         }
 
-        BigDecimal deliveryCharge = (subtotal.compareTo(BigDecimal.valueOf(1000000)) >= 0 || items.isEmpty())
-                ? BigDecimal.ZERO : BigDecimal.valueOf(4500.0);
+        BigDecimal deliveryCharge = (cart.getDeliveryCharge() != null
+                && cart.getDeliveryCharge().compareTo(BigDecimal.valueOf(4500.0)) != 0)
+                ? cart.getDeliveryCharge()
+                : BigDecimal.ZERO;
 
         BigDecimal grandTotal = subtotal.subtract(couponDiscount).add(totalGst).add(deliveryCharge);
         if (grandTotal.compareTo(BigDecimal.ZERO) < 0) {

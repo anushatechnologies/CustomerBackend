@@ -81,14 +81,9 @@ public class ReviewServiceImpl implements ReviewService {
         Product product = productRepository.findById(orderItem.getProductId())
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + orderItem.getProductId()));
 
-        // 5. Retrieve or initialize Customer
+        // 5. Retrieve Customer
         Customer customer = customerRepository.findById(uid)
-                .orElseGet(() -> customerRepository.save(Customer.builder()
-                        .customerId(uid)
-                        .name("Verified Buyer #" + uid)
-                        .email("buyer" + uid + "@hinchmart.com")
-                        .phone("9800000" + String.format("%03d", uid % 1000))
-                        .build()));
+                .orElseThrow(() -> new ResourceNotFoundException("Customer not found with id: " + uid));
 
         // 6. Build and save ProductReview
         ProductReview review = ProductReview.builder()
@@ -194,12 +189,7 @@ public class ReviewServiceImpl implements ReviewService {
         }
 
         Customer customer = customerRepository.findById(uid)
-                .orElseGet(() -> customerRepository.save(Customer.builder()
-                        .customerId(uid)
-                        .name("Verified Buyer #" + uid)
-                        .email("buyer" + uid + "@hinchmart.com")
-                        .phone("9800000" + String.format("%03d", uid % 1000))
-                        .build()));
+                .orElseThrow(() -> new ResourceNotFoundException("Customer not found with id: " + uid));
 
         ReviewHelpfulVote vote = ReviewHelpfulVote.builder()
                 .review(review)

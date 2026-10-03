@@ -175,11 +175,21 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
             productMap.put(ci.getProductId(), p);
         }
 
-        Address address = addressRepository.findByCustomer_CustomerIdAndId(uid, request.getAddressId())
-                .orElseThrow(() -> new ResourceNotFoundException("Address not found with id: " + request.getAddressId()));
+        Customer customer = customerRepository.findById(uid)
+                .orElseGet(() -> Customer.builder().customerId(uid).build());
+
+        Address address;
+        if (request.getAddressId() != null) {
+            address = addressRepository.findByCustomer_CustomerIdAndId(uid, request.getAddressId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Address not found with id: " + request.getAddressId()));
+        } else {
+            address = addressRepository.findByCustomer_CustomerIdAndIsDefaultTrue(uid)
+                    .orElseGet(() -> addressRepository.findFirstByCustomer_CustomerIdOrderByCreatedAtDesc(uid)
+                            .orElseThrow(() -> new ResourceNotFoundException("No delivery address found for user ID: " + uid)));
+        }
 
         CheckoutPreviewRequest previewReq = CheckoutPreviewRequest.builder()
-                .addressId(request.getAddressId())
+                .addressId(address.getId())
                 .deliverySlot(request.getDeliverySlot())
                 .requiresCraneUnloading(request.getRequiresCraneUnloading())
                 .build();
@@ -224,7 +234,7 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
 
         Order order = Order.builder()
                 .orderNumber(orderNumber)
-                .customer(Customer.builder().customerId(uid).build())
+                .customer(customer)
                 .store(store)
                 .storeInvoiceNumber(storeInvoiceNumber)
                 .commissionRate(commissionRate)

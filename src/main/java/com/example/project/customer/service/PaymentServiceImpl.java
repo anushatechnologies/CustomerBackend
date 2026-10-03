@@ -111,7 +111,11 @@ public class PaymentServiceImpl implements PaymentService {
                         "Cannot generate payment for an empty cart. Please add items to your cart first.");
             }
 
-            if (request.getAddressId() != null) {
+            if (request.getAmount() != null && request.getAmount().compareTo(BigDecimal.ZERO) > 0) {
+                amount = request.getAmount();
+                purpose = "CHECKOUT";
+                description = "Checkout Payment for " + cart.getItems().size() + " items (Amount: ₹" + amount + ")";
+            } else if (request.getAddressId() != null) {
                 CheckoutPreviewRequest previewReq = CheckoutPreviewRequest.builder()
                         .addressId(request.getAddressId())
                         .deliverySlot(request.getDeliverySlot())

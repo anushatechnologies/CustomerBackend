@@ -30,7 +30,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/orders")
+@RequestMapping({"/api/orders", "/api/customer/orders"})
 @RequiredArgsConstructor
 @PreAuthorize("isAuthenticated()")
 public class OrderController {

@@ -123,7 +123,25 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(org.springframework.dao.DataIntegrityViolationException exception) {
-        log.warn("Data integrity violation (duplicate entry): {}", exception.getMessage());
+        String msg = exception.getMessage() != null ? exception.getMessage().toLowerCase() : "";
+        Throwable root = exception.getRootCause();
+        if (root != null && root.getMessage() != null) {
+            msg += " " + root.getMessage().toLowerCase();
+        }
+        log.warn("Data integrity violation: {}", msg);
+
+        if (msg.contains("pan") || msg.contains("aadhaar") || msg.contains("gstin") || msg.contains("bank") || msg.contains("seller")) {
+            return response(HttpStatus.CONFLICT, "A record with these unique details (Email, Aadhaar, PAN, GSTIN, or Bank Account) already exists.");
+        }
+        if (msg.contains("email") || msg.contains("customers_email_key") || msg.contains("uk_customer_email")) {
+            return response(HttpStatus.CONFLICT, "An account with this email address already exists.");
+        }
+        if (msg.contains("phone")) {
+            return response(HttpStatus.CONFLICT, "An account with this phone number already exists.");
+        }
+        if (msg.contains("order_number") || msg.contains("orders")) {
+            return response(HttpStatus.CONFLICT, "An order with this reference number already exists.");
+        }
         return response(HttpStatus.CONFLICT, "A record with these unique details (Email, Aadhaar, PAN, GSTIN, or Bank Account) already exists.");
     }
 
