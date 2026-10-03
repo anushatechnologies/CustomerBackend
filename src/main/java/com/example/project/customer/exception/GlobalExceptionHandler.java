@@ -234,6 +234,12 @@ public class GlobalExceptionHandler {
         return response(HttpStatus.BAD_REQUEST, msg);
     }
 
+    @ExceptionHandler(org.springframework.transaction.TransactionException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTransactionException(org.springframework.transaction.TransactionException exception) {
+        log.error("Transaction exception: {}", exception.getMessage(), exception);
+        return response(HttpStatus.INTERNAL_SERVER_ERROR, "A database transaction error occurred. Please refresh and try again.");
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGeneralException(Exception exception) {
         log.error("Unhandled exception occurred: {}", exception.getMessage(), exception);

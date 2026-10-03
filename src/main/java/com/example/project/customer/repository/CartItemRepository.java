@@ -3,6 +3,9 @@ package com.example.project.customer.repository;
 import com.example.project.customer.entity.CartItem;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -22,5 +25,7 @@ public interface CartItemRepository extends JpaRepository<CartItem, Integer> {
     @EntityGraph(attributePaths = {"product"})
     List<CartItem> findAllByCart_CartIdAndProduct_ProductId(Integer cartId, Integer productId);
 
-    void deleteByCart_CartId(Integer cartId);
+    @Modifying
+    @Query("DELETE FROM CartItem ci WHERE ci.cart.cartId = :cartId")
+    void deleteByCart_CartId(@Param("cartId") Integer cartId);
 }

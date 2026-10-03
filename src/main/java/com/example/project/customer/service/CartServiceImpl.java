@@ -324,13 +324,17 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public void clearCart(Integer userId) {
+        if (userId == null) {
+            throw new UnauthorizedException("Authentication required: User ID must not be null.");
+        }
         Cart cart = getOrCreateActiveCart(userId);
         if (cart.getItems() != null) {
             cart.getItems().clear();
         }
-        cartItemRepository.deleteByCart_CartId(cart.getCartId());
         cart.setAppliedCoupon(null);
+        cart.setDeliveryCharge(BigDecimal.ZERO);
         cartRepository.save(cart);
+        cartItemRepository.deleteByCart_CartId(cart.getCartId());
     }
 
     @Override

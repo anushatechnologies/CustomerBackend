@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/cart")
+@RequestMapping({"/api/cart", "/api/customer/cart"})
 @RequiredArgsConstructor
 @PreAuthorize("isAuthenticated()")
 public class CartController {
