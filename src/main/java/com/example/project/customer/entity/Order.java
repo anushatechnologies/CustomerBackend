@@ -68,6 +68,16 @@ public class Order {
     @Column(name = "delivery_location")
     private String deliveryLocation;
 
+    @Column(name = "order_for_someone_else")
+    @Builder.Default
+    private Boolean orderForSomeoneElse = false;
+
+    @Column(name = "recipient_name", length = 150)
+    private String recipientName;
+
+    @Column(name = "recipient_phone", length = 20)
+    private String recipientPhone;
+
     @Column(name = "subtotal", precision = 14, scale = 2)
     private BigDecimal subtotal;
 

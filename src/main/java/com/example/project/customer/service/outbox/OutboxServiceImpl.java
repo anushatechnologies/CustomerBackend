@@ -47,7 +47,7 @@ public class OutboxServiceImpl implements OutboxService {
         Store store = order.getStore();
         if (store == null && order.getOrderId() != null) {
             // Lazy load safeguard if detached
-            store = storeRepository.findById(1).orElse(null);
+            store = storeRepository.findAll().stream().findFirst().orElse(null);
         }
         Double pickupLat = store != null ? store.getLatitude() : null;
         Double pickupLng = store != null ? store.getLongitude() : null;

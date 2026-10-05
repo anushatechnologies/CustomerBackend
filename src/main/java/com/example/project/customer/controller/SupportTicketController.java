@@ -59,7 +59,7 @@ public class SupportTicketController {
             @PathVariable Integer id,
             @Valid @RequestBody TicketMessageRequest request) {
         Integer userId = userContextUtil.getCurrentUserId();
-        TicketMessageResponse message = ticketService.addMessage(id, userId, "USER", "Customer", request);
+        TicketMessageResponse message = ticketService.addMessage(id, userId, "USER", null, request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.created("Message added to support ticket", message));
     }

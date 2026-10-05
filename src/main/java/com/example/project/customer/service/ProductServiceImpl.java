@@ -13,6 +13,7 @@ import com.example.project.customer.entity.Brand;
 import com.example.project.customer.entity.Category;
 import com.example.project.customer.entity.Product;
 import com.example.project.customer.entity.Seller;
+import com.example.project.customer.entity.StoreStatus;
 import com.example.project.customer.exception.ResourceConflictException;
 import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.repository.BrandRepository;
@@ -94,7 +95,12 @@ public class ProductServiceImpl implements ProductService {
         }
 
         if (product.getStore() == null) {
-            storeRepository.findById(1).ifPresent(product::setStore);
+            storeRepository.findById(1)
+                    .or(() -> storeRepository.findAll().stream()
+                            .filter(s -> s.getStatus() == StoreStatus.ACTIVE)
+                            .findFirst())
+                    .or(() -> storeRepository.findAll().stream().findFirst())
+                    .ifPresent(product::setStore);
         }
 
         // IMPORTANT:

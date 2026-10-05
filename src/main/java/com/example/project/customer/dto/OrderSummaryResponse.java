@@ -24,6 +24,9 @@ public class OrderSummaryResponse {
     private BigDecimal totalAmount;
     private String orderStatus;
     private String paymentStatus;
+    private Boolean orderForSomeoneElse;
+    private String recipientName;
+    private String recipientPhone;
     private Integer itemCount;
     private String firstItemTitle;
     private String firstItemImage;

@@ -38,14 +38,6 @@ public class SecurityConfig {
         this.firebaseAccessDeniedHandler = firebaseAccessDeniedHandler;
     }
 
-    private static final List<String> ALLOWED_ORIGINS = List.of(
-            "http://localhost:5173",
-            "http://localhost:5174",
-            "http://localhost:5175",
-            "https://hinchmart.com",
-            "https://www.hinchmart.com"
-    );
-
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http

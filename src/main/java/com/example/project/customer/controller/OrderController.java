@@ -46,6 +46,16 @@ public class OrderController {
                 .body(ApiResponse.created("Order placed successfully", order));
     }
 
+    @PostMapping(value = {"/for-someone-else", "/for-other"})
+    public ResponseEntity<ApiResponse<OrderResponse>> createOrderForSomeoneElse(
+            @Valid @RequestBody OrderCreateRequest request) {
+        request.setOrderForSomeoneElse(true);
+        Integer userId = userContextUtil.getCurrentUserId();
+        OrderResponse order = orderService.createOrder(userId, request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.created("Order placed for someone else successfully", order));
+    }
+
     @GetMapping
     public ResponseEntity<ApiResponse<List<OrderSummaryResponse>>> getOrders(
             @RequestParam(required = false) String status,

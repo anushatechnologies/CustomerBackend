@@ -728,14 +728,10 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
     }
 
     private String handleFileUpload(Integer sellerId, DocumentType docType, MultipartFile file, String title) {
-        String fileUrl = "https://mock-storage.example.com/sellers/" + sellerId + "/" + file.getOriginalFilename();
-        if (s3ImageService != null) {
-            try {
-                fileUrl = s3ImageService.uploadImage(file, "sellers/" + sellerId + "/documents").getFileUrl();
-            } catch (Exception ignored) {
-                // fall back to mock URL if AWS credentials not configured
-            }
+        if (s3ImageService == null) {
+            throw new IllegalStateException("Storage service is not configured for document uploads.");
         }
+        String fileUrl = s3ImageService.uploadImage(file, "sellers/" + sellerId + "/documents").getFileUrl();
 
         SellerDocument doc = documentRepository.findBySellerIdAndDocumentType(sellerId, docType)
                 .orElseGet(SellerDocument::new);

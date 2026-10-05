@@ -150,10 +150,26 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         }
 
         // 1. Resolve and validate store
-        Integer storeId = cart.getStoreId() != null ? cart.getStoreId() : 1;
-        Store store = storeRepository.findById(storeId)
-                .orElseGet(() -> storeRepository.findById(1)
-                        .orElseThrow(() -> new ResourceNotFoundException("Store not found with id: " + storeId)));
+        Integer storeId = cart.getStoreId();
+        Store store = null;
+        if (storeId != null) {
+            store = storeRepository.findById(storeId).orElse(null);
+        }
+        if (store == null && !cart.getItems().isEmpty()) {
+            Integer firstProductId = cart.getItems().get(0).getProductId();
+            Product p = productRepository.findById(firstProductId).orElse(null);
+            if (p != null && p.getStore() != null) {
+                store = p.getStore();
+            }
+        }
+        if (store == null) {
+            store = storeRepository.findById(1)
+                    .or(() -> storeRepository.findAll().stream()
+                            .filter(s -> s.getStatus() == StoreStatus.ACTIVE)
+                            .findFirst())
+                    .or(() -> storeRepository.findAll().stream().findFirst())
+                    .orElseThrow(() -> new ResourceNotFoundException("No active store available for checkout."));
+        }
 
         if (store.getStatus() != StoreStatus.ACTIVE) {
             throw new IllegalStateException("Cannot checkout: Store '" + store.getName() + "' is currently " + store.getStatus() + " and not accepting orders.");
@@ -215,10 +231,25 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
             sb.append(", ").append(address.getAreaLocality());
         }
         sb.append(", ").append(address.getCity()).append(", ").append(address.getState()).append(" - ").append(address.getPincode());
-        if (address.getRecipientName() != null && !address.getRecipientName().isBlank()) {
-            sb.append(" (Contact: ").append(address.getRecipientName());
-            if (address.getPhone() != null && !address.getPhone().isBlank()) {
-                sb.append(" / ").append(address.getPhone());
+        boolean isForOther = Boolean.TRUE.equals(request.getOrderForSomeoneElse())
+                || (request.getRecipientName() != null && !request.getRecipientName().isBlank())
+                || (request.getRecipientPhone() != null && !request.getRecipientPhone().isBlank());
+
+        String effectiveRecipientName = (request.getRecipientName() != null && !request.getRecipientName().isBlank())
+                ? request.getRecipientName().trim()
+                : address.getRecipientName();
+
+        String effectiveRecipientPhone = (request.getRecipientPhone() != null && !request.getRecipientPhone().isBlank())
+                ? request.getRecipientPhone().trim()
+                : address.getPhone();
+
+        if (effectiveRecipientName != null && !effectiveRecipientName.isBlank()) {
+            sb.append(" (Contact: ").append(effectiveRecipientName);
+            if (effectiveRecipientPhone != null && !effectiveRecipientPhone.isBlank()) {
+                sb.append(" / ").append(effectiveRecipientPhone);
+            }
+            if (isForOther) {
+                sb.append(" [Order for Someone Else]");
             }
             sb.append(")");
         }
@@ -241,6 +272,9 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 .commissionAmount(commissionAmount)
                 .addressId(address.getId())
                 .deliveryLocation(formattedAddress)
+                .orderForSomeoneElse(isForOther)
+                .recipientName(effectiveRecipientName)
+                .recipientPhone(effectiveRecipientPhone)
                 .subtotal(preview.getSubtotal())
                 .discount(preview.getDiscount())
                 .couponCode(cart.getAppliedCoupon())
@@ -770,6 +804,9 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 .totalAmount(o.getTotalAmount())
                 .orderStatus(o.getOrderStatus())
                 .paymentStatus(o.getPaymentStatus())
+                .orderForSomeoneElse(o.getOrderForSomeoneElse())
+                .recipientName(o.getRecipientName())
+                .recipientPhone(o.getRecipientPhone())
                 .itemCount(count)
                 .firstItemTitle(firstTitle)
                 .firstItemImage(firstImage)
@@ -825,9 +862,13 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 .paymentStatus(o.getPaymentStatus())
                 .orderStatus(o.getOrderStatus())
                 .poNumber(o.getPoNumber())
+                .deliveryLocation(o.getDeliveryLocation())
                 .deliverySlot(o.getDeliverySlot())
                 .deliveryInstructions(o.getDeliveryInstructions())
                 .requiresCraneUnloading(o.isRequiresCraneUnloading())
+                .orderForSomeoneElse(o.getOrderForSomeoneElse())
+                .recipientName(o.getRecipientName())
+                .recipientPhone(o.getRecipientPhone())
                 .itemCount(itemDtos.size())
                 .firstItemTitle(firstTitle)
                 .firstItemImage(firstImage)

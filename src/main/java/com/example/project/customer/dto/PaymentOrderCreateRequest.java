@@ -46,6 +46,15 @@ public class PaymentOrderCreateRequest {
     @DecimalMin(value = "0.01", message = "Minimum amount is 0.01")
     private BigDecimal amount;
 
+    @JsonAlias({"order_for_someone_else", "orderForOther", "order_for_other"})
+    private Boolean orderForSomeoneElse;
+
+    @JsonAlias({"recipient_name", "receiverName", "receiver_name"})
+    private String recipientName;
+
+    @JsonAlias({"recipient_phone", "receiverPhone", "receiver_phone"})
+    private String recipientPhone;
+
     /**
      * Purpose: ORDER_PAYMENT, CART_PAYMENT, CHECKOUT, or WALLET_TOPUP
      */

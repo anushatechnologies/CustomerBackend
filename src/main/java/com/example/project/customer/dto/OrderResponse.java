@@ -39,9 +39,13 @@ public class OrderResponse {
     private String paymentStatus;
     private String orderStatus;
     private String poNumber;
+    private String deliveryLocation;
     private String deliverySlot;
     private String deliveryInstructions;
     private Boolean requiresCraneUnloading;
+    private Boolean orderForSomeoneElse;
+    private String recipientName;
+    private String recipientPhone;
     private Integer itemCount;
     private String firstItemTitle;
     private String firstItemImage;

@@ -557,7 +557,7 @@ public class ExtendedFeaturesFlowTest {
                 .senderRole("USER")
                 .content("Acknowledged. Our finance team will forward the filing acknowledgement.")
                 .build();
-        when(supportTicketService.addMessage(eq(1001), eq(101), eq("USER"), eq("Customer"), any(TicketMessageRequest.class))).thenReturn(msgResp);
+        when(supportTicketService.addMessage(eq(1001), eq(101), eq("USER"), any(), any(TicketMessageRequest.class))).thenReturn(msgResp);
 
         SupportTicketRequest tktReq = SupportTicketRequest.builder()
                 .subject("Input Tax Credit Split Breakdown for Invoice #INV-2026-001")

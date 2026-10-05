@@ -13,8 +13,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/admin/coupons")
 @RequiredArgsConstructor
-// TODO: Re-enable before deploying to production
-// @PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasRole('ADMIN')")
 public class AdminCouponController {
     private final CouponService couponService;
 

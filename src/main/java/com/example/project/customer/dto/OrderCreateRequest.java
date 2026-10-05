@@ -33,4 +33,16 @@ public class OrderCreateRequest {
     @JsonProperty("requiresCraneUnloading")
     @JsonAlias({"requires_crane_unloading", "craneUnloading", "crane_unloading"})
     private Boolean requiresCraneUnloading = false;
+
+    @JsonProperty("orderForSomeoneElse")
+    @JsonAlias({"order_for_someone_else", "orderForOther", "order_for_other", "isGift", "is_gift"})
+    private Boolean orderForSomeoneElse;
+
+    @JsonProperty("recipientName")
+    @JsonAlias({"recipient_name", "receiverName", "receiver_name", "contactName", "contact_name"})
+    private String recipientName;
+
+    @JsonProperty("recipientPhone")
+    @JsonAlias({"recipient_phone", "receiverPhone", "receiver_phone", "contactPhone", "contact_phone"})
+    private String recipientPhone;
 }

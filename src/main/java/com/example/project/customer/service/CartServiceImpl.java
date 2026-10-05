@@ -412,9 +412,11 @@ public class CartServiceImpl implements CartService {
     }
 
     private Store getDefaultStore() {
-        return storeRepository.findById(1)
-                .orElseGet(() -> storeRepository.findAll().stream().findFirst()
-                        .orElseThrow(() -> new ResourceNotFoundException("No default marketplace store available.")));
+        return storeRepository.findAll().stream()
+                .filter(s -> s.getStatus() == StoreStatus.ACTIVE)
+                .findFirst()
+                .or(() -> storeRepository.findAll().stream().findFirst())
+                .orElseThrow(() -> new ResourceNotFoundException("No default marketplace store available."));
     }
 
     public CartResponse calculateCartResponse(Cart cart) {

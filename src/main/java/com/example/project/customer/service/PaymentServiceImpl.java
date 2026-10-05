@@ -169,6 +169,15 @@ public class PaymentServiceImpl implements PaymentService {
             if (request.getRequiresCraneUnloading() != null) {
                 notes.put("requiresCraneUnloading", String.valueOf(request.getRequiresCraneUnloading()));
             }
+            if (Boolean.TRUE.equals(request.getOrderForSomeoneElse())) {
+                notes.put("orderForSomeoneElse", "true");
+            }
+            if (request.getRecipientName() != null && !request.getRecipientName().isBlank()) {
+                notes.put("recipientName", request.getRecipientName().trim());
+            }
+            if (request.getRecipientPhone() != null && !request.getRecipientPhone().isBlank()) {
+                notes.put("recipientPhone", request.getRecipientPhone().trim());
+            }
             rzpOptions.put("notes", notes);
 
             com.razorpay.Order rzpOrder = null;

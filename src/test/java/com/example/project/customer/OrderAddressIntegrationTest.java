@@ -204,6 +204,71 @@ class OrderAddressIntegrationTest {
     }
 
     @Test
+    @DisplayName("Order Checkout: Captures recipient name and phone when ordering for someone else")
+    void testOrderCreation_ForSomeoneElse_CapturesRecipientSnapshot() {
+        CartItemResponse item = CartItemResponse.builder()
+                .cartItemId(1)
+                .productId(1)
+                .title("Steel Rebar")
+                .unitPrice(BigDecimal.valueOf(100.00))
+                .quantity(5)
+                .lineTotal(BigDecimal.valueOf(500.00))
+                .build();
+
+        CartResponse cart = CartResponse.builder()
+                .cartId(1)
+                .items(List.of(item))
+                .subtotal(BigDecimal.valueOf(500.00))
+                .build();
+
+        when(cartService.getCart(101)).thenReturn(cart);
+        when(addressRepository.findByCustomer_CustomerIdAndId(101, 10)).thenReturn(Optional.of(address1));
+
+        CheckoutPreviewResponse preview = CheckoutPreviewResponse.builder()
+                .subtotal(BigDecimal.valueOf(500.00))
+                .taxableAmount(BigDecimal.valueOf(500.00))
+                .grandTotal(BigDecimal.valueOf(590.00))
+                .build();
+        when(checkoutService.previewCheckout(eq(101), any(CheckoutPreviewRequest.class))).thenReturn(preview);
+
+        Product product = Product.builder().productId(1).title("Steel Rebar").stockQty(100).build();
+        when(productRepository.findById(1)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdForStockUpdate(1)).thenReturn(Optional.of(product));
+
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(orderItemRepository.save(any(com.example.project.customer.entity.OrderItem.class)))
+                .thenAnswer(invocation -> {
+                    com.example.project.customer.entity.OrderItem oi = invocation.getArgument(0);
+                    oi.setOrderItemId(1);
+                    return oi;
+                });
+
+        OrderCreateRequest req = OrderCreateRequest.builder()
+                .addressId(10)
+                .orderForSomeoneElse(true)
+                .recipientName("Ramesh Site Engineer")
+                .recipientPhone("9988776655")
+                .paymentMethod("RAZORPAY")
+                .build();
+
+        OrderResponse orderResponse = orderService.createOrder(101, req);
+
+        assertThat(orderResponse).isNotNull();
+        assertThat(orderResponse.getOrderForSomeoneElse()).isTrue();
+        assertThat(orderResponse.getRecipientName()).isEqualTo("Ramesh Site Engineer");
+        assertThat(orderResponse.getRecipientPhone()).isEqualTo("9988776655");
+
+        ArgumentCaptor<Order> orderCaptor = ArgumentCaptor.forClass(Order.class);
+        verify(orderRepository, org.mockito.Mockito.atLeastOnce()).save(orderCaptor.capture());
+
+        Order savedOrder = orderCaptor.getValue();
+        assertThat(savedOrder.getOrderForSomeoneElse()).isTrue();
+        assertThat(savedOrder.getRecipientName()).isEqualTo("Ramesh Site Engineer");
+        assertThat(savedOrder.getRecipientPhone()).isEqualTo("9988776655");
+        assertThat(savedOrder.getDeliveryLocation()).contains("Contact: Ramesh Site Engineer / 9988776655 [Order for Someone Else]");
+    }
+
+    @Test
     @DisplayName("Order Checkout: Rejects order placement when address belongs to another customer")
     void testOrderCreation_RejectsUnauthorizedAddress() {
         CartItemResponse item = CartItemResponse.builder().productId(1).title("Steel Rebar").quantity(2).build();

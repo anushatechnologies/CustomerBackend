@@ -202,7 +202,7 @@ public class SellerProductServiceImpl implements SellerProductService {
         }
         if (store == null) {
             store = storeRepository.findBySellerSellerId(sellerId)
-                    .orElseGet(() -> storeRepository.findById(1).orElse(null));
+                    .orElseGet(() -> storeRepository.findAll().stream().findFirst().orElse(null));
         }
 
         ApprovalStatus initialStatus = com.example.project.customer.security.SecurityUtils.isAdmin() 

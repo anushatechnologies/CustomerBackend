@@ -12,6 +12,7 @@ import com.example.project.customer.entity.TicketMessage;
 import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.exception.UnauthorizedException;
 import com.example.project.customer.repository.SupportTicketRepository;
+import com.example.project.customer.repository.CustomerRepository;
 import com.example.project.customer.repository.TicketMessageRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +35,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
 
     private final SupportTicketRepository ticketRepository;
     private final TicketMessageRepository messageRepository;
+    private final CustomerRepository customerRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -76,9 +78,14 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         int uid = userId;
         String tktNum = "TKT-" + System.currentTimeMillis();
 
+        Customer customer = customerRepository.findById(uid).orElse(null);
+        String customerName = (customer != null && customer.getName() != null && !customer.getName().isBlank())
+                ? customer.getName()
+                : "Customer";
+
         SupportTicket ticket = SupportTicket.builder()
                 .ticketNumber(tktNum)
-                .customer(Customer.builder().customerId(uid).build())
+                .customer(customer != null ? customer : Customer.builder().customerId(uid).build())
                 .subject(request.getSubject())
                 .category(request.getCategory() != null ? request.getCategory() : "GENERAL")
                 .priority(request.getPriority() != null ? request.getPriority() : "MEDIUM")
@@ -93,7 +100,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                 .ticket(saved)
                 .senderId(uid)
                 .senderRole("USER")
-                .senderName("Customer")
+                .senderName(customerName)
                 .content(request.getMessage())
                 .timestamp(LocalDateTime.now())
                 .build();
@@ -112,11 +119,23 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         int sid = senderId;
         String role = senderRole != null ? senderRole : "USER";
 
+        String resolvedName = senderName;
+        if ("USER".equalsIgnoreCase(role) && (resolvedName == null || "Customer".equalsIgnoreCase(resolvedName) || resolvedName.isBlank())) {
+            Customer customer = customerRepository.findById(sid).orElse(null);
+            if (customer != null && customer.getName() != null && !customer.getName().isBlank()) {
+                resolvedName = customer.getName();
+            } else {
+                resolvedName = "Customer";
+            }
+        } else if (resolvedName == null || resolvedName.isBlank()) {
+            resolvedName = "USER".equals(role) ? "Customer" : "HinchMart Support";
+        }
+
         TicketMessage msg = TicketMessage.builder()
                 .ticket(ticket)
                 .senderId(sid)
                 .senderRole(role)
-                .senderName(senderName != null ? senderName : ("USER".equals(role) ? "Customer" : "HinchMart Support"))
+                .senderName(resolvedName)
                 .content(request.getContent())
                 .attachmentUrl(request.getAttachmentUrl())
                 .timestamp(LocalDateTime.now())
