@@ -47,11 +47,13 @@ public class SubcategoryServiceImpl implements SubcategoryService {
             throw new ResourceConflictException("Subcategory already exists with slug: '" + slug + "'");
         }
 
+        String validImageUrl = com.example.project.customer.validation.ImageUrlValidator.validateForSave(request.getImageUrl());
+
         Subcategory subcategory = Subcategory.builder()
                 .category(category)
                 .name(cleanName)
                 .slug(slug)
-                .imageUrl(request.getImageUrl())
+                .imageUrl(validImageUrl)
                 .active(request.getActive() != null ? request.getActive() : true)
                 .sortOrder(request.getSortOrder() != null ? request.getSortOrder() : 0)
                 .productCount(0)
@@ -116,7 +118,8 @@ public class SubcategoryServiceImpl implements SubcategoryService {
         subcategory.setName(cleanName);
         subcategory.setSlug(slug);
         if (request.getImageUrl() != null) {
-            subcategory.setImageUrl(request.getImageUrl());
+            String validImageUrl = com.example.project.customer.validation.ImageUrlValidator.validateForSave(request.getImageUrl());
+            subcategory.setImageUrl(validImageUrl);
         }
         if (request.getActive() != null) {
             subcategory.setActive(request.getActive());
@@ -127,7 +130,9 @@ public class SubcategoryServiceImpl implements SubcategoryService {
 
         Subcategory saved = repository.save(subcategory);
 
-        if (request.getImageUrl() != null && oldImageUrl != null && !oldImageUrl.isBlank() && !oldImageUrl.equals(request.getImageUrl())) {
+        if (request.getImageUrl() != null && oldImageUrl != null && !oldImageUrl.isBlank()
+                && !oldImageUrl.equals(subcategory.getImageUrl())
+                && !com.example.project.customer.validation.ImageUrlValidator.isBlobOrDataUrl(oldImageUrl)) {
             s3ImageService.deleteImage(oldImageUrl);
         }
 
@@ -140,7 +145,8 @@ public class SubcategoryServiceImpl implements SubcategoryService {
         String imageUrl = subcategory.getImageUrl();
         repository.delete(subcategory);
 
-        if (imageUrl != null && !imageUrl.isBlank()) {
+        if (imageUrl != null && !imageUrl.isBlank()
+                && !com.example.project.customer.validation.ImageUrlValidator.isBlobOrDataUrl(imageUrl)) {
             s3ImageService.deleteImage(imageUrl);
         }
     }

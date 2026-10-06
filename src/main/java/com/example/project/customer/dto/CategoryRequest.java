@@ -18,6 +18,7 @@ public class CategoryRequest {
 
     private String slug;
 
+    @com.example.project.customer.validation.ValidImageUrl
     private String imageUrl;
 
     @Builder.Default

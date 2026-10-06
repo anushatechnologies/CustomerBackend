@@ -50,10 +50,12 @@ public class CategoryServiceImpl implements CategoryService {
             throw new ResourceConflictException("Category already exists with slug: '" + slug + "'");
         }
 
+        String validImageUrl = com.example.project.customer.validation.ImageUrlValidator.validateForSave(request.getImageUrl());
+
         Category category = Category.builder()
                 .name(cleanName)
                 .slug(slug)
-                .imageUrl(request.getImageUrl())
+                .imageUrl(validImageUrl)
                 .active(request.getActive() != null ? request.getActive() : true)
                 .sortOrder(request.getSortOrder() != null ? request.getSortOrder() : 0)
                 .productCount(0)
@@ -130,7 +132,8 @@ public class CategoryServiceImpl implements CategoryService {
         category.setName(cleanName);
         category.setSlug(slug);
         if (request.getImageUrl() != null) {
-            category.setImageUrl(request.getImageUrl());
+            String validImageUrl = com.example.project.customer.validation.ImageUrlValidator.validateForSave(request.getImageUrl());
+            category.setImageUrl(validImageUrl);
         }
         if (request.getActive() != null) {
             category.setActive(request.getActive());
@@ -141,7 +144,9 @@ public class CategoryServiceImpl implements CategoryService {
 
         Category saved = repository.save(category);
 
-        if (request.getImageUrl() != null && oldImageUrl != null && !oldImageUrl.isBlank() && !oldImageUrl.equals(request.getImageUrl())) {
+        if (request.getImageUrl() != null && oldImageUrl != null && !oldImageUrl.isBlank()
+                && !oldImageUrl.equals(category.getImageUrl())
+                && !com.example.project.customer.validation.ImageUrlValidator.isBlobOrDataUrl(oldImageUrl)) {
             s3ImageService.deleteImage(oldImageUrl);
         }
 
@@ -154,7 +159,8 @@ public class CategoryServiceImpl implements CategoryService {
         String imageUrl = category.getImageUrl();
         repository.delete(category);
 
-        if (imageUrl != null && !imageUrl.isBlank()) {
+        if (imageUrl != null && !imageUrl.isBlank()
+                && !com.example.project.customer.validation.ImageUrlValidator.isBlobOrDataUrl(imageUrl)) {
             s3ImageService.deleteImage(imageUrl);
         }
     }

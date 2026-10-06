@@ -145,6 +145,52 @@ class S3ImageServiceTest {
     }
 
     @Test
+    @DisplayName("deleteImage - Should NEVER call S3 when given a blob URL")
+    void deleteImage_BlobUrl_IgnoredAndNeverCallsS3() {
+        s3ImageService.deleteImage("blob:http://localhost:5173/58fca786-fa31-4b60-bb91-e03efe75662c");
+
+        verify(s3Client, org.mockito.Mockito.never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    @DisplayName("deleteImage - Should NEVER call S3 when given a base64 data URL")
+    void deleteImage_DataUrl_IgnoredAndNeverCallsS3() {
+        s3ImageService.deleteImage("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==");
+
+        verify(s3Client, org.mockito.Mockito.never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    @DisplayName("deleteImage - Should safely ignore null or empty string without calling S3")
+    void deleteImage_NullOrBlank_IgnoredAndNeverCallsS3() {
+        s3ImageService.deleteImage(null);
+        s3ImageService.deleteImage("");
+        s3ImageService.deleteImage("   ");
+
+        verify(s3Client, org.mockito.Mockito.never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    @DisplayName("deleteImage - Should safely ignore external non-S3 URLs without calling S3")
+    void deleteImage_ExternalNonS3Url_IgnoredAndNeverCallsS3() {
+        s3ImageService.deleteImage("https://example.com/some-other-host.jpg");
+        s3ImageService.deleteImage("https://other-bucket.s3.ap-south-2.amazonaws.com/image.png");
+
+        verify(s3Client, org.mockito.Mockito.never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    @DisplayName("deleteImage - Should successfully delete when given full S3 HTTPS URL belonging to our bucket")
+    void deleteImage_FullS3Url_CallsS3Delete() {
+        s3ImageService.deleteImage("https://" + bucketName + ".s3." + region + ".amazonaws.com/categories/test-cat.jpg");
+
+        ArgumentCaptor<DeleteObjectRequest> captor = ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(s3Client).deleteObject(captor.capture());
+        assertEquals(bucketName, captor.getValue().bucket());
+        assertEquals("categories/test-cat.jpg", captor.getValue().key());
+    }
+
+    @Test
     @DisplayName("imageExists - Should return true when object exists and false on NoSuchKeyException")
     void imageExists_Check() {
         when(s3Client.headObject(any(HeadObjectRequest.class)))
@@ -163,6 +209,10 @@ class S3ImageServiceTest {
     void extractKeyFromUrl_Test() {
         assertEquals("products/123.jpg", s3ImageService.extractKeyFromUrl("products/123.jpg"));
         assertEquals("banners/xyz.png", s3ImageService.extractKeyFromUrl("https://hinchmart-storage-191481838776-ap-south-2-an.s3.ap-south-2.amazonaws.com/banners/xyz.png"));
+        assertEquals("", s3ImageService.extractKeyFromUrl("blob:http://localhost:5173/58fca786-fa31-4b60-bb91-e03efe75662c"));
+        assertEquals("", s3ImageService.extractKeyFromUrl("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="));
+        assertEquals("", s3ImageService.extractKeyFromUrl(null));
+        assertEquals("", s3ImageService.extractKeyFromUrl(""));
     }
 
     @Test

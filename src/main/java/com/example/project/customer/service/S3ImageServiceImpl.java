@@ -306,7 +306,17 @@ public class S3ImageServiceImpl implements S3ImageService {
             return;
         }
 
+        if (!isDeletableS3Target(imageKeyOrUrl)) {
+            log.info("[S3_DELETE_SKIPPED] Target is not a valid deletable S3 object for bucket={}: {}", bucketName, imageKeyOrUrl);
+            return;
+        }
+
         String key = extractKeyFromUrl(imageKeyOrUrl);
+        if (key == null || key.isBlank() || !isValidS3Key(key)) {
+            log.warn("[S3_DELETE_SKIPPED] Could not extract valid S3 key from: {}", imageKeyOrUrl);
+            return;
+        }
+
         log.info("[S3_DELETE_START] bucket={}, key={}", bucketName, key);
         try {
             DeleteObjectRequest deleteObjectRequest = DeleteObjectRequest.builder()
@@ -335,7 +345,7 @@ public class S3ImageServiceImpl implements S3ImageService {
 
     @Override
     public boolean imageExists(String imageKey) {
-        if (imageKey == null || imageKey.isBlank()) {
+        if (imageKey == null || imageKey.isBlank() || !isDeletableS3Target(imageKey)) {
             return false;
         }
         String key = extractKeyFromUrl(imageKey);
@@ -355,14 +365,22 @@ public class S3ImageServiceImpl implements S3ImageService {
 
     @Override
     public String extractKeyFromUrl(String imageKeyOrUrl) {
-        if (imageKeyOrUrl == null) {
+        if (imageKeyOrUrl == null || imageKeyOrUrl.isBlank()) {
             return "";
         }
         String trimmed = imageKeyOrUrl.trim();
+        String lower = trimmed.toLowerCase();
+        if (lower.startsWith("blob:") || lower.contains("blob:http") || lower.startsWith("data:")) {
+            return "";
+        }
         if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
             int domainIndex = trimmed.indexOf(".amazonaws.com/");
             if (domainIndex != -1) {
-                return trimmed.substring(domainIndex + ".amazonaws.com/".length());
+                String path = trimmed.substring(domainIndex + ".amazonaws.com/".length());
+                if (path.startsWith(bucketName + "/")) {
+                    path = path.substring(bucketName.length() + 1);
+                }
+                return path;
             }
             int cdnIndex = trimmed.indexOf("/uploads/");
             if (cdnIndex != -1) {
@@ -374,6 +392,43 @@ public class S3ImageServiceImpl implements S3ImageService {
             }
         }
         return trimmed;
+    }
+
+    private boolean isDeletableS3Target(String imageKeyOrUrl) {
+        if (imageKeyOrUrl == null || imageKeyOrUrl.isBlank()) {
+            return false;
+        }
+        String trimmed = imageKeyOrUrl.trim();
+        String lower = trimmed.toLowerCase();
+        if (lower.startsWith("blob:") || lower.contains("blob:http") || lower.startsWith("data:")) {
+            return false;
+        }
+        if (lower.startsWith("http://localhost") || lower.startsWith("https://localhost")
+                || lower.startsWith("http://127.0.0.1") || lower.startsWith("https://127.0.0.1")) {
+            return false;
+        }
+        if (lower.startsWith("http://") || lower.startsWith("https://")) {
+            if (lower.contains(".amazonaws.com/")) {
+                return lower.contains(bucketName.toLowerCase());
+            }
+            if (lower.contains("/uploads/")) {
+                return true;
+            }
+            return false;
+        }
+        return isValidS3Key(trimmed);
+    }
+
+    private boolean isValidS3Key(String key) {
+        if (key == null || key.isBlank()) {
+            return false;
+        }
+        String lower = key.toLowerCase();
+        if (lower.startsWith("blob:") || lower.contains("blob:http") || lower.startsWith("data:")
+                || lower.contains("://") || lower.startsWith("/")) {
+            return false;
+        }
+        return key.matches("^[a-zA-Z0-9_\\-]+(/[a-zA-Z0-9_\\.\\-]+)+$");
     }
 
     private static final List<String> ALLOWED_EXTENSIONS = Arrays.asList(

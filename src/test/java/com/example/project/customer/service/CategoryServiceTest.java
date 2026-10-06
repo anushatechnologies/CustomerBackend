@@ -154,4 +154,181 @@ class CategoryServiceTest {
         assertThat(response.getPagination().getTotalCount()).isEqualTo(1L);
         assertThat(response.getPagination().getPage()).isEqualTo(1);
     }
+
+    @Test
+    @DisplayName("create - should throw InvalidImageException and NOT save when imageUrl is a blob URL")
+    void create_BlobUrl_ThrowsInvalidImageException_DoesNotSave() {
+        CategoryRequest request = CategoryRequest.builder()
+                .name("Plumbing")
+                .imageUrl("blob:http://localhost:5173/58fca786-fa31-4b60-bb91-e03efe75662c")
+                .build();
+
+        when(repository.existsByNameIgnoreCase("Plumbing")).thenReturn(false);
+
+        assertThatThrownBy(() -> categoryService.create(request))
+                .isInstanceOf(com.example.project.customer.exception.InvalidImageException.class)
+                .hasMessageContaining("Blob URLs");
+
+        verify(repository, org.mockito.Mockito.never()).save(any(Category.class));
+    }
+
+    @Test
+    @DisplayName("create - should throw InvalidImageException and NOT save when imageUrl is a base64 data URL")
+    void create_DataUri_ThrowsInvalidImageException_DoesNotSave() {
+        CategoryRequest request = CategoryRequest.builder()
+                .name("Electrical")
+                .imageUrl("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+                .build();
+
+        when(repository.existsByNameIgnoreCase("Electrical")).thenReturn(false);
+
+        assertThatThrownBy(() -> categoryService.create(request))
+                .isInstanceOf(com.example.project.customer.exception.InvalidImageException.class)
+                .hasMessageContaining("Base64 data URLs");
+
+        verify(repository, org.mockito.Mockito.never()).save(any(Category.class));
+    }
+
+    @Test
+    @DisplayName("create - should handle null imageUrl correctly and persist null")
+    void create_NullImageUrl_Success() {
+        CategoryRequest request = CategoryRequest.builder()
+                .name("Roofing")
+                .imageUrl(null)
+                .build();
+
+        Category savedCategory = Category.builder()
+                .categoryId(2)
+                .name("Roofing")
+                .slug("roofing")
+                .imageUrl(null)
+                .active(true)
+                .build();
+
+        when(repository.existsByNameIgnoreCase("Roofing")).thenReturn(false);
+        when(repository.existsBySlugIgnoreCase("roofing")).thenReturn(false);
+        when(repository.save(any(Category.class))).thenReturn(savedCategory);
+
+        CategoryResponse response = categoryService.create(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getImageUrl()).isNull();
+        verify(repository).save(any(Category.class));
+    }
+
+    @Test
+    @DisplayName("create - should normalize empty string imageUrl to null")
+    void create_EmptyImageUrl_NormalizesToNull() {
+        CategoryRequest request = CategoryRequest.builder()
+                .name("Paints")
+                .imageUrl("   ")
+                .build();
+
+        Category savedCategory = Category.builder()
+                .categoryId(3)
+                .name("Paints")
+                .slug("paints")
+                .imageUrl(null)
+                .active(true)
+                .build();
+
+        when(repository.existsByNameIgnoreCase("Paints")).thenReturn(false);
+        when(repository.existsBySlugIgnoreCase("paints")).thenReturn(false);
+        when(repository.save(any(Category.class))).thenReturn(savedCategory);
+
+        CategoryResponse response = categoryService.create(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getImageUrl()).isNull();
+        verify(repository).save(any(Category.class));
+    }
+
+    @Test
+    @DisplayName("create - should persist valid S3 URL")
+    void create_ValidS3Url_Persisted() {
+        String s3Url = "https://hinchmart-storage-191481838776-ap-south-2-an.s3.ap-south-2.amazonaws.com/categories/uuid-123.jpg";
+        CategoryRequest request = CategoryRequest.builder()
+                .name("Wood & Timber")
+                .imageUrl(s3Url)
+                .build();
+
+        Category savedCategory = Category.builder()
+                .categoryId(4)
+                .name("Wood & Timber")
+                .slug("wood-timber")
+                .imageUrl(s3Url)
+                .active(true)
+                .build();
+
+        when(repository.existsByNameIgnoreCase("Wood & Timber")).thenReturn(false);
+        when(repository.existsBySlugIgnoreCase("wood-timber")).thenReturn(false);
+        when(repository.save(any(Category.class))).thenReturn(savedCategory);
+
+        CategoryResponse response = categoryService.create(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getImageUrl()).isEqualTo(s3Url);
+        verify(repository).save(any(Category.class));
+    }
+
+    @Test
+    @DisplayName("update - should throw InvalidImageException and NOT save when updated imageUrl is a blob URL")
+    void update_BlobUrl_ThrowsInvalidImageException_DoesNotSave() {
+        CategoryRequest request = CategoryRequest.builder()
+                .name("Steel Updated")
+                .imageUrl("blob:http://localhost:5173/abcdef")
+                .build();
+
+        when(repository.findById(1)).thenReturn(Optional.of(category));
+
+        assertThatThrownBy(() -> categoryService.update(1, request))
+                .isInstanceOf(com.example.project.customer.exception.InvalidImageException.class)
+                .hasMessageContaining("Blob URLs");
+
+        verify(repository, org.mockito.Mockito.never()).save(any(Category.class));
+        verify(s3ImageService, org.mockito.Mockito.never()).deleteImage(any());
+    }
+
+    @Test
+    @DisplayName("update - should not call s3 delete if old imageUrl in database was a blob URL")
+    void update_WhenOldImageIsBlobUrl_DoesNotCallS3Delete() {
+        Category categoryWithBlob = Category.builder()
+                .categoryId(5)
+                .name("Old Category")
+                .slug("old-category")
+                .imageUrl("blob:http://localhost:5173/old-blob-id")
+                .build();
+
+        CategoryRequest request = CategoryRequest.builder()
+                .name("Old Category")
+                .imageUrl("https://storage/categories/new-image.jpg")
+                .build();
+
+        when(repository.findById(5)).thenReturn(Optional.of(categoryWithBlob));
+        when(repository.existsBySlugIgnoreCaseAndCategoryIdNot("old-category", 5)).thenReturn(false);
+        when(repository.save(any(Category.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        categoryService.update(5, request);
+
+        // Crucial: S3 delete must NOT be called for the old blob URL!
+        verify(s3ImageService, org.mockito.Mockito.never()).deleteImage(org.mockito.ArgumentMatchers.contains("blob:"));
+    }
+
+    @Test
+    @DisplayName("delete - should not call s3 delete if imageUrl in database is a blob URL")
+    void delete_WhenImageIsBlobUrl_DoesNotCallS3Delete() {
+        Category categoryWithBlob = Category.builder()
+                .categoryId(6)
+                .name("Blob Category")
+                .slug("blob-category")
+                .imageUrl("blob:http://localhost:5173/old-blob-id")
+                .build();
+
+        when(repository.findById(6)).thenReturn(Optional.of(categoryWithBlob));
+
+        categoryService.delete(6);
+
+        verify(repository).delete(categoryWithBlob);
+        verify(s3ImageService, org.mockito.Mockito.never()).deleteImage(any());
+    }
 }
