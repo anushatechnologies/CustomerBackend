@@ -101,9 +101,16 @@ public class ProductResponse {
 
     private LocalDateTime updatedAt;
 
+    private Integer displayOrder;
+
     @JsonProperty("id")
     public Object getId() {
         return productId != null ? productId : null;
+    }
+
+    @JsonProperty("name")
+    public String getName() {
+        return title;
     }
 
     public BigDecimal getSellingPrice() {

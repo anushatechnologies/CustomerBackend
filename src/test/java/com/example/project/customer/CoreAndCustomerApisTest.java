@@ -561,6 +561,15 @@ public class CoreAndCustomerApisTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].title").value("Tata Tiscon Fe550D 16mm"));
 
+        // Get all filtered by category = Interior
+        when(productService.getAll(any(), eq("Interior"), any(), any(), any(), any(), any(), any(), any(), anyString(), anyInt(), anyInt()))
+                .thenReturn(ApiResponse.ok("Products retrieved successfully", List.of(prod)));
+        mockMvc.perform(get("/api/products")
+                        .param("category", "Interior"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[0].title").value("Tata Tiscon Fe550D 16mm"));
+
         // Update stock
         StockQuantityUpdateRequest stockReq = new StockQuantityUpdateRequest();
         stockReq.setStockQty(200);

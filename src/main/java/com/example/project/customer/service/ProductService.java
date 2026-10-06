@@ -19,6 +19,7 @@ public interface ProductService {
 
     ApiResponse<List<ProductResponse>> getAll(
             Integer categoryId,
+            String category,
             Integer subcategoryId,
             Integer brandId,
             String search,
@@ -34,6 +35,7 @@ public interface ProductService {
     default ApiResponse<List<ProductResponse>> getAll(
             Integer categoryId,
             Integer subcategoryId,
+            Integer brandId,
             String search,
             BigDecimal minPrice,
             BigDecimal maxPrice,
@@ -43,7 +45,22 @@ public interface ProductService {
             int page,
             int limit
     ) {
-        return getAll(categoryId, subcategoryId, null, search, minPrice, maxPrice, brand, is24HourDelivery, sort, page, limit);
+        return getAll(categoryId, null, subcategoryId, brandId, search, minPrice, maxPrice, brand, is24HourDelivery, sort, page, limit);
+    }
+
+    default ApiResponse<List<ProductResponse>> getAll(
+            Integer categoryId,
+            Integer subcategoryId,
+            String search,
+            BigDecimal minPrice,
+            BigDecimal maxPrice,
+            String brand,
+            Boolean is24HourDelivery,
+            String sort,
+            int page,
+            int limit
+    ) {
+        return getAll(categoryId, null, subcategoryId, null, search, minPrice, maxPrice, brand, is24HourDelivery, sort, page, limit);
     }
 
     ProductResponse update(Integer id, ProductRequest request);

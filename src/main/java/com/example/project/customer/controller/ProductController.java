@@ -62,6 +62,7 @@ public class ProductController {
     @GetMapping
     public ResponseEntity<ApiResponse<List<ProductResponse>>> getAll(
             @RequestParam(required = false) Integer categoryId,
+            @RequestParam(required = false) String category,
             @RequestParam(required = false) Integer subcategoryId,
             @RequestParam(required = false) Integer brandId,
             @RequestParam(required = false) String search,
@@ -82,20 +83,37 @@ public class ProductController {
                     defaultValue = "20"
             ) int limit) {
 
-        ApiResponse<List<ProductResponse>> response =
-                service.getAll(
-                        categoryId,
-                        subcategoryId,
-                        brandId,
-                        search,
-                        minPrice,
-                        maxPrice,
-                        brand,
-                        is24HourDelivery,
-                        sort,
-                        page,
-                        limit
-                );
+        ApiResponse<List<ProductResponse>> response;
+        if (category != null && !category.isBlank()) {
+            response = service.getAll(
+                    categoryId,
+                    category,
+                    subcategoryId,
+                    brandId,
+                    search,
+                    minPrice,
+                    maxPrice,
+                    brand,
+                    is24HourDelivery,
+                    sort,
+                    page,
+                    limit
+            );
+        } else {
+            response = service.getAll(
+                    categoryId,
+                    subcategoryId,
+                    brandId,
+                    search,
+                    minPrice,
+                    maxPrice,
+                    brand,
+                    is24HourDelivery,
+                    sort,
+                    page,
+                    limit
+            );
+        }
 
         return ResponseEntity.ok(response);
     }

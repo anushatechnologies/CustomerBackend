@@ -133,6 +133,7 @@ public class ProductServiceImpl implements ProductService {
     @Transactional(readOnly = true)
     public ApiResponse<List<ProductResponse>> getAll(
             Integer categoryId,
+            String category,
             Integer subcategoryId,
             Integer brandId,
             String search,
@@ -183,6 +184,29 @@ public class ProductServiceImpl implements ProductService {
                                 categoryId
                         )
                 );
+            }
+
+            // Category filter via brand -> subcategory -> category (Name or Slug, e.g. category=Interior)
+            if (category != null && !category.isBlank()) {
+                String catTrimmed = category.trim();
+                List<Predicate> catPredicates = new ArrayList<>();
+                catPredicates.add(cb.equal(
+                        cb.lower(root.get("brand").get("subcategory").get("category").get("name")),
+                        catTrimmed.toLowerCase()
+                ));
+                catPredicates.add(cb.equal(
+                        cb.lower(root.get("brand").get("subcategory").get("category").get("slug")),
+                        catTrimmed.toLowerCase()
+                ));
+                try {
+                    int numId = Integer.parseInt(catTrimmed);
+                    catPredicates.add(cb.equal(
+                            root.get("brand").get("subcategory").get("category").get("categoryId"),
+                            numId
+                    ));
+                } catch (NumberFormatException ignored) {}
+
+                predicates.add(cb.or(catPredicates.toArray(new Predicate[0])));
             }
 
             // Subcategory filter via brand -> subcategory

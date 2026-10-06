@@ -82,6 +82,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/news/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/coupons/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/promotions/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/home/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/hot-deals/**").permitAll()
 
                 // ── Public: Location reverse-geocode and serviceability ─
                 .requestMatchers("/api/location/**").permitAll()
