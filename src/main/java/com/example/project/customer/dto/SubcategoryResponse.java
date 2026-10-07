@@ -24,6 +24,9 @@ public class SubcategoryResponse {
     @JsonProperty("active")
     private boolean active;
 
+    @JsonProperty("visibleOnWebsite")
+    private boolean visibleOnWebsite;
+
     private Integer sortOrder;
     private Integer productCount;
     private LocalDateTime createdAt;

@@ -9,6 +9,9 @@ public interface SubcategoryService {
     SubcategoryResponse create(SubcategoryRequest request);
     SubcategoryResponse getById(Integer id);
     List<SubcategoryResponse> getAll(Integer categoryId, Boolean active);
+    List<SubcategoryResponse> getAll(Integer categoryId, Boolean active, Boolean visibleOnWebsite);
+    List<SubcategoryResponse> getWebsiteSubcategories(Integer categoryId);
     SubcategoryResponse update(Integer id, SubcategoryRequest request);
+    SubcategoryResponse updateWebsiteVisibility(Integer id, Boolean visibleOnWebsite);
     void delete(Integer id);
 }

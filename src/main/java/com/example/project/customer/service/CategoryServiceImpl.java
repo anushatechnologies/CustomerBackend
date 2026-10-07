@@ -67,8 +67,14 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     @Transactional(readOnly = true)
     public CategoryResponse getById(Integer id) {
+        return getById(id, false);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CategoryResponse getById(Integer id, Boolean websiteOnly) {
         Category category = findCategory(id);
-        return mapToResponse(category, true);
+        return mapToResponse(category, true, Boolean.TRUE.equals(websiteOnly));
     }
 
     @Override
@@ -83,13 +89,19 @@ public class CategoryServiceImpl implements CategoryService {
 
         boolean includeSubs = Boolean.TRUE.equals(includeSubcategories);
         return categories.stream()
-                .map(cat -> mapToResponse(cat, includeSubs))
+                .map(cat -> mapToResponse(cat, includeSubs, false))
                 .toList();
     }
 
     @Override
     @Transactional(readOnly = true)
     public ApiResponse<List<CategoryResponse>> getAll(Boolean active, Boolean includeSubcategories, int page, int limit) {
+        return getAll(active, includeSubcategories, false, page, limit);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ApiResponse<List<CategoryResponse>> getAll(Boolean active, Boolean includeSubcategories, Boolean websiteOnly, int page, int limit) {
         int pageNumber = page > 0 ? page : 1;
         int pageSize = limit > 0 ? limit : 20;
         Pageable pageable = PageRequest.of(pageNumber - 1, pageSize);
@@ -102,8 +114,9 @@ public class CategoryServiceImpl implements CategoryService {
         }
 
         boolean includeSubs = Boolean.TRUE.equals(includeSubcategories);
+        boolean isWebsiteOnly = Boolean.TRUE.equals(websiteOnly);
         List<CategoryResponse> data = categoryPage.getContent().stream()
-                .map(cat -> mapToResponse(cat, includeSubs))
+                .map(cat -> mapToResponse(cat, includeSubs, isWebsiteOnly))
                 .toList();
 
         PaginationMeta pagination = PaginationMeta.of(pageNumber, pageSize, categoryPage.getTotalElements());
@@ -178,11 +191,23 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     private CategoryResponse mapToResponse(Category category, boolean includeSubcategories) {
+        return mapToResponse(category, includeSubcategories, false);
+    }
+
+    private CategoryResponse mapToResponse(Category category, boolean includeSubcategories, boolean websiteOnly) {
         int count = productRepository.countByBrand_Subcategory_Category_CategoryId(category.getCategoryId());
 
         List<SubcategoryResponse> subs = null;
         if (includeSubcategories) {
-            List<Subcategory> subcategories = subcategoryRepository.findByCategory_CategoryIdOrderBySortOrderAsc(category.getCategoryId());
+            List<Subcategory> subcategories;
+            if (websiteOnly) {
+                // For New Website: isActive = true AND visibleOnWebsite = true
+                subcategories = subcategoryRepository.findByCategory_CategoryIdAndActiveTrueAndVisibleOnWebsiteTrueOrderBySortOrderAsc(category.getCategoryId());
+            } else {
+                // For Existing App: all subcategories without website filtering
+                subcategories = subcategoryRepository.findByCategory_CategoryIdOrderBySortOrderAsc(category.getCategoryId());
+            }
+
             subs = subcategories.stream()
                     .map(s -> {
                         int sCount = productRepository.countByBrand_Subcategory_SubcategoryId(s.getSubcategoryId());
@@ -193,6 +218,7 @@ public class CategoryServiceImpl implements CategoryService {
                                 .slug(s.getSlug())
                                 .imageUrl(s.getImageUrl())
                                 .active(s.isActive())
+                                .visibleOnWebsite(s.isVisibleOnWebsite())
                                 .sortOrder(s.getSortOrder())
                                 .productCount(sCount)
                                 .createdAt(s.getCreatedAt())

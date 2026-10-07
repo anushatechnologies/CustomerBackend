@@ -9,8 +9,10 @@ import java.util.List;
 public interface CategoryService {
     CategoryResponse create(CategoryRequest request);
     CategoryResponse getById(Integer id);
+    CategoryResponse getById(Integer id, Boolean websiteOnly);
     List<CategoryResponse> getAll(Boolean active, Boolean includeSubcategories);
     ApiResponse<List<CategoryResponse>> getAll(Boolean active, Boolean includeSubcategories, int page, int limit);
+    ApiResponse<List<CategoryResponse>> getAll(Boolean active, Boolean includeSubcategories, Boolean websiteOnly, int page, int limit);
     CategoryResponse update(Integer id, CategoryRequest request);
     void delete(Integer id);
 }

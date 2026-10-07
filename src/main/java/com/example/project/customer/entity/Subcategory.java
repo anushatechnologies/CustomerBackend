@@ -51,6 +51,11 @@ public class Subcategory {
     @JsonProperty("active")
     private Boolean active = true;
 
+    @Column(name = "visible_on_website")
+    @Builder.Default
+    @JsonProperty("visibleOnWebsite")
+    private Boolean visibleOnWebsite = true;
+
     @Column(name = "sort_order")
     @Builder.Default
     private Integer sortOrder = 0;
@@ -76,6 +81,16 @@ public class Subcategory {
         this.active = active != null ? active : true;
     }
 
+    @JsonProperty("visibleOnWebsite")
+    public Boolean isVisibleOnWebsite() {
+        return visibleOnWebsite != null && visibleOnWebsite;
+    }
+
+    @JsonProperty("visibleOnWebsite")
+    public void setVisibleOnWebsite(Boolean visibleOnWebsite) {
+        this.visibleOnWebsite = visibleOnWebsite != null ? visibleOnWebsite : true;
+    }
+
     @PrePersist
     void setCreatedAt() {
         if (this.createdAt == null) {
@@ -89,6 +104,9 @@ public class Subcategory {
         }
         if (this.active == null) {
             this.active = true;
+        }
+        if (this.visibleOnWebsite == null) {
+            this.visibleOnWebsite = true;
         }
     }
 }

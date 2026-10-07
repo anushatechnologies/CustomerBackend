@@ -22,6 +22,15 @@ public interface SubcategoryRepository extends JpaRepository<Subcategory, Intege
     List<Subcategory> findByCategory_CategoryIdOrderBySortOrderAsc(Integer categoryId);
     List<Subcategory> findByCategory_CategoryIdAndActiveOrderBySortOrderAsc(Integer categoryId, boolean active);
 
+    // New website queries (isActive = true AND visibleOnWebsite = true)
+    List<Subcategory> findByCategory_CategoryIdAndActiveTrueAndVisibleOnWebsiteTrueOrderBySortOrderAsc(Integer categoryId);
+    List<Subcategory> findByCategory_CategoryIdAndActiveAndVisibleOnWebsiteOrderBySortOrderAsc(Integer categoryId, boolean active, boolean visibleOnWebsite);
+    List<Subcategory> findByCategory_CategoryIdAndVisibleOnWebsiteOrderBySortOrderAsc(Integer categoryId, boolean visibleOnWebsite);
+
+    List<Subcategory> findByActiveTrueAndVisibleOnWebsiteTrueOrderBySortOrderAsc();
+    List<Subcategory> findByActiveAndVisibleOnWebsiteOrderBySortOrderAsc(boolean active, boolean visibleOnWebsite);
+    List<Subcategory> findByVisibleOnWebsiteOrderBySortOrderAsc(boolean visibleOnWebsite);
+
     List<Subcategory> findByActiveTrueOrderBySortOrderAsc();
     List<Subcategory> findAllByOrderBySortOrderAsc();
 }

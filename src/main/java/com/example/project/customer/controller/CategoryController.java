@@ -45,17 +45,20 @@ public class CategoryController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<CategoryResponse>> getById(@PathVariable Integer id) {
-        return ResponseEntity.ok(ApiResponse.ok("Category retrieved successfully", service.getById(id)));
+    public ResponseEntity<ApiResponse<CategoryResponse>> getById(
+            @PathVariable Integer id,
+            @RequestParam(required = false, defaultValue = "false") Boolean website) {
+        return ResponseEntity.ok(ApiResponse.ok("Category retrieved successfully", service.getById(id, website)));
     }
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<CategoryResponse>>> getAll(
             @RequestParam(required = false) Boolean active,
             @RequestParam(required = false, defaultValue = "false") Boolean includeSubcategories,
+            @RequestParam(required = false, defaultValue = "false") Boolean website,
             @RequestParam(required = false, defaultValue = "1") int page,
             @RequestParam(required = false, defaultValue = "20") int limit) {
-        ApiResponse<List<CategoryResponse>> response = service.getAll(active, includeSubcategories, page, limit);
+        ApiResponse<List<CategoryResponse>> response = service.getAll(active, includeSubcategories, website, page, limit);
         return ResponseEntity.ok(response);
     }
 

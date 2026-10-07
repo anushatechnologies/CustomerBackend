@@ -222,6 +222,7 @@ public class StoreServiceImpl implements StoreService {
                                     .slug(sub.getSlug())
                                     .imageUrl(sub.getImageUrl())
                                     .active(sub.isActive())
+                                    .visibleOnWebsite(sub.isVisibleOnWebsite())
                                     .sortOrder(sub.getSortOrder())
                                     .productCount(subcategoryProductCounts.getOrDefault(sub.getSubcategoryId(), 0))
                                     .createdAt(sub.getCreatedAt())

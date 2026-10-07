@@ -212,7 +212,24 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ApiResponse<Void>> handleMaxSizeExceeded(MaxUploadSizeExceededException exception) {
         log.warn("Upload size exceeded: {}", exception.getMessage());
-        return response(HttpStatus.BAD_REQUEST, "File upload size exceeded maximum limit of 15MB");
+        return response(HttpStatus.BAD_REQUEST, "File upload size exceeded the maximum allowed limit");
+    }
+
+    @ExceptionHandler(org.apache.catalina.connector.ClientAbortException.class)
+    public void handleClientAbort(org.apache.catalina.connector.ClientAbortException exception) {
+        log.warn("Client aborted request connection before completion: {}", exception.getMessage());
+    }
+
+    @ExceptionHandler(org.springframework.web.multipart.MultipartException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMultipartException(org.springframework.web.multipart.MultipartException exception) {
+        Throwable rootCause = exception.getRootCause();
+        String rootMsg = rootCause != null && rootCause.getMessage() != null ? rootCause.getMessage() : "";
+        if (rootCause instanceof java.io.EOFException || rootMsg.toLowerCase().contains("eof")) {
+            log.warn("Multipart upload interrupted (client or proxy closed connection): {}", exception.getMessage());
+            return response(HttpStatus.BAD_REQUEST, "File upload was interrupted or connection closed prematurely. Please retry.");
+        }
+        log.warn("Multipart upload error: {}", exception.getMessage());
+        return response(HttpStatus.BAD_REQUEST, "Failed to process multipart request: " + exception.getMessage());
     }
 
     @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)

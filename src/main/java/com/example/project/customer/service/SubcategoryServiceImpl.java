@@ -55,6 +55,7 @@ public class SubcategoryServiceImpl implements SubcategoryService {
                 .slug(slug)
                 .imageUrl(validImageUrl)
                 .active(request.getActive() != null ? request.getActive() : true)
+                .visibleOnWebsite(request.getVisibleOnWebsite() != null ? request.getVisibleOnWebsite() : true)
                 .sortOrder(request.getSortOrder() != null ? request.getSortOrder() : 0)
                 .productCount(0)
                 .build();
@@ -72,22 +73,57 @@ public class SubcategoryServiceImpl implements SubcategoryService {
     @Override
     @Transactional(readOnly = true)
     public List<SubcategoryResponse> getAll(Integer categoryId, Boolean active) {
+        return getAll(categoryId, active, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SubcategoryResponse> getAll(Integer categoryId, Boolean active, Boolean visibleOnWebsite) {
         List<Subcategory> list;
 
-        // Correctly apply categoryId and active filters (Fixing Bug 1)
         if (categoryId != null) {
-            if (Boolean.TRUE.equals(active)) {
+            if (Boolean.TRUE.equals(visibleOnWebsite)) {
+                // New website visibility rule: isActive = true AND visibleOnWebsite = true
+                boolean act = active == null || Boolean.TRUE.equals(active);
+                list = repository.findByCategory_CategoryIdAndActiveAndVisibleOnWebsiteOrderBySortOrderAsc(categoryId, act, true);
+            } else if (Boolean.FALSE.equals(visibleOnWebsite)) {
+                if (active != null) {
+                    list = repository.findByCategory_CategoryIdAndActiveAndVisibleOnWebsiteOrderBySortOrderAsc(categoryId, active, false);
+                } else {
+                    list = repository.findByCategory_CategoryIdAndVisibleOnWebsiteOrderBySortOrderAsc(categoryId, false);
+                }
+            } else if (Boolean.TRUE.equals(active)) {
+                // Existing App rule: isActive = true, visibleOnWebsite is NOT filtered
                 list = repository.findByCategory_CategoryIdAndActiveOrderBySortOrderAsc(categoryId, true);
+            } else if (Boolean.FALSE.equals(active)) {
+                list = repository.findByCategory_CategoryIdAndActiveOrderBySortOrderAsc(categoryId, false);
             } else {
                 list = repository.findByCategory_CategoryIdOrderBySortOrderAsc(categoryId);
             }
+        } else if (Boolean.TRUE.equals(visibleOnWebsite)) {
+            // New website visibility rule without category filter: isActive = true AND visibleOnWebsite = true
+            boolean act = active == null || Boolean.TRUE.equals(active);
+            list = repository.findByActiveAndVisibleOnWebsiteOrderBySortOrderAsc(act, true);
+        } else if (Boolean.FALSE.equals(visibleOnWebsite)) {
+            if (active != null) {
+                list = repository.findByActiveAndVisibleOnWebsiteOrderBySortOrderAsc(active, false);
+            } else {
+                list = repository.findByVisibleOnWebsiteOrderBySortOrderAsc(false);
+            }
         } else if (Boolean.TRUE.equals(active)) {
+            // Existing App rule: active = true, visibleOnWebsite is NOT filtered
             list = repository.findByActiveTrueOrderBySortOrderAsc();
         } else {
             list = repository.findAllByOrderBySortOrderAsc();
         }
 
         return list.stream().map(this::mapToResponse).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SubcategoryResponse> getWebsiteSubcategories(Integer categoryId) {
+        return getAll(categoryId, true, true);
     }
 
     @Override
@@ -124,6 +160,9 @@ public class SubcategoryServiceImpl implements SubcategoryService {
         if (request.getActive() != null) {
             subcategory.setActive(request.getActive());
         }
+        if (request.getVisibleOnWebsite() != null) {
+            subcategory.setVisibleOnWebsite(request.getVisibleOnWebsite());
+        }
         if (request.getSortOrder() != null) {
             subcategory.setSortOrder(request.getSortOrder());
         }
@@ -137,6 +176,13 @@ public class SubcategoryServiceImpl implements SubcategoryService {
         }
 
         return mapToResponse(saved);
+    }
+
+    @Override
+    public SubcategoryResponse updateWebsiteVisibility(Integer id, Boolean visibleOnWebsite) {
+        Subcategory subcategory = findSubcategory(id);
+        subcategory.setVisibleOnWebsite(visibleOnWebsite != null ? visibleOnWebsite : true);
+        return mapToResponse(repository.save(subcategory));
     }
 
     @Override
@@ -172,6 +218,7 @@ public class SubcategoryServiceImpl implements SubcategoryService {
                 .slug(s.getSlug())
                 .imageUrl(s.getImageUrl())
                 .active(s.isActive())
+                .visibleOnWebsite(s.isVisibleOnWebsite())
                 .sortOrder(s.getSortOrder())
                 .productCount(count)
                 .createdAt(s.getCreatedAt())

@@ -30,5 +30,9 @@ public class SubcategoryRequest {
     private Boolean active = true;
 
     @Builder.Default
+    @JsonProperty("visibleOnWebsite")
+    private Boolean visibleOnWebsite = true;
+
+    @Builder.Default
     private Integer sortOrder = 0;
 }
