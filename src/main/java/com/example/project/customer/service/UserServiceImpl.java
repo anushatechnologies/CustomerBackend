@@ -412,8 +412,12 @@ public class UserServiceImpl implements UserService {
             customer.setName(request.getName().trim());
         }
 
-        if (request.getPhone() != null) {
-            customer.setPhone(request.getPhone().trim());
+        if (request.getPhone() != null && !request.getPhone().isBlank()) {
+            String newPhone = request.getPhone().trim();
+            if (customerRepository.existsByPhoneAndCustomerIdNot(newPhone, userId)) {
+                throw new CustomerConflictException("Phone number is already in use by another account: " + newPhone);
+            }
+            customer.setPhone(newPhone);
         }
 
         Customer saved = customerRepository.save(customer);

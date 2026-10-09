@@ -243,6 +243,10 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 ? request.getRecipientPhone().trim()
                 : address.getPhone();
 
+        if (effectiveRecipientPhone != null && effectiveRecipientPhone.length() > 50) {
+            effectiveRecipientPhone = effectiveRecipientPhone.substring(0, 50).trim();
+        }
+
         if (effectiveRecipientName != null && !effectiveRecipientName.isBlank()) {
             sb.append(" (Contact: ").append(effectiveRecipientName);
             if (effectiveRecipientPhone != null && !effectiveRecipientPhone.isBlank()) {

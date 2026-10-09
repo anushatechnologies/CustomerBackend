@@ -75,7 +75,7 @@ public class Order {
     @Column(name = "recipient_name", length = 150)
     private String recipientName;
 
-    @Column(name = "recipient_phone", length = 20)
+    @Column(name = "recipient_phone", length = 50)
     private String recipientPhone;
 
     @Column(name = "subtotal", precision = 14, scale = 2)

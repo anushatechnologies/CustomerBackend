@@ -130,13 +130,20 @@ public class GlobalExceptionHandler {
         }
         log.warn("Data integrity violation: {}", msg);
 
+        if (msg.contains("data too long") || msg.contains("data truncation")) {
+            if (msg.contains("recipient_phone") || msg.contains("phone")) {
+                return response(HttpStatus.BAD_REQUEST, "Phone number exceeds the maximum allowed length (max 20 characters). Please enter a valid 10-digit mobile number.");
+            }
+            return response(HttpStatus.BAD_REQUEST, "One of the provided values exceeds the maximum allowed length.");
+        }
+
         if (msg.contains("pan") || msg.contains("aadhaar") || msg.contains("gstin") || msg.contains("bank") || msg.contains("seller")) {
             return response(HttpStatus.CONFLICT, "A record with these unique details (Email, Aadhaar, PAN, GSTIN, or Bank Account) already exists.");
         }
         if (msg.contains("email") || msg.contains("customers_email_key") || msg.contains("uk_customer_email")) {
             return response(HttpStatus.CONFLICT, "An account with this email address already exists.");
         }
-        if (msg.contains("phone")) {
+        if ((msg.contains("duplicate") || msg.contains("unique") || msg.contains("1062")) && msg.contains("phone")) {
             return response(HttpStatus.CONFLICT, "An account with this phone number already exists.");
         }
         if (msg.contains("order_number") || msg.contains("orders")) {
