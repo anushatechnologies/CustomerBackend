@@ -2,43 +2,58 @@ package com.example.project.customer.security;
 
 import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.Role;
-import com.example.project.customer.service.FirebaseAuthService;
+import com.example.project.customer.repository.AdminUserRepository;
+import com.example.project.customer.repository.CustomerRepository;
+import com.example.project.customer.service.JwtService;
 import com.example.project.customer.service.UserService;
-import com.google.firebase.auth.FirebaseToken;
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.Optional;
 
 @Slf4j
-// Standalone @Component registration disabled.
-// Normal APIs are authenticated strictly via JwtAuthenticationFilter.
-// Firebase verification is performed only on /api/auth/sync.
-public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
+@Component
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String BEARER_PREFIX = "Bearer ";
 
-    private final FirebaseAuthService firebaseAuthService;
+    private final JwtService jwtService;
+    private final CustomerRepository customerRepository;
     private final UserService userService;
-    private final com.example.project.customer.repository.AdminUserRepository adminUserRepository;
+    private final AdminUserRepository adminUserRepository;
 
-    public FirebaseAuthenticationFilter(
-            @Autowired(required = false) FirebaseAuthService firebaseAuthService,
+    @Value("${app.security.admin-emails:admin@hinchmart.com,admin@example.com}")
+    private String configuredAdminEmails = "admin@hinchmart.com";
+
+    public JwtAuthenticationFilter(
+            @Autowired(required = false) JwtService jwtService,
+            @Autowired(required = false) CustomerRepository customerRepository,
             @Autowired(required = false) UserService userService,
-            @Autowired(required = false) com.example.project.customer.repository.AdminUserRepository adminUserRepository
+            @Autowired(required = false) AdminUserRepository adminUserRepository
     ) {
-        this.firebaseAuthService = firebaseAuthService;
+        this.jwtService = jwtService;
+        this.customerRepository = customerRepository;
         this.userService = userService;
         this.adminUserRepository = adminUserRepository;
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        // Skip JWT inspection on /api/auth/sync where initial Firebase ID Token is exchanged
+        return "/api/auth/sync".equals(path) || "/api/auth/check-phone".equals(path);
     }
 
     @Override
@@ -48,7 +63,7 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
 
-        if (firebaseAuthService == null || userService == null) {
+        if (jwtService == null || customerRepository == null) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -59,67 +74,54 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
             String token = header.substring(BEARER_PREFIX.length()).trim();
 
             if (!token.isEmpty()) {
-                try {
-                    FirebaseToken decodedToken = firebaseAuthService.verifyIdToken(token);
-                    String firebaseUid = decodedToken.getUid();
-                    String email = decodedToken.getEmail();
-                    String name = decodedToken.getName();
-                    Map<String, Object> claims = decodedToken.getClaims();
-                    if ((name == null || name.isBlank()) && claims != null && claims.get("name") != null) {
-                        name = String.valueOf(claims.get("name"));
-                    }
-                    String phone = (claims != null && claims.get("phone_number") != null) 
-                            ? String.valueOf(claims.get("phone_number")) 
-                            : null;
-
-                    // Fast path: load internal customer by Firebase UID if already synced
-                    Customer customer = null;
+                if (jwtService != null && jwtService.validateToken(token)) {
                     try {
-                        customer = userService.getCustomerByFirebaseUid(firebaseUid);
+                        Claims claims = jwtService.extractClaims(token);
+                        Integer customerId = jwtService.extractCustomerId(token);
+
+                        if (customerId != null) {
+                            Optional<Customer> customerOpt = customerRepository.findById(customerId);
+                            if (customerOpt.isPresent()) {
+                                Customer customer = customerOpt.get();
+
+                                Integer sellerId = (userService != null) ? userService.resolveSellerIdForUser(customer) : null;
+                                Role effectiveRole = resolveEffectiveRole(claims, customer, sellerId);
+
+                                FirebaseUserPrincipal principal = FirebaseUserPrincipal.create(
+                                        customer.getCustomerId(),
+                                        customer.getFirebaseUid(),
+                                        customer.getEmail(),
+                                        customer.getName(),
+                                        effectiveRole,
+                                        sellerId,
+                                        customer.isActive(),
+                                        claims
+                                );
+
+                                FirebaseAuthenticationToken authentication = new FirebaseAuthenticationToken(
+                                        principal,
+                                        token,
+                                        principal.getAuthorities()
+                                );
+
+                                SecurityContextHolder.getContext().setAuthentication(authentication);
+                                log.debug("Authenticated customerId: {}, role: {} via HinchMart JWT for URI: {}",
+                                        customerId, effectiveRole, request.getRequestURI());
+                            } else {
+                                log.warn("Customer ID {} from JWT not found in database", customerId);
+                                SecurityContextHolder.clearContext();
+                            }
+                        } else {
+                            log.warn("Unable to extract customerId from JWT claims for URI: {}", request.getRequestURI());
+                            SecurityContextHolder.clearContext();
+                        }
                     } catch (Exception ex) {
-                        log.debug("Customer not found for Firebase UID {}, synchronizing with Firebase...", firebaseUid);
-                    }
-                    if (customer == null) {
-                        customer = userService.syncUserWithFirebase(firebaseUid, email, name, phone);
-                    }
-
-                    if (customer == null) {
-                        log.warn("Unable to resolve customer for Firebase UID: {}", firebaseUid);
+                        log.warn("Failed to authenticate with JWT for URI {}: {}", request.getRequestURI(), ex.getMessage());
                         SecurityContextHolder.clearContext();
-                        filterChain.doFilter(request, response);
-                        return;
                     }
-
-                    // Resolve internal sellerId if applicable
-                    Integer sellerId = userService.resolveSellerIdForUser(customer);
-
-                    // Determine Role: Priority: 1. Firebase Custom Claims -> 2. Database Role -> 3. Seller Profile
-                    Role effectiveRole = resolveEffectiveRole(claims, customer, sellerId);
-
-                    // Build authenticated principal
-                    FirebaseUserPrincipal principal = FirebaseUserPrincipal.create(
-                            customer.getCustomerId(),
-                            firebaseUid,
-                            customer.getEmail(),
-                            customer.getName(),
-                            effectiveRole,
-                            sellerId,
-                            customer.isActive(),
-                            claims
-                    );
-
-                    FirebaseAuthenticationToken authentication = new FirebaseAuthenticationToken(
-                            principal,
-                            token,
-                            principal.getAuthorities()
-                    );
-
-                    SecurityContextHolder.getContext().setAuthentication(authentication);
-                    log.debug("Authenticated user {} (ID: {}, Role: {}) for URI: {}",
-                            email, customer.getCustomerId(), effectiveRole, request.getRequestURI());
-
-                } catch (Exception ex) {
-                    log.warn("Authentication failed for request {} : {}", request.getRequestURI(), ex.getMessage());
+                } else {
+                    // Invalid, expired, or tampered token (including Firebase ID token sent to protected API)
+                    log.debug("Token validation failed for URI: {}", request.getRequestURI());
                     SecurityContextHolder.clearContext();
                 }
             }
@@ -128,11 +130,8 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    @org.springframework.beans.factory.annotation.Value("${app.security.admin-emails:admin@hinchmart.com,admin@example.com}")
-    private String configuredAdminEmails = "admin@hinchmart.com";
-
     Role resolveEffectiveRole(Map<String, Object> claims, Customer customer, Integer sellerId) {
-        // 1. Firebase Custom Claims take highest precedence
+        // 1. Claims check for ADMIN
         if (claims != null && claims.containsKey("role")) {
             Object roleObj = claims.get("role");
             if (roleObj != null) {
@@ -146,7 +145,7 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
             return Role.ADMIN;
         }
 
-        // 2. MySQL database Admin table or Customer role is authoritative for ADMIN
+        // 2. Database Admin table or Customer role is authoritative for ADMIN
         if (adminUserRepository != null && customer != null) {
             if (customer.getEmail() != null && adminUserRepository.findByEmailIgnoreCase(customer.getEmail().trim()).isPresent()) {
                 return Role.ADMIN;
@@ -161,7 +160,7 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
             }
         }
 
-        // 3. Configured Admin Email check or email containing 'admin'
+        // 3. Configured Admin Email check
         if (customer != null && customer.getEmail() != null && !customer.getEmail().isBlank()) {
             String checkEmail = customer.getEmail().trim().toLowerCase();
             if (isAdminEmail(checkEmail)) {
@@ -169,15 +168,18 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
             }
         }
 
-        // 4. Firebase Custom Claims for SELLER / CUSTOMER
+        // 4. Claims for SELLER / CUSTOMER
         if (claims != null && claims.containsKey("role")) {
             Object roleObj = claims.get("role");
             if (roleObj != null) {
-                return Role.fromString(roleObj.toString());
+                Role parsedRole = Role.fromString(roleObj.toString());
+                if (parsedRole != null) {
+                    return parsedRole;
+                }
             }
         }
 
-        // 5. MySQL database Customer role for SELLER
+        // 5. Database Customer role for SELLER
         if (customer != null && customer.getRole() != null && !customer.getRole().isBlank()) {
             Role dbRole = customer.getRoleEnum();
             if (dbRole == Role.SELLER) {
@@ -185,7 +187,7 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
             }
         }
 
-        // 6. Linked seller profile (only for non-admin accounts)
+        // 6. Linked seller profile
         if (sellerId != null) {
             return Role.SELLER;
         }

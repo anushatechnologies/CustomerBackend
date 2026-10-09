@@ -19,6 +19,7 @@ public interface SubcategoryRepository extends JpaRepository<Subcategory, Intege
     boolean existsByNameIgnoreCaseAndCategory_CategoryIdAndSubcategoryIdNot(String name, Integer categoryId, Integer subcategoryId);
 
     // Filter by Category ID
+    boolean existsByCategory_CategoryId(Integer categoryId);
     List<Subcategory> findByCategory_CategoryIdOrderBySortOrderAsc(Integer categoryId);
     List<Subcategory> findByCategory_CategoryIdAndActiveOrderBySortOrderAsc(Integer categoryId, boolean active);
 

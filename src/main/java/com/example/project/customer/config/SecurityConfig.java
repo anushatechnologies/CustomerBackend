@@ -3,7 +3,9 @@ package com.example.project.customer.config;
 import com.example.project.customer.security.FirebaseAccessDeniedHandler;
 import com.example.project.customer.security.FirebaseAuthEntryPoint;
 import com.example.project.customer.security.FirebaseAuthenticationFilter;
+import com.example.project.customer.security.JwtAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -24,16 +26,16 @@ import java.util.List;
 @EnableMethodSecurity(prePostEnabled = true)
 public class SecurityConfig {
 
-    private final FirebaseAuthenticationFilter firebaseAuthenticationFilter;
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final FirebaseAuthEntryPoint firebaseAuthEntryPoint;
     private final FirebaseAccessDeniedHandler firebaseAccessDeniedHandler;
 
     public SecurityConfig(
-            @Autowired(required = false) FirebaseAuthenticationFilter firebaseAuthenticationFilter,
+            @Autowired(required = false) JwtAuthenticationFilter jwtAuthenticationFilter,
             @Autowired(required = false) FirebaseAuthEntryPoint firebaseAuthEntryPoint,
             @Autowired(required = false) FirebaseAccessDeniedHandler firebaseAccessDeniedHandler
     ) {
-        this.firebaseAuthenticationFilter = firebaseAuthenticationFilter;
+        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.firebaseAuthEntryPoint = firebaseAuthEntryPoint;
         this.firebaseAccessDeniedHandler = firebaseAccessDeniedHandler;
     }
@@ -61,9 +63,11 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
                 // ── Public: Authentication ──────────────────────────────────────────────
-                // /api/auth/** is permitAll here; AuthController handles its own 401 logic
-                // for endpoints that truly require a token (e.g. /me).
-                .requestMatchers("/api/auth/**").permitAll()
+                // Explicitly whitelist only genuinely public endpoints:
+                // Pre-login phone check, Firebase sync/exchange, and public logout
+                .requestMatchers(HttpMethod.GET, "/api/auth/check-phone").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/sync").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/logout").permitAll()
 
                 // ── Public: Actuator health (used by deployment health-check) ───────────
                 .requestMatchers("/actuator/health").permitAll()
@@ -99,11 +103,22 @@ public class SecurityConfig {
                 .anyRequest().authenticated()
         );
 
-        if (firebaseAuthenticationFilter != null) {
-            http.addFilterBefore(firebaseAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+        if (jwtAuthenticationFilter != null) {
+            http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         }
 
         return http.build();
+    }
+
+    @Bean
+    public FilterRegistrationBean<FirebaseAuthenticationFilter> disableFirebaseAuthenticationFilter(
+            @Autowired(required = false) FirebaseAuthenticationFilter filter) {
+        FilterRegistrationBean<FirebaseAuthenticationFilter> registration = new FilterRegistrationBean<>();
+        if (filter != null) {
+            registration.setFilter(filter);
+        }
+        registration.setEnabled(false);
+        return registration;
     }
 
     @Bean

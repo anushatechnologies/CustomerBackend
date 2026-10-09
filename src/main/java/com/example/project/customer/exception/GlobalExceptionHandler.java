@@ -142,6 +142,9 @@ public class GlobalExceptionHandler {
         if (msg.contains("order_number") || msg.contains("orders")) {
             return response(HttpStatus.CONFLICT, "An order with this reference number already exists.");
         }
+        if (msg.contains("foreign key") || msg.contains("foreign_key") || msg.contains("cannot delete or update a parent row") || msg.contains("referential integrity")) {
+            return response(HttpStatus.CONFLICT, "Cannot delete this record because it is referenced by other items (such as active products, orders, or categories). Please deactivate it instead.");
+        }
         return response(HttpStatus.CONFLICT, "A record with these unique details (Email, Aadhaar, PAN, GSTIN, or Bank Account) already exists.");
     }
 

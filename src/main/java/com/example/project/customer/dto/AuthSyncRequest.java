@@ -13,6 +13,11 @@ import lombok.Setter;
 @Builder
 public class AuthSyncRequest {
 
+    private String firebaseIdToken;
+
+    @Deprecated
+    private String token;
+
     private String name;
     private String email;
     private String phone;

@@ -606,7 +606,7 @@ public class CoreAndCustomerApisTest {
         CategoryResponse catResp = CategoryResponse.builder().categoryId(1).name("Civil & Structural").build();
 
         when(categoryService.create(any(CategoryRequest.class))).thenReturn(catResp);
-        when(categoryService.getById(1)).thenReturn(catResp);
+        when(categoryService.getById(1, false)).thenReturn(catResp);
 
         mockMvc.perform(post("/api/categories")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -629,7 +629,7 @@ public class CoreAndCustomerApisTest {
 
         when(subcategoryService.create(any(SubcategoryRequest.class))).thenReturn(subResp);
         when(subcategoryService.getById(1)).thenReturn(subResp);
-        when(subcategoryService.getAll(null, null)).thenReturn(List.of(subResp));
+        when(subcategoryService.getAll(null, null, null)).thenReturn(List.of(subResp));
 
         mockMvc.perform(post("/api/subcategories")
                         .contentType(MediaType.APPLICATION_JSON)

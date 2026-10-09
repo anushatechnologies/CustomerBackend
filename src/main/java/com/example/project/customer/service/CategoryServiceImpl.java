@@ -167,14 +167,36 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     @Override
+    @org.springframework.cache.annotation.CacheEvict(value = "brands", allEntries = true)
     public void delete(Integer id) {
         Category category = findCategory(id);
         String imageUrl = category.getImageUrl();
-        repository.delete(category);
 
-        if (imageUrl != null && !imageUrl.isBlank()
-                && !com.example.project.customer.validation.ImageUrlValidator.isBlobOrDataUrl(imageUrl)) {
-            s3ImageService.deleteImage(imageUrl);
+        int productCount = productRepository != null ? productRepository.countByBrand_Subcategory_Category_CategoryId(id) : 0;
+        boolean hasSubcategories = subcategoryRepository != null && subcategoryRepository.existsByCategory_CategoryId(id);
+
+        if (productCount > 0 || hasSubcategories) {
+            // Soft-delete: deactivate category and cascade deactivation to child subcategories
+            category.setActive(false);
+            repository.save(category);
+
+            if (subcategoryRepository != null) {
+                List<Subcategory> subs = subcategoryRepository.findByCategory_CategoryIdOrderBySortOrderAsc(id);
+                for (Subcategory sub : subs) {
+                    sub.setActive(false);
+                    sub.setVisibleOnWebsite(false);
+                }
+                subcategoryRepository.saveAll(subs);
+            }
+            log.info("Soft-deleted category id={} because it has linked subcategories or products (productCount={}, hasSubcategories={})",
+                    id, productCount, hasSubcategories);
+        } else {
+            repository.delete(category);
+
+            if (imageUrl != null && !imageUrl.isBlank()
+                    && !com.example.project.customer.validation.ImageUrlValidator.isBlobOrDataUrl(imageUrl)) {
+                s3ImageService.deleteImage(imageUrl);
+            }
         }
     }
 

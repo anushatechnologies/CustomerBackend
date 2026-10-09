@@ -18,6 +18,7 @@ import com.example.project.customer.repository.StoreRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -332,6 +333,7 @@ public class SellerProductServiceImpl implements SellerProductService {
     }
 
     @Override
+    @CacheEvict(value = "brands", allEntries = true)
     public void deleteSellerProduct(Integer sellerId, Integer productId) {
         Product product = findSellerProduct(sellerId, productId);
         product.setActive(false);

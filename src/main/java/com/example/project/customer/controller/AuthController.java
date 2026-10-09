@@ -33,6 +33,7 @@ public class AuthController {
     private final UserService userService;
     private final FirebaseAuthService firebaseAuthService;
     private final com.example.project.customer.repository.AdminUserRepository adminUserRepository;
+    private final com.example.project.customer.service.JwtService jwtService;
 
     @org.springframework.beans.factory.annotation.Value("${app.security.admin-emails:admin@hinchmart.com,admin@example.com}")
     private String configuredAdminEmails = "admin@hinchmart.com";
@@ -42,9 +43,20 @@ public class AuthController {
             @Autowired(required = false) FirebaseAuthService firebaseAuthService,
             @Autowired(required = false) com.example.project.customer.repository.AdminUserRepository adminUserRepository
     ) {
+        this(userService, firebaseAuthService, adminUserRepository, null);
+    }
+
+    @Autowired
+    public AuthController(
+            UserService userService,
+            @Autowired(required = false) FirebaseAuthService firebaseAuthService,
+            @Autowired(required = false) com.example.project.customer.repository.AdminUserRepository adminUserRepository,
+            @Autowired(required = false) com.example.project.customer.service.JwtService jwtService
+    ) {
         this.userService = userService;
         this.firebaseAuthService = firebaseAuthService;
         this.adminUserRepository = adminUserRepository;
+        this.jwtService = jwtService;
     }
 
     /**
@@ -59,7 +71,9 @@ public class AuthController {
 
     /**
      * Synchronizes a newly authenticated Firebase user with the internal MySQL database.
-     * Called by frontend after Firebase login/register. Accessible to all users with a valid token.
+     * Called by frontend after Firebase login/register.
+     * Receives the Firebase ID token, verifies it, synchronizes the Customer record,
+     * and generates & returns a HinchMart JWT for all subsequent API requests.
      */
     @PostMapping("/sync")
     public ResponseEntity<ApiResponse<AuthUserResponse>> syncUser(
@@ -72,35 +86,47 @@ public class AuthController {
         String phone = (request != null && request.getPhone() != null) ? request.getPhone() : null;
         Map<String, Object> claims = null;
 
-        Optional<FirebaseUserPrincipal> principalOpt = SecurityUtils.getCurrentUserPrincipal();
-        if (principalOpt.isPresent()) {
-            FirebaseUserPrincipal principal = principalOpt.get();
-            firebaseUid = principal.getFirebaseUid();
-            email = principal.getEmail();
-            if (name == null || name.isBlank()) {
-                name = principal.getName();
-            }
-            claims = principal.getClaims();
-        } else if (authHeader != null && authHeader.startsWith("Bearer ") && firebaseAuthService != null) {
-            String token = authHeader.substring(7).trim();
-            if (!token.isEmpty()) {
-                try {
-                    com.google.firebase.auth.FirebaseToken decoded = firebaseAuthService.verifyIdToken(token);
-                    firebaseUid = decoded.getUid();
-                    email = decoded.getEmail();
-                    if (name == null || name.isBlank()) {
-                        name = decoded.getName();
-                    }
-                    claims = decoded.getClaims();
-                    if ((name == null || name.isBlank()) && claims != null && claims.get("name") != null) {
-                        name = String.valueOf(claims.get("name"));
-                    }
-                    if (phone == null && claims != null && claims.get("phone_number") != null) {
-                        phone = String.valueOf(claims.get("phone_number"));
-                    }
-                } catch (Exception ex) {
-                    log.warn("Direct token verification in /api/auth/sync encountered: {}", ex.getMessage());
+        // 1. Resolve Firebase ID Token from request body (preferred) or Authorization header (fallback)
+        String firebaseIdToken = null;
+        if (request != null && request.getFirebaseIdToken() != null && !request.getFirebaseIdToken().isBlank()) {
+            firebaseIdToken = request.getFirebaseIdToken().trim();
+        } else if (request != null && request.getToken() != null && !request.getToken().isBlank()) {
+            firebaseIdToken = request.getToken().trim();
+        } else if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            firebaseIdToken = authHeader.substring(7).trim();
+        }
+
+        if (firebaseIdToken != null && !firebaseIdToken.isEmpty() && firebaseAuthService != null) {
+            try {
+                com.google.firebase.auth.FirebaseToken decoded = firebaseAuthService.verifyIdToken(firebaseIdToken);
+                firebaseUid = decoded.getUid();
+                email = decoded.getEmail();
+                if (name == null || name.isBlank()) {
+                    name = decoded.getName();
                 }
+                claims = decoded.getClaims();
+                if ((name == null || name.isBlank()) && claims != null && claims.get("name") != null) {
+                    name = String.valueOf(claims.get("name"));
+                }
+                if (phone == null && claims != null && claims.get("phone_number") != null) {
+                    phone = String.valueOf(claims.get("phone_number"));
+                }
+            } catch (Exception ex) {
+                log.warn("Firebase ID token verification failed in /api/auth/sync: {}", ex.getMessage());
+            }
+        }
+
+        // Backward-compatible fallback for pre-authenticated test contexts
+        if (firebaseUid == null) {
+            Optional<FirebaseUserPrincipal> principalOpt = SecurityUtils.getCurrentUserPrincipal();
+            if (principalOpt.isPresent()) {
+                FirebaseUserPrincipal principal = principalOpt.get();
+                firebaseUid = principal.getFirebaseUid();
+                email = principal.getEmail();
+                if (name == null || name.isBlank()) {
+                    name = principal.getName();
+                }
+                claims = principal.getClaims();
             }
         }
 
@@ -136,7 +162,27 @@ public class AuthController {
 
         Integer sellerId = userService.resolveSellerIdForUser(customer);
 
+        // Generate HinchMart JWT for subsequent authenticated requests
+        String accessToken = null;
+        if (jwtService != null) {
+            accessToken = jwtService.generateToken(customer);
+        }
+        long expiresIn = (jwtService != null) ? (jwtService.getExpirationMs() / 1000) : 86400L;
+
+        Map<String, Object> customerMap = new java.util.HashMap<>();
+        customerMap.put("customerId", customer.getCustomerId());
+        customerMap.put("firebaseUid", customer.getFirebaseUid());
+        customerMap.put("name", customer.getName());
+        customerMap.put("email", customer.getEmail());
+        customerMap.put("phone", customer.getPhone());
+        customerMap.put("role", customer.getRole());
+
         AuthUserResponse response = AuthUserResponse.builder()
+                .accessToken(accessToken)
+                .tokenType(accessToken != null ? "Bearer" : null)
+                .expiresIn(accessToken != null ? expiresIn : null)
+                .token(accessToken)
+                .customer(customerMap)
                 .userId(customer.getCustomerId())
                 .firebaseUid(customer.getFirebaseUid())
                 .email(customer.getEmail())

@@ -159,10 +159,20 @@ public class BrandServiceImpl implements BrandService {
     public void delete(Integer id) {
         Brand brand = findBrand(id);
         String imageUrl = brand.getImageUrl();
-        repository.delete(brand);
 
-        if (imageUrl != null && !imageUrl.isBlank()) {
-            s3ImageService.deleteImage(imageUrl);
+        int productCount = productRepository != null ? productRepository.countByBrand_BrandId(id) : 0;
+
+        if (productCount > 0) {
+            // Soft-delete: deactivate so products pointing to brand_id are not orphaned/broken
+            brand.setActive(false);
+            repository.save(brand);
+            log.info("Soft-deleted brand id={} because it has {} linked products", id, productCount);
+        } else {
+            repository.delete(brand);
+
+            if (imageUrl != null && !imageUrl.isBlank()) {
+                s3ImageService.deleteImage(imageUrl);
+            }
         }
     }
 

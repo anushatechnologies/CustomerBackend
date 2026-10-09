@@ -186,14 +186,26 @@ public class SubcategoryServiceImpl implements SubcategoryService {
     }
 
     @Override
+    @org.springframework.cache.annotation.CacheEvict(value = "brands", allEntries = true)
     public void delete(Integer id) {
         Subcategory subcategory = findSubcategory(id);
         String imageUrl = subcategory.getImageUrl();
-        repository.delete(subcategory);
 
-        if (imageUrl != null && !imageUrl.isBlank()
-                && !com.example.project.customer.validation.ImageUrlValidator.isBlobOrDataUrl(imageUrl)) {
-            s3ImageService.deleteImage(imageUrl);
+        int productCount = productRepository != null ? productRepository.countByBrand_Subcategory_SubcategoryId(id) : 0;
+
+        if (productCount > 0) {
+            // Soft-delete: deactivate & hide from website to preserve foreign key integrity with products
+            subcategory.setActive(false);
+            subcategory.setVisibleOnWebsite(false);
+            repository.save(subcategory);
+            log.info("Soft-deleted subcategory id={} because it has {} linked products", id, productCount);
+        } else {
+            repository.delete(subcategory);
+
+            if (imageUrl != null && !imageUrl.isBlank()
+                    && !com.example.project.customer.validation.ImageUrlValidator.isBlobOrDataUrl(imageUrl)) {
+                s3ImageService.deleteImage(imageUrl);
+            }
         }
     }
 

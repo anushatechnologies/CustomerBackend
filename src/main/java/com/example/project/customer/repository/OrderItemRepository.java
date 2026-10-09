@@ -9,4 +9,5 @@ import java.util.List;
 @Repository
 public interface OrderItemRepository extends JpaRepository<OrderItem, Integer> {
     List<OrderItem> findByOrder_OrderId(Integer orderId);
+    boolean existsByProductId(Integer productId);
 }

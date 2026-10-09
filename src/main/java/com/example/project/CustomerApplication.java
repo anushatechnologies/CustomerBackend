@@ -15,6 +15,10 @@ import java.nio.charset.StandardCharsets;
 @EnableCaching
 public class CustomerApplication {
 
+    static {
+        loadDotEnvIfPresent();
+    }
+
     public static void main(String[] args) {
         loadDotEnvIfPresent();
         SpringApplication.run(CustomerApplication.class, args);

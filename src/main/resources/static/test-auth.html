@@ -196,22 +196,31 @@
 
   <!-- Token Display Card -->
   <div class="card">
-    <h2>3. Generated Firebase ID Token <span id="userBadge" class="badge badge-blue">Not Signed In</span></h2>
-    <p style="font-size: 0.85rem; color: var(--text-muted);">Copy this Bearer token into Postman or use the Quick Test buttons below:</p>
-    <div id="tokenBox" class="token-box">No token generated yet. Sign in above to generate.</div>
-    <div class="btn-row">
-      <button class="btn btn-secondary" onclick="copyToken()">📋 Copy Token for Postman</button>
-      <button class="btn btn-secondary" onclick="refreshToken()">🔄 Refresh Token (Get Latest Claims)</button>
+    <h2>3. Authentication Tokens <span id="userBadge" class="badge badge-blue">Not Signed In</span></h2>
+    <div style="margin-bottom: 14px;">
+      <label>Firebase ID Token (Used ONLY for POST /api/auth/sync):</label>
+      <div id="firebaseTokenBox" class="token-box">No Firebase token yet. Sign in above to generate.</div>
+      <button class="btn btn-secondary" onclick="copyFirebaseToken()">📋 Copy Firebase Token</button>
+    </div>
+
+    <div>
+      <label>HinchMart JWT (Used for ALL Business APIs):</label>
+      <div id="jwtTokenBox" class="token-box" style="color: #4ade80;">No HinchMart JWT yet. Run POST /api/auth/sync to exchange.</div>
+      <div class="btn-row">
+        <button class="btn btn-success" onclick="syncWithBackend()">⚡ Exchange Firebase Token for HinchMart JWT (Sync)</button>
+        <button class="btn btn-secondary" onclick="copyJwtToken()">📋 Copy HinchMart JWT</button>
+      </div>
     </div>
   </div>
 
   <!-- Direct Backend Test Card -->
   <div class="card">
-    <h2>4. Test Monolith Backend APIs Directly</h2>
+    <h2>4. Test Backend APIs (Using HinchMart JWT)</h2>
     <div class="btn-row" style="flex-wrap: wrap; margin-bottom: 12px;">
-      <button class="btn btn-success" onclick="callApi('/api/auth/sync', 'POST', { name: 'Verified User' })">POST /api/auth/sync</button>
+      <button class="btn btn-success" onclick="syncWithBackend()">POST /api/auth/sync (Exchange Token)</button>
       <button class="btn btn-success" onclick="callApi('/api/auth/me', 'GET')">GET /api/auth/me</button>
       <button class="btn btn-success" onclick="callApi('/api/user/profile', 'GET')">GET /api/user/profile</button>
+      <button class="btn btn-success" onclick="callApi('/api/cart', 'GET')">GET /api/cart (Customer API)</button>
       <button class="btn btn-secondary" onclick="callApi('/api/admin/products', 'GET')">GET /api/admin/products (Admin Test)</button>
     </div>
     <label>Backend Response Output:</label>
@@ -220,7 +229,8 @@
 </div>
 
 <script>
-  let currentToken = '';
+  let firebaseIdToken = '';
+  let hinchmartJwt = '';
   let confirmationResult = null;
 
   // Load saved config
@@ -296,9 +306,10 @@
 
     try {
       const result = await confirmationResult.confirm(code);
-      currentToken = await result.user.getIdToken();
-      displayToken(currentToken, result.user.phoneNumber || result.user.email);
-      alert('Authentication Successful!');
+      firebaseIdToken = await result.user.getIdToken();
+      displayTokens(result.user.phoneNumber || result.user.email);
+      alert('Firebase Authentication Successful! Exchanging token for HinchMart JWT...');
+      await syncWithBackend();
     } catch (e) {
       alert('Invalid OTP: ' + e.message);
     }
@@ -311,8 +322,10 @@
 
     try {
       const cred = await firebase.auth().signInWithEmailAndPassword(email, password);
-      currentToken = await cred.user.getIdToken();
-      displayToken(currentToken, cred.user.email);
+      firebaseIdToken = await cred.user.getIdToken();
+      displayTokens(cred.user.email);
+      alert('Firebase Login Successful! Exchanging token for HinchMart JWT...');
+      await syncWithBackend();
     } catch (e) {
       alert('Login error: ' + e.message);
     }
@@ -325,49 +338,85 @@
 
     try {
       const cred = await firebase.auth().createUserWithEmailAndPassword(email, password);
-      currentToken = await cred.user.getIdToken();
-      displayToken(currentToken, cred.user.email);
-      alert('Account created and signed in!');
+      firebaseIdToken = await cred.user.getIdToken();
+      displayTokens(cred.user.email);
+      alert('Firebase Account created! Exchanging token for HinchMart JWT...');
+      await syncWithBackend();
     } catch (e) {
       alert('Signup error: ' + e.message);
     }
   }
 
-  function displayToken(token, userIdentifier) {
-    document.getElementById('tokenBox').innerText = token;
-    document.getElementById('userBadge').innerText = userIdentifier;
-    document.getElementById('userBadge').className = 'badge badge-green';
+  function displayTokens(userIdentifier) {
+    document.getElementById('firebaseTokenBox').innerText = firebaseIdToken || 'No token generated';
+    document.getElementById('jwtTokenBox').innerText = hinchmartJwt || 'Not synced yet';
+    if (userIdentifier) {
+      document.getElementById('userBadge').innerText = userIdentifier;
+      document.getElementById('userBadge').className = 'badge badge-green';
+    }
   }
 
-  function copyToken() {
-    if (!currentToken) { alert('No token to copy'); return; }
-    navigator.clipboard.writeText(currentToken);
+  function copyFirebaseToken() {
+    if (!firebaseIdToken) { alert('No Firebase ID token to copy'); return; }
+    navigator.clipboard.writeText(firebaseIdToken);
     alert('Copied Firebase ID Token to clipboard!');
   }
 
-  async function refreshToken() {
-    if (firebase.auth().currentUser) {
-      currentToken = await firebase.auth().currentUser.getIdToken(true);
-      displayToken(currentToken, firebase.auth().currentUser.email || firebase.auth().currentUser.phoneNumber);
-      alert('Token refreshed with latest custom claims!');
-    } else {
-      alert('Not signed in');
+  function copyJwtToken() {
+    if (!hinchmartJwt) { alert('No HinchMart JWT to copy. Sync user first!'); return; }
+    navigator.clipboard.writeText(hinchmartJwt);
+    alert('Copied HinchMart JWT to clipboard!');
+  }
+
+  async function syncWithBackend() {
+    if (!firebaseIdToken) {
+      alert('Please authenticate with Firebase first!');
+      return;
+    }
+
+    const backendBase = (window.location.origin && window.location.origin.startsWith('http')) 
+      ? window.location.origin 
+      : 'http://localhost:9000';
+
+    document.getElementById('resultBox').innerText = 'Sending Firebase ID Token to POST /api/auth/sync...';
+
+    try {
+      const res = await fetch(`${backendBase}/api/auth/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          firebaseIdToken: firebaseIdToken
+        })
+      });
+
+      const data = await res.json();
+      document.getElementById('resultBox').innerText = `HTTP ${res.status} ${res.statusText}\n\n` + JSON.stringify(data, null, 2);
+
+      if (data && data.data && data.data.accessToken) {
+        hinchmartJwt = data.data.accessToken;
+        document.getElementById('jwtTokenBox').innerText = hinchmartJwt;
+        alert('HinchMart JWT obtained successfully! All subsequent API requests will use this token.');
+      }
+    } catch (e) {
+      document.getElementById('resultBox').innerText = 'Error calling /api/auth/sync: ' + e.message;
     }
   }
 
   async function callApi(path, method, body) {
-    if (!currentToken) {
-      alert('Please sign in first to generate a token!');
+    if (!hinchmartJwt) {
+      alert('Please complete Firebase login and sync to obtain a HinchMart JWT before calling business APIs!');
       return;
     }
 
-    document.getElementById('resultBox').innerText = `Calling ${method} ${path}...`;
+    document.getElementById('resultBox').innerText = `Calling ${method} ${path} with HinchMart JWT...`;
 
     try {
       const opts = {
         method: method,
         headers: {
-          'Authorization': `Bearer ${currentToken}`,
+          'Authorization': `Bearer ${hinchmartJwt}`,
           'Content-Type': 'application/json'
         }
       };

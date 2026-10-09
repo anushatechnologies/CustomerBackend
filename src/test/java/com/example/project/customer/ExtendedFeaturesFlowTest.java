@@ -126,7 +126,7 @@ public class ExtendedFeaturesFlowTest {
                 .pagination(meta)
                 .build();
 
-        when(categoryService.getAll(null, false, 1, 5)).thenReturn(response);
+        when(categoryService.getAll(null, false, false, 1, 5)).thenReturn(response);
 
         mockMvc.perform(get("/api/categories")
                         .param("page", "1")

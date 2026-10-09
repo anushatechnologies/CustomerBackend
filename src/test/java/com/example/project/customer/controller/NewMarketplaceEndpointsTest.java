@@ -382,6 +382,7 @@ class NewMarketplaceEndpointsTest {
     }
 
     @Test
+    @WithMockUser
     @DisplayName("POST /api/auth/refresh-token - Refresh token endpoint succeeds")
     void refreshToken_Success() throws Exception {
         mockMvc.perform(post("/api/auth/refresh-token"))

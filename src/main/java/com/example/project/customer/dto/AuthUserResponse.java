@@ -17,6 +17,15 @@ import java.util.Map;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class AuthUserResponse {
 
+    private String accessToken;
+    private String tokenType;
+    private Long expiresIn;
+
+    @Deprecated
+    private String token;
+
+    private Map<String, Object> customer;
+
     private Integer userId;
     private String firebaseUid;
     private String email;

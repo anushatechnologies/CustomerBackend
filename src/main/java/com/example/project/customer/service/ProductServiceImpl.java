@@ -17,13 +17,17 @@ import com.example.project.customer.entity.StoreStatus;
 import com.example.project.customer.exception.ResourceConflictException;
 import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.repository.BrandRepository;
+import com.example.project.customer.repository.CartItemRepository;
 import com.example.project.customer.repository.CategoryRepository;
+import com.example.project.customer.repository.OrderItemRepository;
 import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.repository.StoreRepository;
 import com.example.project.customer.repository.SubcategoryRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -52,7 +56,14 @@ public class ProductServiceImpl implements ProductService {
     private final S3ImageService s3ImageService;
     private final ProductSpecificationValidator productSpecificationValidator;
 
+    @Autowired(required = false)
+    private OrderItemRepository orderItemRepository;
+
+    @Autowired(required = false)
+    private CartItemRepository cartItemRepository;
+
     @Override
+    @CacheEvict(value = "brands", allEntries = true)
     public ProductResponse create(ProductRequest request) {
         String cleanTitle = request.getTitle() != null ? request.getTitle().trim() : "";
         if (cleanTitle.isEmpty()) {
@@ -332,6 +343,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @CacheEvict(value = "brands", allEntries = true)
     public ProductResponse update(
             Integer id,
             ProductRequest request
@@ -428,20 +440,35 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @CacheEvict(value = "brands", allEntries = true)
     public void delete(Integer id) {
 
         Product product = findProduct(id);
         String mainImage = product.getImageUrl();
         List<String> galleryImages = product.getImages() != null ? new ArrayList<>(product.getImages()) : List.of();
 
-        repository.delete(product);
+        boolean hasOrderItems = orderItemRepository != null && orderItemRepository.existsByProductId(id);
+        boolean hasCartItems = cartItemRepository != null && cartItemRepository.existsByProduct_ProductId(id);
 
-        if (mainImage != null && !mainImage.isBlank()) {
-            s3ImageService.deleteImage(mainImage);
-        }
-        for (String galleryImg : galleryImages) {
-            if (galleryImg != null && !galleryImg.isBlank() && !galleryImg.equals(mainImage)) {
-                s3ImageService.deleteImage(galleryImg);
+        if (hasOrderItems || hasCartItems) {
+            // Soft-delete: deactivate & reject so historical orders and active carts remain structurally intact
+            product.setActive(false);
+            product.setApprovalStatus(ApprovalStatus.REJECTED);
+            product.setRejectionReason("Soft-deleted by admin (order/cart history preserved)");
+            product.setUpdatedAt(java.time.LocalDateTime.now());
+            repository.save(product);
+            log.info("Soft-deleted product id={} due to active references (orders={}, carts={})",
+                    id, hasOrderItems, hasCartItems);
+        } else {
+            repository.delete(product);
+
+            if (mainImage != null && !mainImage.isBlank()) {
+                s3ImageService.deleteImage(mainImage);
+            }
+            for (String galleryImg : galleryImages) {
+                if (galleryImg != null && !galleryImg.isBlank() && !galleryImg.equals(mainImage)) {
+                    s3ImageService.deleteImage(galleryImg);
+                }
             }
         }
     }
@@ -557,6 +584,7 @@ public class ProductServiceImpl implements ProductService {
     // =========================================================
 
     @Override
+    @CacheEvict(value = "brands", allEntries = true)
     public ProductResponse activate(Integer id) {
 
         Product product = findProduct(id);
@@ -577,6 +605,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @CacheEvict(value = "brands", allEntries = true)
     public ProductResponse deactivate(Integer id) {
 
         Product product = findProduct(id);

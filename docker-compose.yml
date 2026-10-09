@@ -46,4 +46,7 @@ services:
       FIREBASE_PRIVATE_KEY_ID: ${FIREBASE_PRIVATE_KEY_ID:-}
       # Admin email allow-list (injected from ADMIN_EMAILS GitHub Secret)
       ADMIN_EMAILS: ${ADMIN_EMAILS:-admin@hinchmart.com}
+      # HinchMart JWT Authentication
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
 
