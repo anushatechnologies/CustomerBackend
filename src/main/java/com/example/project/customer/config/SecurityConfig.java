@@ -111,12 +111,9 @@ public class SecurityConfig {
     }
 
     @Bean
-    public FilterRegistrationBean<FirebaseAuthenticationFilter> disableFirebaseAuthenticationFilter(
-            @Autowired(required = false) FirebaseAuthenticationFilter filter) {
-        FilterRegistrationBean<FirebaseAuthenticationFilter> registration = new FilterRegistrationBean<>();
-        if (filter != null) {
-            registration.setFilter(filter);
-        }
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnBean(JwtAuthenticationFilter.class)
+    public FilterRegistrationBean<JwtAuthenticationFilter> jwtFilterRegistration(JwtAuthenticationFilter filter) {
+        FilterRegistrationBean<JwtAuthenticationFilter> registration = new FilterRegistrationBean<>(filter);
         registration.setEnabled(false);
         return registration;
     }
