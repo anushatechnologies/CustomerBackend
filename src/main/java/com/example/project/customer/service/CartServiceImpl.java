@@ -32,10 +32,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import com.example.project.customer.dto.tax.TaxCalculationResult;
+import com.example.project.customer.dto.tax.TaxableItemInput;
+import com.example.project.customer.dto.tax.TaxableItemResult;
+
 @Slf4j
 @Service
 @Transactional
-@RequiredArgsConstructor
 @SuppressWarnings("null")
 public class CartServiceImpl implements CartService {
 
@@ -44,6 +47,29 @@ public class CartServiceImpl implements CartService {
     private final ProductRepository productRepository;
     private final StoreRepository storeRepository;
     private final CouponService couponService;
+    private final TaxCalculationService taxCalculationService;
+
+    public CartServiceImpl(CartRepository cartRepository,
+                           CartItemRepository cartItemRepository,
+                           ProductRepository productRepository,
+                           StoreRepository storeRepository,
+                           CouponService couponService) {
+        this(cartRepository, cartItemRepository, productRepository, storeRepository, couponService, new TaxCalculationServiceImpl());
+    }
+
+    public CartServiceImpl(CartRepository cartRepository,
+                           CartItemRepository cartItemRepository,
+                           ProductRepository productRepository,
+                           StoreRepository storeRepository,
+                           CouponService couponService,
+                           TaxCalculationService taxCalculationService) {
+        this.cartRepository = cartRepository;
+        this.cartItemRepository = cartItemRepository;
+        this.productRepository = productRepository;
+        this.storeRepository = storeRepository;
+        this.couponService = couponService;
+        this.taxCalculationService = taxCalculationService;
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -442,7 +468,9 @@ public class CartServiceImpl implements CartService {
         List<CartItemResponse> itemResponses = new ArrayList<>();
 
         BigDecimal subtotal = BigDecimal.ZERO;
-        BigDecimal totalGst = BigDecimal.ZERO;
+
+        List<TaxableItemInput> taxInputs = new ArrayList<>();
+        List<CartItemResponse.CartItemResponseBuilder> responseBuilders = new ArrayList<>();
 
         for (CartItem item : items) {
             Product p = item.getProduct();
@@ -468,13 +496,25 @@ public class CartServiceImpl implements CartService {
             }
 
             BigDecimal lineTotal = unitPrice.multiply(BigDecimal.valueOf(qty)).setScale(2, RoundingMode.HALF_UP);
-            BigDecimal gstRate = p.getGstRate() != null ? p.getGstRate() : BigDecimal.valueOf(18.0);
-            BigDecimal lineGst = lineTotal.multiply(gstRate).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+            BigDecimal gstRate = p.getGstRate();
+            if (gstRate == null || gstRate.compareTo(BigDecimal.ZERO) < 0 || gstRate.compareTo(BigDecimal.valueOf(100)) > 0) {
+                throw new IllegalStateException("Product '" + p.getTitle() + "' (ID: " + p.getProductId()
+                        + ") has missing or invalid GST rate: " + gstRate);
+            }
 
             subtotal = subtotal.add(lineTotal);
-            totalGst = totalGst.add(lineGst);
 
-            itemResponses.add(CartItemResponse.builder()
+            taxInputs.add(TaxableItemInput.builder()
+                    .productId(p.getProductId())
+                    .title(p.getTitle())
+                    .hsnCode(p.getHsnCode())
+                    .quantity(qty)
+                    .unitPrice(unitPrice)
+                    .lineTotal(lineTotal)
+                    .gstRate(gstRate)
+                    .build());
+
+            responseBuilders.add(CartItemResponse.builder()
                     .cartItemId(item.getCartItemId())
                     .productId(p.getProductId())
                     .title(p.getTitle())
@@ -486,8 +526,7 @@ public class CartServiceImpl implements CartService {
                     .appliedTier(appliedTier)
                     .gstRate(gstRate)
                     .lineTotal(lineTotal)
-                    .lineGst(lineGst)
-                    .build());
+                    .hsnCode(p.getHsnCode()));
         }
 
         BigDecimal couponDiscount = BigDecimal.ZERO;
@@ -509,10 +548,22 @@ public class CartServiceImpl implements CartService {
                 ? cart.getDeliveryCharge()
                 : BigDecimal.ZERO;
 
-        BigDecimal grandTotal = subtotal.subtract(couponDiscount).add(totalGst).add(deliveryCharge);
-        if (grandTotal.compareTo(BigDecimal.ZERO) < 0) {
-            grandTotal = BigDecimal.ZERO;
+        TaxCalculationResult taxResult = taxCalculationService.calculateTaxes(
+                taxInputs,
+                couponDiscount,
+                true,
+                deliveryCharge,
+                BigDecimal.ZERO
+        );
+
+        for (int i = 0; i < responseBuilders.size(); i++) {
+            TaxableItemResult tr = taxResult.getItemResults().get(i);
+            responseBuilders.get(i).lineGst(tr.getLineGst());
+            itemResponses.add(responseBuilders.get(i).build());
         }
+
+        BigDecimal grandTotal = taxResult.getGrandTotal();
+        BigDecimal totalGst = taxResult.getTotalGst();
 
         Store store = cart.getStore() != null ? cart.getStore() : getDefaultStore();
 

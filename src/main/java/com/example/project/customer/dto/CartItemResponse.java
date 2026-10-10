@@ -26,4 +26,5 @@ public class CartItemResponse {
     private BigDecimal gstRate;
     private BigDecimal lineTotal;
     private BigDecimal lineGst;
+    private String hsnCode;
 }

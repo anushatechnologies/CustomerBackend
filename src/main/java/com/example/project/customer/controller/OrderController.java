@@ -111,7 +111,13 @@ public class OrderController {
         String status = body.getOrDefault("status", "IN_TRANSIT");
         String location = body.get("location");
         String description = body.get("description");
-        OrderResponse updated = orderService.updateOrderStatus(id, status, location, description);
+        String carrierName = body.get("carrierName");
+        String vehicleNumber = body.get("vehicleNumber");
+        String driverName = body.get("driverName");
+        String trackingNumber = body.get("trackingNumber");
+        String estimatedDelivery = body.get("estimatedDelivery");
+        OrderResponse updated = orderService.updateOrderStatus(id, status, location, description,
+                carrierName, vehicleNumber, driverName, trackingNumber, estimatedDelivery);
         return ResponseEntity.ok(ApiResponse.ok("Order status updated successfully", updated));
     }
 

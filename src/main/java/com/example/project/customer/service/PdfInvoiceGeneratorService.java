@@ -5,11 +5,15 @@ import com.example.project.customer.entity.Order;
 import com.example.project.customer.entity.OrderItem;
 import com.example.project.customer.entity.Seller;
 import com.example.project.customer.entity.Store;
+import com.example.project.customer.entity.Product;
+import com.example.project.customer.repository.ProductRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -18,6 +22,9 @@ import java.util.Map;
 
 @Service
 public class PdfInvoiceGeneratorService {
+
+    @Autowired(required = false)
+    private ProductRepository productRepository;
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd-MMM-yyyy");
 
@@ -136,13 +143,23 @@ public class PdfInvoiceGeneratorService {
             }
             pdf.drawLine(36, y - 2, 559, y - 2, borderGray[0], borderGray[1], borderGray[2], 0.5f);
 
+            String hsn = "7214";
+            if (productRepository != null && item.getProductId() != null && item.getProductId() > 0) {
+                try {
+                    Product p = productRepository.findById(item.getProductId()).orElse(null);
+                    if (p != null && p.getHsnCode() != null && !p.getHsnCode().isBlank()) {
+                        hsn = p.getHsnCode().trim();
+                    }
+                } catch (Exception ignored) {}
+            }
+
             pdf.drawText(42, y + 2, "/F1", 7.5f, textDark[0], textDark[1], textDark[2], String.valueOf(sNo));
             pdf.drawText(65, y + 2, "/F1", 7.5f, textDark[0], textDark[1], textDark[2], truncate(item.getTitle(), 36));
-            pdf.drawText(260, y + 2, "/F1", 7.5f, textDark[0], textDark[1], textDark[2], "721420");
+            pdf.drawText(260, y + 2, "/F1", 7.5f, textDark[0], textDark[1], textDark[2], hsn);
             pdf.drawText(305, y + 2, "/F1", 7.5f, textDark[0], textDark[1], textDark[2], item.getQuantity() + " " + (item.getUnit() != null ? item.getUnit() : ""));
             pdf.drawText(340, y + 2, "/F1", 7.5f, textDark[0], textDark[1], textDark[2], formatCurrency(item.getUnitPrice()));
             pdf.drawText(410, y + 2, "/F1", 7.5f, textDark[0], textDark[1], textDark[2], formatCurrency(item.getLineTotal()));
-            pdf.drawText(465, y + 2, "/F1", 7.5f, textDark[0], textDark[1], textDark[2], (item.getGstRate() != null ? item.getGstRate().intValue() : 18) + "%");
+            pdf.drawText(465, y + 2, "/F1", 7.5f, textDark[0], textDark[1], textDark[2], (item.getGstRate() != null ? item.getGstRate().stripTrailingZeros().toPlainString() : "18") + "%");
             BigDecimal lineWithGst = item.getLineTotal().add(item.getLineGst() != null ? item.getLineGst() : BigDecimal.ZERO);
             pdf.drawText(505, y + 2, "/F2", 7.5f, textDark[0], textDark[1], textDark[2], formatCurrency(lineWithGst));
 
@@ -175,13 +192,27 @@ public class PdfInvoiceGeneratorService {
 
         boolean isInterState = order.getIgst() != null && order.getIgst().compareTo(BigDecimal.ZERO) > 0;
         if (isInterState) {
-            pdf.drawText(365, summaryTop - 25, "/F1", 8f, textDark[0], textDark[1], textDark[2], "IGST (18%):");
+            String igstLabel = "IGST (18%):";
+            if (order.getTaxableAmount() != null && order.getTaxableAmount().compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal effectiveRate = order.getIgst().multiply(BigDecimal.valueOf(100))
+                        .divide(order.getTaxableAmount(), 0, RoundingMode.HALF_UP);
+                igstLabel = "IGST (" + effectiveRate.toPlainString() + "%):";
+            }
+            pdf.drawText(365, summaryTop - 25, "/F1", 8f, textDark[0], textDark[1], textDark[2], igstLabel);
             pdf.drawText(480, summaryTop - 25, "/F1", 8f, textDark[0], textDark[1], textDark[2], formatCurrency(order.getIgst()));
         } else {
-            pdf.drawText(365, summaryTop - 25, "/F1", 8f, textDark[0], textDark[1], textDark[2], "CGST (9%):");
+            String cgstLabel = "CGST (9%):";
+            String sgstLabel = "SGST (9%):";
+            if (order.getTaxableAmount() != null && order.getTaxableAmount().compareTo(BigDecimal.ZERO) > 0 && order.getCgst() != null) {
+                BigDecimal halfRate = order.getCgst().multiply(BigDecimal.valueOf(100))
+                        .divide(order.getTaxableAmount(), 0, RoundingMode.HALF_UP);
+                cgstLabel = "CGST (" + halfRate.toPlainString() + "%):";
+                sgstLabel = "SGST (" + halfRate.toPlainString() + "%):";
+            }
+            pdf.drawText(365, summaryTop - 25, "/F1", 8f, textDark[0], textDark[1], textDark[2], cgstLabel);
             pdf.drawText(480, summaryTop - 25, "/F1", 8f, textDark[0], textDark[1], textDark[2], formatCurrency(order.getCgst()));
 
-            pdf.drawText(365, summaryTop - 38, "/F1", 8f, textDark[0], textDark[1], textDark[2], "SGST (9%):");
+            pdf.drawText(365, summaryTop - 38, "/F1", 8f, textDark[0], textDark[1], textDark[2], sgstLabel);
             pdf.drawText(480, summaryTop - 38, "/F1", 8f, textDark[0], textDark[1], textDark[2], formatCurrency(order.getSgst()));
         }
 

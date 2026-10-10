@@ -50,6 +50,8 @@ public class RfqServiceImpl implements RfqService {
     private final RfqQuestionRepository rfqQuestionRepository;
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
+    private final com.example.project.customer.repository.SellerRepository sellerRepository;
+    private final TaxCalculationService taxCalculationService;
 
     @Override
     public RfqResponse createRfq(Integer userId, RfqRequest request) {
@@ -173,9 +175,48 @@ public class RfqServiceImpl implements RfqService {
         String orderNumber = "ORD-" + dateStr + "-" + randomSuffix;
 
         BigDecimal total = quote.getTotalAmount();
-        BigDecimal taxable = total.divide(BigDecimal.valueOf(1.18), 2, java.math.RoundingMode.HALF_UP);
-        BigDecimal gst = total.subtract(taxable);
-        BigDecimal halfGst = gst.divide(BigDecimal.valueOf(2), 2, java.math.RoundingMode.HALF_UP);
+
+        // Determine seller origin state
+        String originState = "Telangana";
+        if (quote.getSellerId() != null) {
+            com.example.project.customer.entity.Seller seller = sellerRepository.findById(quote.getSellerId()).orElse(null);
+            if (seller != null && seller.getState() != null && !seller.getState().isBlank()) {
+                originState = seller.getState().trim();
+            }
+        }
+
+        // Determine buyer state from rfq delivery location
+        String buyerState = "Telangana";
+        if (rfq.getDeliveryLocation() != null && !rfq.getDeliveryLocation().isBlank()) {
+            String[] parts = rfq.getDeliveryLocation().split(",");
+            buyerState = parts[parts.length - 1].trim();
+        }
+
+        boolean isIntraState = taxCalculationService.isIntraState(originState, buyerState);
+
+        BigDecimal gstRate = BigDecimal.valueOf(18.0);
+        // If quotation specifies item GST rate in itemsJson, extract it
+        if (quote.getItemsJson() != null && !quote.getItemsJson().isBlank()) {
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                java.util.List<java.util.Map<String, Object>> items = mapper.readValue(
+                        quote.getItemsJson(),
+                        new com.fasterxml.jackson.core.type.TypeReference<java.util.List<java.util.Map<String, Object>>>() {}
+                );
+                if (!items.isEmpty() && items.get(0).get("gstRate") != null) {
+                    gstRate = new BigDecimal(items.get(0).get("gstRate").toString());
+                }
+            } catch (Exception e) {
+                log.debug("Could not parse itemsJson for quotation #{}: {}", quote.getQuoteId(), e.getMessage());
+            }
+        }
+
+        com.example.project.customer.dto.tax.TaxCalculationResult taxResult = taxCalculationService.calculateTaxInclusive(total, gstRate, isIntraState);
+        BigDecimal taxable = taxResult.getTaxableAmount();
+        BigDecimal cgst = taxResult.getCgst();
+        BigDecimal sgst = taxResult.getSgst();
+        BigDecimal igst = taxResult.getIgst();
+        BigDecimal gst = taxResult.getTotalGst();
 
         Order order = Order.builder()
                 .orderNumber(orderNumber)
@@ -184,9 +225,9 @@ public class RfqServiceImpl implements RfqService {
                 .subtotal(taxable)
                 .discount(BigDecimal.ZERO)
                 .taxableAmount(taxable)
-                .cgst(halfGst)
-                .sgst(halfGst)
-                .igst(BigDecimal.ZERO)
+                .cgst(cgst)
+                .sgst(sgst)
+                .igst(igst)
                 .totalGst(gst)
                 .freightCharge(BigDecimal.ZERO)
                 .totalAmount(total)
@@ -194,11 +235,11 @@ public class RfqServiceImpl implements RfqService {
                 .paymentStatus("PENDING")
                 .orderStatus("PLACED")
                 .poNumber("PO-RFQ-" + rfq.getRfqId())
-                .carrierName(quote.getSellerName() + " Logistics Fleet")
-                .vehicleNumber("TS 09 UB 9901")
-                .driverName("Driver assigned upon dispatch")
-                .trackingNumber("VRL-RFQ-" + rfq.getRfqId())
-                .estimatedDelivery(LocalDateTime.now().plusDays(quote.getDeliveryLeadTimeDays() != null ? quote.getDeliveryLeadTimeDays() : 5))
+                .carrierName(null)
+                .vehicleNumber(null)
+                .driverName(null)
+                .trackingNumber(null)
+                .estimatedDelivery(quote.getDeliveryLeadTimeDays() != null ? LocalDateTime.now().plusDays(quote.getDeliveryLeadTimeDays()) : null)
                 .build();
 
         Order savedOrder = orderRepository.save(order);
@@ -213,7 +254,7 @@ public class RfqServiceImpl implements RfqService {
                 .unitPrice(quote.getUnitPrice())
                 .originalPrice(quote.getUnitPrice())
                 .appliedTier("RFQ Accepted Bid Rate")
-                .gstRate(BigDecimal.valueOf(18.0))
+                .gstRate(gstRate)
                 .lineTotal(taxable)
                 .lineGst(gst)
                 .build();

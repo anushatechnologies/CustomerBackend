@@ -297,11 +297,11 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 .deliverySlot(request.getDeliverySlot())
                 .deliveryInstructions(request.getDeliveryInstructions())
                 .requiresCraneUnloading(Boolean.TRUE.equals(request.getRequiresCraneUnloading()))
-                .carrierName("VRL Logistics Heavy Freight Fleet")
-                .vehicleNumber("TS 09 UB 4412 (22-Wheel Flatbed)")
-                .driverName("Ramesh Yadav (+91 9849012345)")
-                .trackingNumber("VRL-HYD-" + dateStr + "-" + randomSuffix)
-                .estimatedDelivery(LocalDateTime.now().plusDays(1))
+                .carrierName(null)
+                .vehicleNumber(null)
+                .driverName(null)
+                .trackingNumber(null)
+                .estimatedDelivery(null)
                 .build();
 
         Order savedOrder = orderRepository.save(order);
@@ -451,6 +451,7 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 .orderId(order.getOrderId())
                 .orderNumber(order.getOrderNumber())
                 .orderStatus(order.getOrderStatus())
+                .currentStatus(order.getOrderStatus())
                 .trackingNumber(order.getTrackingNumber())
                 .carrierName(order.getCarrierName())
                 .vehicleNumber(order.getVehicleNumber())
@@ -475,21 +476,31 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 ? store.getSeller().getGstin() : "36AAACH2026Q1Z1";
 
         List<InvoiceResponse.InvoiceItem> invoiceItems = order.getItems().stream()
-                .map(item -> InvoiceResponse.InvoiceItem.builder()
-                        .itemId(item.getOrderItemId())
-                        .description(item.getTitle())
-                        .hsnCode("721420")
-                        .quantity(item.getQuantity())
-                        .unit(item.getUnit())
-                        .unitPrice(item.getUnitPrice())
-                        .lineTotal(item.getLineTotal())
-                        .gstRate(item.getGstRate())
-                        .gstAmount(item.getLineGst())
-                        .build())
+                .map(item -> {
+                    Product product = (item.getProductId() != null && item.getProductId() > 0)
+                            ? productRepository.findById(item.getProductId()).orElse(null)
+                            : null;
+                    String hsn = (product != null && product.getHsnCode() != null && !product.getHsnCode().isBlank())
+                            ? product.getHsnCode().trim() : "7214";
+                    return InvoiceResponse.InvoiceItem.builder()
+                            .itemId(item.getOrderItemId())
+                            .description(item.getTitle())
+                            .hsnCode(hsn)
+                            .quantity(item.getQuantity())
+                            .unit(item.getUnit())
+                            .unitPrice(item.getUnitPrice())
+                            .lineTotal(item.getLineTotal())
+                            .gstRate(item.getGstRate())
+                            .gstAmount(item.getLineGst())
+                            .build();
+                })
                 .toList();
 
         String invNum = (order.getStoreInvoiceNumber() != null && !order.getStoreInvoiceNumber().isBlank())
                 ? order.getStoreInvoiceNumber() : "INV-" + String.format("%06d", order.getOrderId());
+
+        boolean isInterState = order.getIgst() != null && order.getIgst().compareTo(BigDecimal.ZERO) > 0;
+        String placeOfSupply = isInterState ? "Inter-State (IGST)" : "Telangana (36)";
 
         return InvoiceResponse.builder()
                 .invoiceNumber(invNum)
@@ -502,7 +513,7 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 .recipientName(customer != null && customer.getName() != null ? customer.getName() : "Enterprise Customer")
                 .recipientAddress(order.getDeliveryLocation())
                 .recipientGstin("36AAACT2727Q1ZW")
-                .placeOfSupply("Telangana (36)")
+                .placeOfSupply(placeOfSupply)
                 .paymentMethod(order.getPaymentMethod())
                 .subtotal(order.getSubtotal())
                 .discount(order.getDiscount())
@@ -531,10 +542,37 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
 
     @Override
     public OrderResponse updateOrderStatus(Integer id, String status, String location, String description) {
+        return updateOrderStatus(id, status, location, description, null, null, null, null, null);
+    }
+
+    @Override
+    public OrderResponse updateOrderStatus(Integer id, String status, String location, String description,
+                                           String carrierName, String vehicleNumber, String driverName,
+                                           String trackingNumber, String estimatedDelivery) {
         Order order = findOrder(id);
         validateOrderStatusUpdateAccess(order);
         String upperStatus = status.trim().toUpperCase();
         order.setOrderStatus(upperStatus);
+
+        if (carrierName != null && !carrierName.isBlank()) {
+            order.setCarrierName(carrierName.trim());
+        }
+        if (vehicleNumber != null && !vehicleNumber.isBlank()) {
+            order.setVehicleNumber(vehicleNumber.trim());
+        }
+        if (driverName != null && !driverName.isBlank()) {
+            order.setDriverName(driverName.trim());
+        }
+        if (trackingNumber != null && !trackingNumber.isBlank()) {
+            order.setTrackingNumber(trackingNumber.trim());
+        }
+        if (estimatedDelivery != null && !estimatedDelivery.isBlank()) {
+            try {
+                order.setEstimatedDelivery(LocalDateTime.parse(estimatedDelivery.trim()));
+            } catch (Exception e) {
+                log.warn("Invalid estimatedDelivery format for order #{}: {}", id, estimatedDelivery);
+            }
+        }
 
         TrackingCheckpoint cp = TrackingCheckpoint.builder()
                 .order(order)

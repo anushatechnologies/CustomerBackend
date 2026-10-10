@@ -17,6 +17,9 @@ public interface OrderService {
     InvoiceResponse getOrderInvoice(Integer id);
     byte[] generateInvoicePdf(Integer id);
     OrderResponse updateOrderStatus(Integer id, String status, String location, String description);
+    OrderResponse updateOrderStatus(Integer id, String status, String location, String description,
+                                    String carrierName, String vehicleNumber, String driverName,
+                                    String trackingNumber, String estimatedDelivery);
     OrderResponse cancelOrder(Integer id, String location, String description);
     com.example.project.customer.dto.OrderDisputeResponse raiseDispute(Integer id, com.example.project.customer.dto.OrderDisputeRequest request);
     com.example.project.customer.dto.OrderMtcResponse getOrderMtc(Integer id);
