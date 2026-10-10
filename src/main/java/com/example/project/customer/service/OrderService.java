@@ -12,6 +12,7 @@ import java.util.List;
 public interface OrderService {
     OrderResponse createOrder(Integer userId, OrderCreateRequest request);
     ApiResponse<List<OrderSummaryResponse>> getOrders(Integer userId, String status, int page, int limit);
+    ApiResponse<List<OrderSummaryResponse>> getAllOrdersForAdmin(String status, int page, int limit);
     OrderResponse getOrderById(Integer id);
     OrderTrackingResponse getOrderTracking(Integer id);
     InvoiceResponse getOrderInvoice(Integer id);

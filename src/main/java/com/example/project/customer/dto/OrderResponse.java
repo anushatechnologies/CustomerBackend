@@ -18,6 +18,10 @@ import java.util.List;
 public class OrderResponse {
     private Integer orderId;
     private String orderNumber;
+    private Integer customerId;
+    private String customerName;
+    private String customerEmail;
+    private String customerPhone;
     private Integer storeId;
     private String storeName;
     private String storeSlug;

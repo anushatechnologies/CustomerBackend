@@ -403,6 +403,10 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
     @Override
     @Transactional(readOnly = true)
     public ApiResponse<List<OrderSummaryResponse>> getOrders(Integer userId, String status, int page, int limit) {
+        if (SecurityUtils.isAdmin()) {
+            return getAllOrdersForAdmin(status, page, limit);
+        }
+
         int pageNumber = page > 0 ? page : 1;
         int pageSize = limit > 0 ? limit : 20;
         Pageable pageable = PageRequest.of(pageNumber - 1, pageSize);
@@ -414,6 +418,25 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         Page<Order> orderPage = (status != null && !status.trim().isEmpty())
                 ? orderRepository.findByCustomer_CustomerIdAndOrderStatusIgnoreCaseOrderByCreatedAtDesc(uid, status.trim().toUpperCase(), pageable)
                 : orderRepository.findByCustomer_CustomerIdOrderByCreatedAtDesc(uid, pageable);
+
+        List<OrderSummaryResponse> summaryList = orderPage.getContent().stream()
+                .map(this::mapToSummaryResponse)
+                .toList();
+
+        PaginationMeta meta = PaginationMeta.of(pageNumber, pageSize, orderPage.getTotalElements());
+        return ApiResponse.paginated("Orders retrieved successfully", summaryList, meta);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ApiResponse<List<OrderSummaryResponse>> getAllOrdersForAdmin(String status, int page, int limit) {
+        int pageNumber = page > 0 ? page : 1;
+        int pageSize = limit > 0 ? limit : 20;
+        Pageable pageable = PageRequest.of(pageNumber - 1, pageSize);
+
+        Page<Order> orderPage = (status != null && !status.trim().isEmpty())
+                ? orderRepository.findByOrderStatusIgnoreCaseOrderByCreatedAtDesc(status.trim().toUpperCase(), pageable)
+                : orderRepository.findAllByOrderByCreatedAtDesc(pageable);
 
         List<OrderSummaryResponse> summaryList = orderPage.getContent().stream()
                 .map(this::mapToSummaryResponse)
@@ -836,9 +859,21 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         }
 
         Store store = o.getStore();
+        Customer customer = o.getCustomer();
+        String recName = (o.getRecipientName() != null && !o.getRecipientName().isBlank())
+                ? o.getRecipientName()
+                : (customer != null ? customer.getName() : null);
+        String recPhone = (o.getRecipientPhone() != null && !o.getRecipientPhone().isBlank())
+                ? o.getRecipientPhone()
+                : (customer != null ? customer.getPhone() : null);
+
         return OrderSummaryResponse.builder()
                 .orderId(o.getOrderId())
                 .orderNumber(o.getOrderNumber())
+                .customerId(customer != null ? customer.getCustomerId() : null)
+                .customerName(customer != null ? customer.getName() : null)
+                .customerEmail(customer != null ? customer.getEmail() : null)
+                .customerPhone(customer != null ? customer.getPhone() : null)
                 .storeId(store != null ? store.getStoreId() : null)
                 .storeName(store != null ? store.getName() : null)
                 .storeSlug(store != null ? store.getSlug() : null)
@@ -847,8 +882,8 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 .orderStatus(o.getOrderStatus())
                 .paymentStatus(o.getPaymentStatus())
                 .orderForSomeoneElse(o.getOrderForSomeoneElse())
-                .recipientName(o.getRecipientName())
-                .recipientPhone(o.getRecipientPhone())
+                .recipientName(recName)
+                .recipientPhone(recPhone)
                 .itemCount(count)
                 .firstItemTitle(firstTitle)
                 .firstItemImage(firstImage)
@@ -879,10 +914,21 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         String firstTitle = itemDtos.isEmpty() ? null : itemDtos.get(0).getTitle();
         String firstImage = itemDtos.isEmpty() ? null : itemDtos.get(0).getImageUrl();
         Store store = o.getStore();
+        Customer customer = o.getCustomer();
+        String recName = (o.getRecipientName() != null && !o.getRecipientName().isBlank())
+                ? o.getRecipientName()
+                : (customer != null ? customer.getName() : null);
+        String recPhone = (o.getRecipientPhone() != null && !o.getRecipientPhone().isBlank())
+                ? o.getRecipientPhone()
+                : (customer != null ? customer.getPhone() : null);
 
         return OrderResponse.builder()
                 .orderId(o.getOrderId())
                 .orderNumber(o.getOrderNumber())
+                .customerId(customer != null ? customer.getCustomerId() : null)
+                .customerName(customer != null ? customer.getName() : null)
+                .customerEmail(customer != null ? customer.getEmail() : null)
+                .customerPhone(customer != null ? customer.getPhone() : null)
                 .storeId(store != null ? store.getStoreId() : null)
                 .storeName(store != null ? store.getName() : null)
                 .storeSlug(store != null ? store.getSlug() : null)

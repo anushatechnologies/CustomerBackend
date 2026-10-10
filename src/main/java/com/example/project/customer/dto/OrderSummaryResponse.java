@@ -17,6 +17,10 @@ import java.time.LocalDateTime;
 public class OrderSummaryResponse {
     private Integer orderId;
     private String orderNumber;
+    private Integer customerId;
+    private String customerName;
+    private String customerEmail;
+    private String customerPhone;
     private Integer storeId;
     private String storeName;
     private String storeSlug;
