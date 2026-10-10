@@ -57,6 +57,7 @@ public class CartServiceImpl implements CartService {
         this(cartRepository, cartItemRepository, productRepository, storeRepository, couponService, new TaxCalculationServiceImpl());
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
     public CartServiceImpl(CartRepository cartRepository,
                            CartItemRepository cartItemRepository,
                            ProductRepository productRepository,

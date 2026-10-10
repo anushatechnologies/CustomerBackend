@@ -40,6 +40,7 @@ public class CheckoutServiceImpl implements CheckoutService {
         this(cartService, addressRepository, storeRepository, new TaxCalculationServiceImpl());
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
     public CheckoutServiceImpl(CartService cartService,
                                AddressRepository addressRepository,
                                StoreRepository storeRepository,
