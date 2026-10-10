@@ -42,30 +42,17 @@ public class SellerProductServiceImpl implements SellerProductService {
     private final BrandRepository brandRepository;
     private final SellerRepository sellerRepository;
     private final StoreRepository storeRepository;
-    private final ProductSpecificationValidator productSpecificationValidator;
 
     @org.springframework.beans.factory.annotation.Autowired
     public SellerProductServiceImpl(
             ProductRepository productRepository,
             BrandRepository brandRepository,
             SellerRepository sellerRepository,
-            StoreRepository storeRepository,
-            ProductSpecificationValidator productSpecificationValidator
-    ) {
+            StoreRepository storeRepository) {
         this.productRepository = productRepository;
         this.brandRepository = brandRepository;
         this.sellerRepository = sellerRepository;
         this.storeRepository = storeRepository;
-        this.productSpecificationValidator = productSpecificationValidator;
-    }
-
-    public SellerProductServiceImpl(
-            ProductRepository productRepository,
-            BrandRepository brandRepository,
-            SellerRepository sellerRepository,
-            StoreRepository storeRepository
-    ) {
-        this(productRepository, brandRepository, sellerRepository, storeRepository, null);
     }
 
     @Override
@@ -79,8 +66,7 @@ public class SellerProductServiceImpl implements SellerProductService {
             String stockStatus,
             String sortBy,
             int page,
-            int limit
-    ) {
+            int limit) {
         int pageIndex = Math.max(0, page - 1);
         int pageSize = limit > 0 ? limit : 12;
 
@@ -109,9 +95,12 @@ public class SellerProductServiceImpl implements SellerProductService {
                 if (!catStr.isEmpty()) {
                     if (isNumeric(catStr)) {
                         Integer catId = Integer.parseInt(catStr);
-                        predicates.add(cb.equal(root.get("brand").get("subcategory").get("category").get("categoryId"), catId));
+                        predicates.add(cb.equal(root.get("brand").get("subcategory").get("category").get("categoryId"),
+                                catId));
                     } else {
-                        predicates.add(cb.like(cb.lower(root.get("brand").get("subcategory").get("category").get("name")), "%" + catStr.toLowerCase() + "%"));
+                        predicates
+                                .add(cb.like(cb.lower(root.get("brand").get("subcategory").get("category").get("name")),
+                                        "%" + catStr.toLowerCase() + "%"));
                     }
                 }
             }
@@ -124,7 +113,8 @@ public class SellerProductServiceImpl implements SellerProductService {
                         Integer bId = Integer.parseInt(brandStr);
                         predicates.add(cb.equal(root.get("brand").get("brandId"), bId));
                     } else {
-                        predicates.add(cb.like(cb.lower(root.get("brand").get("name")), "%" + brandStr.toLowerCase() + "%"));
+                        predicates.add(
+                                cb.like(cb.lower(root.get("brand").get("name")), "%" + brandStr.toLowerCase() + "%"));
                     }
                 }
             }
@@ -179,14 +169,7 @@ public class SellerProductServiceImpl implements SellerProductService {
         Brand brand = brandRepository.findById(request.getBrandId())
                 .orElseThrow(() -> new ResourceNotFoundException("Brand not found with id: " + request.getBrandId()));
 
-        Integer categoryId = request.getCategoryId();
-        if (categoryId == null && brand.getSubcategory() != null && brand.getSubcategory().getCategory() != null) {
-            categoryId = brand.getSubcategory().getCategory().getCategoryId();
-        }
-        Map<String, String> normalizedSpecs = request.getSpecifications() != null ? request.getSpecifications() : new java.util.LinkedHashMap<>();
-        if (productSpecificationValidator != null) {
-            normalizedSpecs = productSpecificationValidator.validateAndNormalize(categoryId, request.getSpecifications());
-        }
+        Map<String, String> normalizedSpecs = cleanSpecifications(request.getSpecifications());
 
         String slug = request.getTitle().toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "")
                 + "-" + System.currentTimeMillis();
@@ -206,8 +189,8 @@ public class SellerProductServiceImpl implements SellerProductService {
                     .orElseGet(() -> storeRepository.findAll().stream().findFirst().orElse(null));
         }
 
-        ApprovalStatus initialStatus = com.example.project.customer.security.SecurityUtils.isAdmin() 
-                ? ApprovalStatus.APPROVED 
+        ApprovalStatus initialStatus = com.example.project.customer.security.SecurityUtils.isAdmin()
+                ? ApprovalStatus.APPROVED
                 : ApprovalStatus.PENDING;
 
         Product product = Product.builder()
@@ -226,8 +209,10 @@ public class SellerProductServiceImpl implements SellerProductService {
                 .stockQty(request.getStockQty() != null ? request.getStockQty() : 0)
                 .is24HourDelivery(request.getIs24HourDelivery() != null && request.getIs24HourDelivery())
                 .images(request.getImages() != null ? request.getImages() : new ArrayList<>())
-                .imageUrl(request.getImages() != null && !request.getImages().isEmpty() ? request.getImages().get(0) : null)
-                .bulkPricingTiers(request.getBulkPricingTiers() != null ? request.getBulkPricingTiers() : new ArrayList<>())
+                .imageUrl(request.getImages() != null && !request.getImages().isEmpty() ? request.getImages().get(0)
+                        : null)
+                .bulkPricingTiers(
+                        request.getBulkPricingTiers() != null ? request.getBulkPricingTiers() : new ArrayList<>())
                 .specifications(normalizedSpecs)
                 .approvalStatus(initialStatus)
                 .active(true)
@@ -236,12 +221,14 @@ public class SellerProductServiceImpl implements SellerProductService {
                 .build();
 
         Product saved = productRepository.save(product);
-        log.info("Created new seller product id={} for sellerId={} in storeId={} (status={})", saved.getProductId(), sellerId, store != null ? store.getStoreId() : null, initialStatus);
+        log.info("Created new seller product id={} for sellerId={} in storeId={} (status={})", saved.getProductId(),
+                sellerId, store != null ? store.getStoreId() : null, initialStatus);
         return mapToResponse(saved);
     }
 
     @Override
-    public ProductResponse updateSellerProduct(Integer sellerId, Integer productId, SellerProductUpdateRequest request) {
+    public ProductResponse updateSellerProduct(Integer sellerId, Integer productId,
+            SellerProductUpdateRequest request) {
         Product product = findSellerProduct(sellerId, productId);
 
         if (request.getTitle() != null && !request.getTitle().isBlank()) {
@@ -255,7 +242,8 @@ public class SellerProductServiceImpl implements SellerProductService {
         }
         if (request.getBrandId() != null) {
             Brand brand = brandRepository.findById(request.getBrandId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Brand not found with id: " + request.getBrandId()));
+                    .orElseThrow(
+                            () -> new ResourceNotFoundException("Brand not found with id: " + request.getBrandId()));
             product.setBrand(brand);
         }
         if (request.getEffectivePrice() != null) {
@@ -287,19 +275,7 @@ public class SellerProductServiceImpl implements SellerProductService {
             product.setBulkPricingTiers(request.getBulkPricingTiers());
         }
         if (request.getSpecifications() != null) {
-            Map<String, String> normalizedSpecs = request.getSpecifications();
-            if (productSpecificationValidator != null) {
-                Integer categoryId = null;
-                Brand targetBrand = product.getBrand();
-                if (request.getBrandId() != null) {
-                    targetBrand = brandRepository.findById(request.getBrandId()).orElse(product.getBrand());
-                }
-                if (targetBrand != null && targetBrand.getSubcategory() != null && targetBrand.getSubcategory().getCategory() != null) {
-                    categoryId = targetBrand.getSubcategory().getCategory().getCategoryId();
-                }
-                normalizedSpecs = productSpecificationValidator.validateAndNormalize(categoryId, request.getSpecifications());
-            }
-            product.setSpecifications(normalizedSpecs);
+            product.setSpecifications(cleanSpecifications(request.getSpecifications()));
         }
         product.setUpdatedAt(LocalDateTime.now());
 
@@ -316,7 +292,8 @@ public class SellerProductServiceImpl implements SellerProductService {
     }
 
     @Override
-    public ProductResponse updateSellerPricing(Integer sellerId, Integer productId, SellerPricingUpdateRequest request) {
+    public ProductResponse updateSellerPricing(Integer sellerId, Integer productId,
+            SellerPricingUpdateRequest request) {
         Product product = findSellerProduct(sellerId, productId);
         if (request.getEffectiveSellingPrice() != null) {
             product.setPrice(request.getEffectiveSellingPrice());
@@ -387,7 +364,8 @@ public class SellerProductServiceImpl implements SellerProductService {
     }
 
     private boolean isNumeric(String str) {
-        if (str == null) return false;
+        if (str == null)
+            return false;
         try {
             Integer.parseInt(str);
             return true;
@@ -408,13 +386,15 @@ public class SellerProductServiceImpl implements SellerProductService {
                 ? p.getBrand().getSubcategory().getName()
                 : null;
 
-        Integer categoryId = (p.getBrand() != null && p.getBrand().getSubcategory() != null && p.getBrand().getSubcategory().getCategory() != null)
-                ? p.getBrand().getSubcategory().getCategory().getCategoryId()
-                : null;
+        Integer categoryId = (p.getBrand() != null && p.getBrand().getSubcategory() != null
+                && p.getBrand().getSubcategory().getCategory() != null)
+                        ? p.getBrand().getSubcategory().getCategory().getCategoryId()
+                        : null;
 
-        String categoryName = (p.getBrand() != null && p.getBrand().getSubcategory() != null && p.getBrand().getSubcategory().getCategory() != null)
-                ? p.getBrand().getSubcategory().getCategory().getName()
-                : null;
+        String categoryName = (p.getBrand() != null && p.getBrand().getSubcategory() != null
+                && p.getBrand().getSubcategory().getCategory() != null)
+                        ? p.getBrand().getSubcategory().getCategory().getName()
+                        : null;
 
         String status = p.getApprovalStatus() != null ? p.getApprovalStatus().name() : "PENDING";
 
@@ -454,7 +434,9 @@ public class SellerProductServiceImpl implements SellerProductService {
                 .hsnCode(p.getHsnCode())
                 .specifications(p.getSpecifications() != null ? p.getSpecifications() : new java.util.LinkedHashMap<>())
                 .bulkPricingTiers(p.getBulkPricingTiers() != null ? p.getBulkPricingTiers() : new ArrayList<>())
-                .sellerId(p.getSeller() != null && p.getSeller().getSellerId() != null ? "seller_" + p.getSeller().getSellerId() : "seller_1001")
+                .sellerId(p.getSeller() != null && p.getSeller().getSellerId() != null
+                        ? "seller_" + p.getSeller().getSellerId()
+                        : "seller_1001")
                 .sellerName(p.getSeller() != null ? p.getSeller().getName() : null)
                 .approvalStatus(status)
                 .status(status)
@@ -462,5 +444,19 @@ public class SellerProductServiceImpl implements SellerProductService {
                 .createdAt(p.getCreatedAt())
                 .updatedAt(p.getUpdatedAt() != null ? p.getUpdatedAt() : p.getCreatedAt())
                 .build();
+    }
+
+    private Map<String, String> cleanSpecifications(Map<String, String> specs) {
+        if (specs == null) {
+            return new java.util.LinkedHashMap<>();
+        }
+        Map<String, String> cleaned = new java.util.LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : specs.entrySet()) {
+            if (entry.getKey() != null && !entry.getKey().trim().isBlank()
+                    && entry.getValue() != null && !entry.getValue().trim().isBlank()) {
+                cleaned.put(entry.getKey().trim(), entry.getValue().trim());
+            }
+        }
+        return cleaned;
     }
 }

@@ -48,982 +48,874 @@ import java.util.Map;
 @SuppressWarnings("null")
 public class ProductServiceImpl implements ProductService {
 
-    private final ProductRepository repository;
-    private final BrandRepository brandRepository;
-    private final SubcategoryRepository subcategoryRepository;
-    private final CategoryRepository categoryRepository;
-    private final StoreRepository storeRepository;
-    private final S3ImageService s3ImageService;
-    private final ProductSpecificationValidator productSpecificationValidator;
-
-    @Autowired(required = false)
-    private OrderItemRepository orderItemRepository;
-
-    @Autowired(required = false)
-    private CartItemRepository cartItemRepository;
-
-    @Override
-    @CacheEvict(value = "brands", allEntries = true)
-    public ProductResponse create(ProductRequest request) {
-        String cleanTitle = request.getTitle() != null ? request.getTitle().trim() : "";
-        if (cleanTitle.isEmpty()) {
-            throw new IllegalArgumentException("Product title cannot be empty");
-        }
-
-        if (repository.existsByTitleIgnoreCase(cleanTitle)) {
-            throw new ResourceConflictException("Product already exists with title: '" + cleanTitle + "'");
-        }
-
-        if (request.getSku() != null && !request.getSku().isBlank()) {
-            String sku = request.getSku().trim().toUpperCase();
-            if (repository.existsBySkuIgnoreCase(sku)) {
-                throw new ResourceConflictException("Product already exists with SKU: '" + sku + "'");
-            }
-        }
-
-        String slug = generateSlug(cleanTitle, request.getSlug());
-        if (repository.existsBySlugIgnoreCase(slug)) {
-            throw new ResourceConflictException("Product already exists with slug: '" + slug + "'");
-        }
-
-        Brand brand = resolveBrand(request);
-
-        Integer categoryId = request.getCategoryId();
-        if (categoryId == null && brand.getSubcategory() != null && brand.getSubcategory().getCategory() != null) {
-            categoryId = brand.getSubcategory().getCategory().getCategoryId();
-        }
-        if (productSpecificationValidator != null) {
-            Map<String, String> normalized = productSpecificationValidator.validateAndNormalize(categoryId, request.getSpecifications());
-            request.setSpecifications(normalized);
-        }
-
-        Product product = new Product();
-        mapRequestToProduct(product, request, brand);
-        product.setTitle(cleanTitle);
-        product.setSlug(slug);
-        if (request.getSku() != null && !request.getSku().isBlank()) {
-            product.setSku(request.getSku().trim().toUpperCase());
-        }
-
-        if (product.getStore() == null) {
-            storeRepository.findById(1)
-                    .or(() -> storeRepository.findAll().stream()
-                            .filter(s -> s.getStatus() == StoreStatus.ACTIVE)
-                            .findFirst())
-                    .or(() -> storeRepository.findAll().stream().findFirst())
-                    .ifPresent(product::setStore);
-        }
-
-        // IMPORTANT:
-        // Every newly submitted product must wait for admin approval.
-        product.setApprovalStatus(ApprovalStatus.PENDING);
-        product.setActive(false);
-        product.setRejectionReason(null);
-
-        return mapToResponse(repository.save(product));
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public ProductResponse getById(Integer id) {
-        Product product = repository
-                .findByProductIdAndApprovalStatusAndActive(
-                        id,
-                        ApprovalStatus.APPROVED,
-                        true
-                )
-                .orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                "Product not found with id: " + id
-                        ));
-
-        return mapToResponse(product);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public ApiResponse<List<ProductResponse>> getAll(
-            Integer categoryId,
-            String category,
-            Integer subcategoryId,
-            Integer brandId,
-            String search,
-            BigDecimal minPrice,
-            BigDecimal maxPrice,
-            String brand,
-            Boolean is24HourDelivery,
-            String sort,
-            int page,
-            int limit
-    ) {
-
-        int pageNumber = Math.max(page - 1, 0);
-        int pageSize = limit > 0 ? limit : 20;
-
-        Sort sorting = getSort(sort);
-
-        Pageable pageable = PageRequest.of(
-                pageNumber,
-                pageSize,
-                sorting
-        );
-
-        Specification<Product> spec = (root, query, cb) -> {
-
-            List<Predicate> predicates = new ArrayList<>();
-
-            // Only approved + active products are visible to customers
-            predicates.add(
-                    cb.equal(
-                            root.get("approvalStatus"),
-                            ApprovalStatus.APPROVED
-                    )
-            );
-
-            predicates.add(
-                    cb.isTrue(root.get("active"))
-            );
-
-            // Category filter via brand -> subcategory -> category
-            if (categoryId != null) {
-                predicates.add(
-                        cb.equal(
-                                root.get("brand")
-                                        .get("subcategory")
-                                        .get("category")
-                                        .get("categoryId"),
-                                categoryId
-                        )
-                );
-            }
-
-            // Category filter via brand -> subcategory -> category (Name or Slug, e.g. category=Interior)
-            if (category != null && !category.isBlank()) {
-                String catTrimmed = category.trim();
-                List<Predicate> catPredicates = new ArrayList<>();
-                catPredicates.add(cb.equal(
-                        cb.lower(root.get("brand").get("subcategory").get("category").get("name")),
-                        catTrimmed.toLowerCase()
-                ));
-                catPredicates.add(cb.equal(
-                        cb.lower(root.get("brand").get("subcategory").get("category").get("slug")),
-                        catTrimmed.toLowerCase()
-                ));
-                try {
-                    int numId = Integer.parseInt(catTrimmed);
-                    catPredicates.add(cb.equal(
-                            root.get("brand").get("subcategory").get("category").get("categoryId"),
-                            numId
-                    ));
-                } catch (NumberFormatException ignored) {}
-
-                predicates.add(cb.or(catPredicates.toArray(new Predicate[0])));
-            }
-
-            // Subcategory filter via brand -> subcategory
-            if (subcategoryId != null) {
-                predicates.add(
-                        cb.equal(
-                                root.get("brand")
-                                        .get("subcategory")
-                                        .get("subcategoryId"),
-                                subcategoryId
-                        )
-                );
-            }
-
-            // Brand ID filter
-            if (brandId != null) {
-                predicates.add(
-                        cb.equal(
-                                root.get("brand")
-                                        .get("brandId"),
-                                brandId
-                        )
-                );
-            }
-
-            // Brand name string filter
-            if (brand != null && !brand.isBlank()) {
-                predicates.add(
-                        cb.equal(
-                                cb.lower(root.get("brand").get("name")),
-                                brand.trim().toLowerCase()
-                        )
-                );
-            }
-
-            // Search filter
-            if (search != null && !search.isBlank()) {
-
-                String pattern =
-                        "%" + search.trim().toLowerCase() + "%";
-
-                Predicate titlePredicate =
-                        cb.like(
-                                cb.lower(root.get("title")),
-                                pattern
-                        );
-
-                Predicate brandPredicate =
-                        cb.like(
-                                cb.lower(root.get("brand").get("name")),
-                                pattern
-                        );
-
-                Predicate descriptionPredicate =
-                        cb.like(
-                                cb.lower(root.get("description")),
-                                pattern
-                        );
-
-                predicates.add(
-                        cb.or(
-                                titlePredicate,
-                                brandPredicate,
-                                descriptionPredicate
-                        )
-                );
-            }
-
-            // Minimum price
-            if (minPrice != null) {
-                predicates.add(
-                        cb.greaterThanOrEqualTo(
-                                root.get("price"),
-                                minPrice
-                        )
-                );
-            }
-
-            // Maximum price
-            if (maxPrice != null) {
-                predicates.add(
-                        cb.lessThanOrEqualTo(
-                                root.get("price"),
-                                maxPrice
-                        )
-                );
-            }
-
-            // 24-hour delivery
-            if (Boolean.TRUE.equals(is24HourDelivery)) {
-                predicates.add(
-                        cb.isTrue(
-                                root.get("is24HourDelivery")
-                        )
-                );
-            }
-
-            return cb.and(
-                    predicates.toArray(new Predicate[0])
-            );
-        };
-
-        Page<Product> productPage =
-                repository.findAll(spec, pageable);
-
-        List<ProductResponse> data =
-                productPage.getContent()
-                        .stream()
-                        .map(this::mapToResponse)
-                        .toList();
-
-        PaginationMeta pagination =
-                PaginationMeta.of(
-                        page > 0 ? page : 1,
-                        pageSize,
-                        productPage.getTotalElements()
-                );
-
-        return ApiResponse.paginated(
-                data,
-                pagination
-        );
-    }
-
-    @Override
-    @CacheEvict(value = "brands", allEntries = true)
-    public ProductResponse update(
-            Integer id,
-            ProductRequest request
-    ) {
-
-        Product product = findProduct(id);
-        String oldMainImage = product.getImageUrl();
-        List<String> oldGalleryImages = product.getImages() != null ? new ArrayList<>(product.getImages()) : List.of();
-
-        String cleanTitle = request.getTitle() != null ? request.getTitle().trim() : "";
-        if (cleanTitle.isEmpty()) {
-            throw new IllegalArgumentException("Product title cannot be empty");
-        }
-
-        if (repository.existsByTitleIgnoreCaseAndProductIdNot(cleanTitle, id)) {
-            throw new ResourceConflictException("Product already exists with title: '" + cleanTitle + "'");
-        }
-
-        if (request.getSku() != null && !request.getSku().isBlank()) {
-            String sku = request.getSku().trim().toUpperCase();
-            if (repository.existsBySkuIgnoreCaseAndProductIdNot(sku, id)) {
-                throw new ResourceConflictException("Product already exists with SKU: '" + sku + "'");
-            }
-        }
-
-        String slug = generateSlug(cleanTitle, request.getSlug());
-        if (repository.existsBySlugIgnoreCaseAndProductIdNot(slug, id)) {
-            throw new ResourceConflictException("Product already exists with slug: '" + slug + "'");
-        }
-
-        Brand brand = resolveBrand(request);
-
-        Integer categoryId = request.getCategoryId();
-        if (categoryId == null && brand.getSubcategory() != null && brand.getSubcategory().getCategory() != null) {
-            categoryId = brand.getSubcategory().getCategory().getCategoryId();
-        }
-        if (productSpecificationValidator != null && request.getSpecifications() != null) {
-            Map<String, String> normalized = productSpecificationValidator.validateAndNormalize(categoryId, request.getSpecifications());
-            request.setSpecifications(normalized);
-        }
-
-        mapRequestToProduct(
-                product,
-                request,
-                brand
-        );
-        product.setTitle(cleanTitle);
-        product.setSlug(slug);
-        if (request.getSku() != null && !request.getSku().isBlank()) {
-            product.setSku(request.getSku().trim().toUpperCase());
-        }
-
-        /*
-         * Do NOT allow a normal product update to approve
-         * or activate a pending/rejected product.
-         */
-        if (product.getApprovalStatus() != ApprovalStatus.APPROVED) {
-            product.setActive(false);
-        }
-
-        Product saved = repository.save(product);
-
-        // Clean up old main image if replaced and no longer in use
-        String newMainImage = saved.getImageUrl();
-        List<String> newGalleryImages = saved.getImages() != null ? saved.getImages() : List.of();
-
-        if (oldMainImage != null && !oldMainImage.isBlank() && !oldMainImage.equals(newMainImage) && !newGalleryImages.contains(oldMainImage)) {
-            s3ImageService.deleteImage(oldMainImage);
-        }
-
-        // Clean up old gallery images that are removed and not used as main image
-        for (String oldImg : oldGalleryImages) {
-            if (oldImg != null && !oldImg.isBlank() && !newGalleryImages.contains(oldImg) && !oldImg.equals(newMainImage)) {
-                s3ImageService.deleteImage(oldImg);
-            }
-        }
-
-        return mapToResponse(saved);
-    }
-
-    @Override
-    public ProductResponse updateStockQuantity(Integer id, StockQuantityUpdateRequest request) {
-
-        Product product = repository.findByIdForStockUpdate(id)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Product not found with id: " + id));
-
-        int currentStock = product.getStockQty() != null ? product.getStockQty() : 0;
-        int incomingStock = request.getStockQty() != null ? request.getStockQty() : 0;
-
-        product.setStockQty(currentStock + incomingStock);
-
-        return mapToResponse(repository.save(product));
-    }
-
-    @Override
-    @CacheEvict(value = "brands", allEntries = true)
-    public void delete(Integer id) {
-
-        Product product = findProduct(id);
-        String mainImage = product.getImageUrl();
-        List<String> galleryImages = product.getImages() != null ? new ArrayList<>(product.getImages()) : List.of();
-
-        boolean hasOrderItems = orderItemRepository != null && orderItemRepository.existsByProductId(id);
-        boolean hasCartItems = cartItemRepository != null && cartItemRepository.existsByProduct_ProductId(id);
-
-        if (hasOrderItems || hasCartItems) {
-            // Soft-delete: deactivate & reject so historical orders and active carts remain structurally intact
-            product.setActive(false);
-            product.setApprovalStatus(ApprovalStatus.REJECTED);
-            product.setRejectionReason("Soft-deleted by admin (order/cart history preserved)");
-            product.setUpdatedAt(java.time.LocalDateTime.now());
-            repository.save(product);
-            log.info("Soft-deleted product id={} due to active references (orders={}, carts={})",
-                    id, hasOrderItems, hasCartItems);
-        } else {
-            repository.delete(product);
-
-            if (mainImage != null && !mainImage.isBlank()) {
-                s3ImageService.deleteImage(mainImage);
-            }
-            for (String galleryImg : galleryImages) {
-                if (galleryImg != null && !galleryImg.isBlank() && !galleryImg.equals(mainImage)) {
-                    s3ImageService.deleteImage(galleryImg);
+        private final ProductRepository repository;
+        private final BrandRepository brandRepository;
+        private final SubcategoryRepository subcategoryRepository;
+        private final CategoryRepository categoryRepository;
+        private final StoreRepository storeRepository;
+        private final S3ImageService s3ImageService;
+
+        @Autowired(required = false)
+        private OrderItemRepository orderItemRepository;
+
+        @Autowired(required = false)
+        private CartItemRepository cartItemRepository;
+
+        @Override
+        @CacheEvict(value = "brands", allEntries = true)
+        public ProductResponse create(ProductRequest request) {
+                String cleanTitle = request.getTitle() != null ? request.getTitle().trim() : "";
+                if (cleanTitle.isEmpty()) {
+                        throw new IllegalArgumentException("Product title cannot be empty");
                 }
-            }
-        }
-    }
 
-    // =========================================================
-    // SEARCH SUGGESTIONS
-    // =========================================================
+                if (repository.existsByTitleIgnoreCase(cleanTitle)) {
+                        throw new ResourceConflictException("Product already exists with title: '" + cleanTitle + "'");
+                }
 
-    @Override
-    @Transactional(readOnly = true)
-    public SearchSuggestionResponse getSearchSuggestions(
-            String query
-    ) {
+                if (request.getSku() != null && !request.getSku().isBlank()) {
+                        String sku = request.getSku().trim().toUpperCase();
+                        if (repository.existsBySkuIgnoreCase(sku)) {
+                                throw new ResourceConflictException("Product already exists with SKU: '" + sku + "'");
+                        }
+                }
 
-        String trimmed =
-                query != null ? query.trim() : "";
+                String slug = generateSlug(cleanTitle, request.getSlug());
+                if (repository.existsBySlugIgnoreCase(slug)) {
+                        throw new ResourceConflictException("Product already exists with slug: '" + slug + "'");
+                }
 
-        if (trimmed.isEmpty()) {
+                Brand brand = resolveBrand(request);
 
-            return SearchSuggestionResponse.builder()
-                    .products(List.of())
-                    .categories(List.of())
-                    .popularSearches(
-                            List.of(
-                                    "UltraTech Cement",
-                                    "Tata Tiscon 12mm",
-                                    "Armoured Cable",
-                                    "CPVC Pipes",
-                                    "JSW Sheets"
-                            )
-                    )
-                    .build();
-        }
+                if (request.getSpecifications() != null) {
+                        request.setSpecifications(cleanSpecifications(request.getSpecifications()));
+                }
 
-        List<Product> products =
-                repository
-                        .findTop5ByTitleContainingIgnoreCaseOrBrand_NameContainingIgnoreCase(
-                                trimmed,
-                                trimmed
-                        );
+                Product product = new Product();
+                mapRequestToProduct(product, request, brand);
+                product.setTitle(cleanTitle);
+                product.setSlug(slug);
+                if (request.getSku() != null && !request.getSku().isBlank()) {
+                        product.setSku(request.getSku().trim().toUpperCase());
+                }
 
-        List<SearchSuggestionResponse.ProductSuggestion>
-                productSuggestions =
-                products.stream()
-                        .filter(product ->
-                                product.getApprovalStatus()
-                                        == ApprovalStatus.APPROVED
-                                        && Boolean.TRUE.equals(
-                                        product.getActive()
-                                )
-                        )
-                        .map(product ->
-                                SearchSuggestionResponse.ProductSuggestion
-                                        .builder()
-                                        .productId(product.getProductId())
-                                        .title(product.getTitle())
-                                        .category(
-                                                product.getBrand() != null
-                                                        && product.getBrand().getSubcategory() != null
-                                                        && product.getBrand().getSubcategory().getCategory() != null
-                                                        ? product.getBrand().getSubcategory().getCategory().getName()
-                                                        : ""
-                                        )
-                                        .build()
-                        )
-                        .toList();
+                if (product.getStore() == null) {
+                        storeRepository.findById(1)
+                                        .or(() -> storeRepository.findAll().stream()
+                                                        .filter(s -> s.getStatus() == StoreStatus.ACTIVE)
+                                                        .findFirst())
+                                        .or(() -> storeRepository.findAll().stream().findFirst())
+                                        .ifPresent(product::setStore);
+                }
 
-        List<Category> categories =
-                categoryRepository
-                        .findByActiveTrueOrderBySortOrderAsc()
-                        .stream()
-                        .filter(category ->
-                                category.getName()
-                                        .toLowerCase()
-                                        .contains(
-                                                trimmed.toLowerCase()
-                                        )
-                        )
-                        .limit(5)
-                        .toList();
+                // IMPORTANT:
+                // Every newly submitted product must wait for admin approval.
+                product.setApprovalStatus(ApprovalStatus.PENDING);
+                product.setActive(false);
+                product.setRejectionReason(null);
 
-        List<SearchSuggestionResponse.CategorySuggestion>
-                categorySuggestions =
-                categories.stream()
-                        .map(category ->
-                                SearchSuggestionResponse
-                                        .CategorySuggestion
-                                        .builder()
-                                        .categoryId(
-                                                category.getCategoryId()
-                                        )
-                                        .name(category.getName())
-                                        .build()
-                        )
-                        .toList();
-
-        return SearchSuggestionResponse.builder()
-                .products(productSuggestions)
-                .categories(categorySuggestions)
-                .popularSearches(
-                        List.of(
-                                "UltraTech Cement",
-                                "Tata Tiscon 12mm",
-                                "Armoured Cable",
-                                "CPVC Pipes"
-                        )
-                )
-                .build();
-    }
-
-    // =========================================================
-    // ADMIN PRODUCT MANAGEMENT
-    // =========================================================
-
-    @Override
-    @CacheEvict(value = "brands", allEntries = true)
-    public ProductResponse activate(Integer id) {
-
-        Product product = findProduct(id);
-
-        if (product.getApprovalStatus()
-                != ApprovalStatus.APPROVED) {
-
-            throw new ResourceConflictException(
-                    "Product cannot be activated because it is not approved."
-            );
+                return mapToResponse(repository.save(product));
         }
 
-        product.setActive(true);
+        @Override
+        @Transactional(readOnly = true)
+        public ProductResponse getById(Integer id) {
+                Product product = repository
+                                .findByProductIdAndApprovalStatusAndActive(
+                                                id,
+                                                ApprovalStatus.APPROVED,
+                                                true)
+                                .orElseThrow(() -> new ResourceNotFoundException(
+                                                "Product not found with id: " + id));
 
-        return mapToResponse(
-                repository.save(product)
-        );
-    }
-
-    @Override
-    @CacheEvict(value = "brands", allEntries = true)
-    public ProductResponse deactivate(Integer id) {
-
-        Product product = findProduct(id);
-
-        product.setActive(false);
-
-        return mapToResponse(
-                repository.save(product)
-        );
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public ProductListResponse getPending() {
-
-        List<ProductResponse> products =
-                repository
-                        .findByApprovalStatus(
-                                ApprovalStatus.PENDING
-                        )
-                        .stream()
-                        .filter(p -> p.getSeller() == null || isSellerApproved(p.getSeller()))
-                        .map(this::mapToResponse)
-                        .toList();
-
-        return new ProductListResponse(
-                products,
-                products.size()
-        );
-    }
-
-    private boolean isSellerApproved(Seller seller) {
-        if (seller == null) return true;
-        return seller.getVerificationStatus() == com.example.project.customer.entity.VerificationStatus.VERIFIED;
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public ProductListResponse getAdminAll() {
-
-        List<ProductResponse> products =
-                repository
-                        .findAll()
-                        .stream()
-                        .map(this::mapToResponse)
-                        .toList();
-
-        return new ProductListResponse(
-                products,
-                products.size()
-        );
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public ProductResponse getAdminById(Integer id) {
-
-        return mapToResponse(
-                findProduct(id)
-        );
-    }
-
-    @Override
-    public ProductResponse approve(Integer id) {
-
-        Product product = findProduct(id);
-
-        if (product.getSeller() != null && !isSellerApproved(product.getSeller())) {
-            String sellerName = product.getSeller().getCompanyName() != null 
-                    ? product.getSeller().getCompanyName() 
-                    : (product.getSeller().getName() != null ? product.getSeller().getName() : "Seller #" + product.getSeller().getSellerId());
-            throw new IllegalStateException("Cannot approve product because the seller '" + sellerName + 
-                    "' (ID: " + product.getSeller().getSellerId() + ") is not yet verified and approved by admin.");
+                return mapToResponse(product);
         }
 
-        product.setApprovalStatus(
-                ApprovalStatus.APPROVED
-        );
+        @Override
+        @Transactional(readOnly = true)
+        public ApiResponse<List<ProductResponse>> getAll(
+                        Integer categoryId,
+                        String category,
+                        Integer subcategoryId,
+                        Integer brandId,
+                        String search,
+                        BigDecimal minPrice,
+                        BigDecimal maxPrice,
+                        String brand,
+                        Boolean is24HourDelivery,
+                        String sort,
+                        int page,
+                        int limit) {
 
-        product.setRejectionReason(null);
+                int pageNumber = Math.max(page - 1, 0);
+                int pageSize = limit > 0 ? limit : 20;
 
-        // Approval makes the product visible to customers.
-        product.setActive(true);
+                Sort sorting = getSort(sort);
 
-        return mapToResponse(
-                repository.save(product)
-        );
-    }
+                Pageable pageable = PageRequest.of(
+                                pageNumber,
+                                pageSize,
+                                sorting);
 
-    @Override
-    public ProductResponse reject(
-            Integer id,
-            ProductRejectionRequest request
-    ) {
+                Specification<Product> spec = (root, query, cb) -> {
 
-        Product product = findProduct(id);
+                        List<Predicate> predicates = new ArrayList<>();
 
-        product.setApprovalStatus(
-                ApprovalStatus.REJECTED
-        );
+                        // Only approved + active products are visible to customers
+                        predicates.add(
+                                        cb.equal(
+                                                        root.get("approvalStatus"),
+                                                        ApprovalStatus.APPROVED));
 
-        product.setActive(false);
+                        predicates.add(
+                                        cb.isTrue(root.get("active")));
 
-        product.setRejectionReason(
-                request.reason()
-        );
+                        // Category filter via brand -> subcategory -> category
+                        if (categoryId != null) {
+                                predicates.add(
+                                                cb.equal(
+                                                                root.get("brand")
+                                                                                .get("subcategory")
+                                                                                .get("category")
+                                                                                .get("categoryId"),
+                                                                categoryId));
+                        }
 
-        return mapToResponse(
-                repository.save(product)
-        );
-    }
+                        // Category filter via brand -> subcategory -> category (Name or Slug, e.g.
+                        // category=Interior)
+                        if (category != null && !category.isBlank()) {
+                                String catTrimmed = category.trim();
+                                List<Predicate> catPredicates = new ArrayList<>();
+                                catPredicates.add(cb.equal(
+                                                cb.lower(root.get("brand").get("subcategory").get("category")
+                                                                .get("name")),
+                                                catTrimmed.toLowerCase()));
+                                catPredicates.add(cb.equal(
+                                                cb.lower(root.get("brand").get("subcategory").get("category")
+                                                                .get("slug")),
+                                                catTrimmed.toLowerCase()));
+                                try {
+                                        int numId = Integer.parseInt(catTrimmed);
+                                        catPredicates.add(cb.equal(
+                                                        root.get("brand").get("subcategory").get("category")
+                                                                        .get("categoryId"),
+                                                        numId));
+                                } catch (NumberFormatException ignored) {
+                                }
 
-    // =========================================================
-    // HELPERS
-    // =========================================================
+                                predicates.add(cb.or(catPredicates.toArray(new Predicate[0])));
+                        }
 
-    private Brand resolveBrand(ProductRequest request) {
-        if (request.getBrandId() != null) {
-            return brandRepository.findById(request.getBrandId())
-                    .orElseThrow(() ->
-                            new ResourceNotFoundException(
-                                    "Brand not found with id: " + request.getBrandId()
-                            ));
+                        // Subcategory filter via brand -> subcategory
+                        if (subcategoryId != null) {
+                                predicates.add(
+                                                cb.equal(
+                                                                root.get("brand")
+                                                                                .get("subcategory")
+                                                                                .get("subcategoryId"),
+                                                                subcategoryId));
+                        }
+
+                        // Brand ID filter
+                        if (brandId != null) {
+                                predicates.add(
+                                                cb.equal(
+                                                                root.get("brand")
+                                                                                .get("brandId"),
+                                                                brandId));
+                        }
+
+                        // Brand name string filter
+                        if (brand != null && !brand.isBlank()) {
+                                predicates.add(
+                                                cb.equal(
+                                                                cb.lower(root.get("brand").get("name")),
+                                                                brand.trim().toLowerCase()));
+                        }
+
+                        // Search filter
+                        if (search != null && !search.isBlank()) {
+
+                                String pattern = "%" + search.trim().toLowerCase() + "%";
+
+                                Predicate titlePredicate = cb.like(
+                                                cb.lower(root.get("title")),
+                                                pattern);
+
+                                Predicate brandPredicate = cb.like(
+                                                cb.lower(root.get("brand").get("name")),
+                                                pattern);
+
+                                Predicate descriptionPredicate = cb.like(
+                                                cb.lower(root.get("description")),
+                                                pattern);
+
+                                predicates.add(
+                                                cb.or(
+                                                                titlePredicate,
+                                                                brandPredicate,
+                                                                descriptionPredicate));
+                        }
+
+                        // Minimum price
+                        if (minPrice != null) {
+                                predicates.add(
+                                                cb.greaterThanOrEqualTo(
+                                                                root.get("price"),
+                                                                minPrice));
+                        }
+
+                        // Maximum price
+                        if (maxPrice != null) {
+                                predicates.add(
+                                                cb.lessThanOrEqualTo(
+                                                                root.get("price"),
+                                                                maxPrice));
+                        }
+
+                        // 24-hour delivery
+                        if (Boolean.TRUE.equals(is24HourDelivery)) {
+                                predicates.add(
+                                                cb.isTrue(
+                                                                root.get("is24HourDelivery")));
+                        }
+
+                        return cb.and(
+                                        predicates.toArray(new Predicate[0]));
+                };
+
+                Page<Product> productPage = repository.findAll(spec, pageable);
+
+                List<ProductResponse> data = productPage.getContent()
+                                .stream()
+                                .map(this::mapToResponse)
+                                .toList();
+
+                PaginationMeta pagination = PaginationMeta.of(
+                                page > 0 ? page : 1,
+                                pageSize,
+                                productPage.getTotalElements());
+
+                return ApiResponse.paginated(
+                                data,
+                                pagination);
         }
 
-        if (request.getBrand() != null && !request.getBrand().isBlank()) {
-            if (request.getSubcategoryId() != null) {
-                return brandRepository
-                        .findByNameIgnoreCaseAndSubcategory_SubcategoryId(request.getBrand().trim(), request.getSubcategoryId())
-                        .orElseGet(() -> brandRepository.findByNameIgnoreCase(request.getBrand().trim())
-                                .orElseThrow(() ->
-                                        new ResourceNotFoundException(
-                                                "Brand not found with name: " + request.getBrand()
-                                        )));
-            }
-            return brandRepository.findByNameIgnoreCase(request.getBrand().trim())
-                    .orElseThrow(() ->
-                            new ResourceNotFoundException(
-                                    "Brand not found with name: " + request.getBrand()
-                            ));
+        @Override
+        @CacheEvict(value = "brands", allEntries = true)
+        public ProductResponse update(
+                        Integer id,
+                        ProductRequest request) {
+
+                Product product = findProduct(id);
+                String oldMainImage = product.getImageUrl();
+                List<String> oldGalleryImages = product.getImages() != null ? new ArrayList<>(product.getImages())
+                                : List.of();
+
+                String cleanTitle = request.getTitle() != null ? request.getTitle().trim() : "";
+                if (cleanTitle.isEmpty()) {
+                        throw new IllegalArgumentException("Product title cannot be empty");
+                }
+
+                if (repository.existsByTitleIgnoreCaseAndProductIdNot(cleanTitle, id)) {
+                        throw new ResourceConflictException("Product already exists with title: '" + cleanTitle + "'");
+                }
+
+                if (request.getSku() != null && !request.getSku().isBlank()) {
+                        String sku = request.getSku().trim().toUpperCase();
+                        if (repository.existsBySkuIgnoreCaseAndProductIdNot(sku, id)) {
+                                throw new ResourceConflictException("Product already exists with SKU: '" + sku + "'");
+                        }
+                }
+
+                String slug = generateSlug(cleanTitle, request.getSlug());
+                if (repository.existsBySlugIgnoreCaseAndProductIdNot(slug, id)) {
+                        throw new ResourceConflictException("Product already exists with slug: '" + slug + "'");
+                }
+
+                Brand brand = resolveBrand(request);
+
+                if (request.getSpecifications() != null) {
+                        request.setSpecifications(cleanSpecifications(request.getSpecifications()));
+                }
+
+                mapRequestToProduct(
+                                product,
+                                request,
+                                brand);
+                product.setTitle(cleanTitle);
+                product.setSlug(slug);
+                if (request.getSku() != null && !request.getSku().isBlank()) {
+                        product.setSku(request.getSku().trim().toUpperCase());
+                }
+
+                /*
+                 * Do NOT allow a normal product update to approve
+                 * or activate a pending/rejected product.
+                 */
+                if (product.getApprovalStatus() != ApprovalStatus.APPROVED) {
+                        product.setActive(false);
+                }
+
+                Product saved = repository.save(product);
+
+                // Clean up old main image if replaced and no longer in use
+                String newMainImage = saved.getImageUrl();
+                List<String> newGalleryImages = saved.getImages() != null ? saved.getImages() : List.of();
+
+                if (oldMainImage != null && !oldMainImage.isBlank() && !oldMainImage.equals(newMainImage)
+                                && !newGalleryImages.contains(oldMainImage)) {
+                        s3ImageService.deleteImage(oldMainImage);
+                }
+
+                // Clean up old gallery images that are removed and not used as main image
+                for (String oldImg : oldGalleryImages) {
+                        if (oldImg != null && !oldImg.isBlank() && !newGalleryImages.contains(oldImg)
+                                        && !oldImg.equals(newMainImage)) {
+                                s3ImageService.deleteImage(oldImg);
+                        }
+                }
+
+                return mapToResponse(saved);
         }
 
-        throw new IllegalArgumentException("Brand ID or Brand name is required");
-    }
+        @Override
+        public ProductResponse updateStockQuantity(Integer id, StockQuantityUpdateRequest request) {
 
-    private Product findProduct(Integer id) {
+                Product product = repository.findByIdForStockUpdate(id)
+                                .orElseThrow(() -> new ResourceNotFoundException(
+                                                "Product not found with id: " + id));
 
-        return repository.findById(id)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                "Product not found with id: " + id
-                        ));
-    }
+                int currentStock = product.getStockQty() != null ? product.getStockQty() : 0;
+                int incomingStock = request.getStockQty() != null ? request.getStockQty() : 0;
 
-    private Sort getSort(String sort) {
+                product.setStockQty(currentStock + incomingStock);
 
-        if ("price_asc".equalsIgnoreCase(sort)) {
-
-            return Sort.by(
-                    Sort.Direction.ASC,
-                    "price"
-            );
-
-        } else if ("price_desc".equalsIgnoreCase(sort)) {
-
-            return Sort.by(
-                    Sort.Direction.DESC,
-                    "price"
-            );
-
-        } else if ("rating".equalsIgnoreCase(sort)) {
-
-            return Sort.by(
-                    Sort.Direction.DESC,
-                    "rating"
-            );
-
-        } else {
-
-            return Sort.by(
-                    Sort.Direction.DESC,
-                    "createdAt"
-            );
-        }
-    }
-
-    private void mapRequestToProduct(
-            Product product,
-            ProductRequest req,
-            Brand brand
-    ) {
-
-        product.setBrand(brand);
-
-        product.setTitle(req.getTitle());
-
-        if (req.getSlug() != null
-                && !req.getSlug().isBlank()) {
-
-            product.setSlug(
-                    req.getSlug().trim()
-            );
-
-        } else if (product.getSlug() == null) {
-
-            product.setSlug(
-                    req.getTitle()
-                            .toLowerCase()
-                            .replaceAll(
-                                    "[^a-z0-9]+",
-                                    "-"
-                            )
-                            .replaceAll(
-                                    "^-|-$",
-                                    ""
-                            )
-            );
+                return mapToResponse(repository.save(product));
         }
 
-        product.setSku(req.getSku());
+        @Override
+        @CacheEvict(value = "brands", allEntries = true)
+        public void delete(Integer id) {
 
-        product.setDescription(
-                req.getDescription()
-        );
+                Product product = findProduct(id);
+                String mainImage = product.getImageUrl();
+                List<String> galleryImages = product.getImages() != null ? new ArrayList<>(product.getImages())
+                                : List.of();
 
-        product.setPrice(
-                req.getPrice()
-        );
+                boolean hasOrderItems = orderItemRepository != null && orderItemRepository.existsByProductId(id);
+                boolean hasCartItems = cartItemRepository != null && cartItemRepository.existsByProduct_ProductId(id);
 
-        product.setMrp(
-                req.getMrp() != null
-                        ? req.getMrp()
-                        : req.getPrice()
-        );
+                if (hasOrderItems || hasCartItems) {
+                        // Soft-delete: deactivate & reject so historical orders and active carts remain
+                        // structurally intact
+                        product.setActive(false);
+                        product.setApprovalStatus(ApprovalStatus.REJECTED);
+                        product.setRejectionReason("Soft-deleted by admin (order/cart history preserved)");
+                        product.setUpdatedAt(java.time.LocalDateTime.now());
+                        repository.save(product);
+                        log.info("Soft-deleted product id={} due to active references (orders={}, carts={})",
+                                        id, hasOrderItems, hasCartItems);
+                } else {
+                        repository.delete(product);
 
-        product.setStockQty(
-                req.getStockQty()
-        );
-
-        product.setUnit(
-                req.getUnit()
-        );
-
-        product.setMoq(
-                req.getMoq() != null
-                        ? req.getMoq()
-                        : 1
-        );
-
-        product.setImageUrl(
-                req.getImageUrl()
-        );
-
-        product.setImages(
-                req.getImages() != null
-                        ? req.getImages()
-                        : new ArrayList<>()
-        );
-
-        product.setIs24HourDelivery(
-                req.getIs24HourDelivery() != null
-                        ? req.getIs24HourDelivery()
-                        : false
-        );
-
-        product.setRating(
-                req.getRating() != null
-                        ? req.getRating()
-                        : (product.getRating() != null ? product.getRating() : 0.0)
-        );
-
-        product.setReviewCount(
-                req.getReviewCount() != null
-                        ? req.getReviewCount()
-                        : (product.getReviewCount() != null ? product.getReviewCount() : 0)
-        );
-
-        product.setGstRate(
-                req.getGstRate() != null
-                        ? req.getGstRate()
-                        : BigDecimal.valueOf(18.0)
-        );
-
-        product.setHsnCode(
-                req.getHsnCode()
-        );
-
-        product.setSpecifications(
-                req.getSpecifications() != null
-                        ? req.getSpecifications()
-                        : new java.util.LinkedHashMap<>()
-        );
-
-        product.setBulkPricingTiers(
-                req.getBulkPricingTiers() != null
-                        ? req.getBulkPricingTiers()
-                        : new ArrayList<>()
-        );
-    }
-
-    @Override
-    public ProductResponse mapToResponse(
-            Product p
-    ) {
-
-        Integer brandId = p.getBrand() != null ? p.getBrand().getBrandId() : null;
-        String brandName = p.getBrand() != null ? p.getBrand().getName() : null;
-
-        Integer subcategoryId = (p.getBrand() != null && p.getBrand().getSubcategory() != null)
-                ? p.getBrand().getSubcategory().getSubcategoryId()
-                : null;
-
-        String subcategoryName = (p.getBrand() != null && p.getBrand().getSubcategory() != null)
-                ? p.getBrand().getSubcategory().getName()
-                : null;
-
-        Integer categoryId = (p.getBrand() != null && p.getBrand().getSubcategory() != null && p.getBrand().getSubcategory().getCategory() != null)
-                ? p.getBrand().getSubcategory().getCategory().getCategoryId()
-                : null;
-
-        String categoryName = (p.getBrand() != null && p.getBrand().getSubcategory() != null && p.getBrand().getSubcategory().getCategory() != null)
-                ? p.getBrand().getSubcategory().getCategory().getName()
-                : null;
-
-        ApprovalStatus approvalStatus =
-                p.getApprovalStatus() != null
-                        ? p.getApprovalStatus()
-                        : ApprovalStatus.PENDING;
-
-        String status;
-
-        if (approvalStatus
-                == ApprovalStatus.REJECTED) {
-
-            status = "REJECTED";
-
-        } else if (approvalStatus
-                == ApprovalStatus.PENDING) {
-
-            status = "PENDING";
-
-        } else {
-
-            status = Boolean.TRUE.equals(
-                    p.getActive()
-            )
-                    ? "APPROVED"
-                    : "INACTIVE";
+                        if (mainImage != null && !mainImage.isBlank()) {
+                                s3ImageService.deleteImage(mainImage);
+                        }
+                        for (String galleryImg : galleryImages) {
+                                if (galleryImg != null && !galleryImg.isBlank() && !galleryImg.equals(mainImage)) {
+                                        s3ImageService.deleteImage(galleryImg);
+                                }
+                        }
+                }
         }
 
-        Integer storeId = p.getStore() != null ? p.getStore().getStoreId() : null;
-        String storeName = p.getStore() != null ? p.getStore().getStoreName() : null;
-        String storeSlug = p.getStore() != null ? p.getStore().getSlug() : null;
+        // =========================================================
+        // SEARCH SUGGESTIONS
+        // =========================================================
 
-        return ProductResponse.builder()
-                .productId(p.getProductId())
-                .storeId(storeId)
-                .storeName(storeName)
-                .storeSlug(storeSlug)
-                .brandId(brandId)
-                .brand(brandName)
-                .brandName(brandName)
-                .subcategoryId(subcategoryId)
-                .subcategoryName(subcategoryName)
-                .categoryId(categoryId)
-                .categoryName(categoryName)
-                .title(p.getTitle())
-                .slug(p.getSlug())
-                .sku(p.getSku())
-                .description(p.getDescription())
-                .imageUrl(p.getImageUrl())
-                .images(p.getImages())
-                .price(p.getPrice())
-                .mrp(p.getMrp())
-                .unit(p.getUnit())
-                .moq(p.getMoq())
-                .stockQty(p.getStockQty())
-                .active(
-                        Boolean.TRUE.equals(
-                                p.getActive()
-                        )
-                )
-                .is24HourDelivery(
-                        p.is24HourDelivery()
-                )
-                .rating(p.getRating())
-                .reviewCount(p.getReviewCount())
-                .gstRate(p.getGstRate())
-                .hsnCode(p.getHsnCode())
-                .specifications(p.getSpecifications())
-                .bulkPricingTiers(
-                        p.getBulkPricingTiers()
-                )
-                .sellerId(
-                        p.getSeller() != null ? p.getSeller().getSellerId() : null
-                )
-                .sellerName(
-                        p.getSeller() != null ? p.getSeller().getName() : null
-                )
-                .approvalStatus(
-                        approvalStatus.name()
-                )
-                .status(status)
-                .rejectionReason(
-                        p.getRejectionReason()
-                )
-                .sellingPrice(
-                        p.getSellingPrice() != null ? p.getSellingPrice() : p.getPrice()
-                )
-                .createdAt(p.getCreatedAt())
-                .updatedAt(p.getUpdatedAt() != null ? p.getUpdatedAt() : p.getCreatedAt())
-                .build();
-    }
+        @Override
+        @Transactional(readOnly = true)
+        public SearchSuggestionResponse getSearchSuggestions(
+                        String query) {
 
-    private String generateSlug(String name, String providedSlug) {
-        if (providedSlug != null && !providedSlug.isBlank()) {
-            return providedSlug.trim().toLowerCase().replaceAll("[^a-z0-9-]+", "-");
+                String trimmed = query != null ? query.trim() : "";
+
+                if (trimmed.isEmpty()) {
+
+                        return SearchSuggestionResponse.builder()
+                                        .products(List.of())
+                                        .categories(List.of())
+                                        .popularSearches(
+                                                        List.of(
+                                                                        "UltraTech Cement",
+                                                                        "Tata Tiscon 12mm",
+                                                                        "Armoured Cable",
+                                                                        "CPVC Pipes",
+                                                                        "JSW Sheets"))
+                                        .build();
+                }
+
+                List<Product> products = repository
+                                .findTop5ByTitleContainingIgnoreCaseOrBrand_NameContainingIgnoreCase(
+                                                trimmed,
+                                                trimmed);
+
+                List<SearchSuggestionResponse.ProductSuggestion> productSuggestions = products.stream()
+                                .filter(product -> product.getApprovalStatus() == ApprovalStatus.APPROVED
+                                                && Boolean.TRUE.equals(
+                                                                product.getActive()))
+                                .map(product -> SearchSuggestionResponse.ProductSuggestion
+                                                .builder()
+                                                .productId(product.getProductId())
+                                                .title(product.getTitle())
+                                                .category(
+                                                                product.getBrand() != null
+                                                                                && product.getBrand()
+                                                                                                .getSubcategory() != null
+                                                                                && product.getBrand().getSubcategory()
+                                                                                                .getCategory() != null
+                                                                                                                ? product.getBrand()
+                                                                                                                                .getSubcategory()
+                                                                                                                                .getCategory()
+                                                                                                                                .getName()
+                                                                                                                : "")
+                                                .build())
+                                .toList();
+
+                List<Category> categories = categoryRepository
+                                .findByActiveTrueOrderBySortOrderAsc()
+                                .stream()
+                                .filter(category -> category.getName()
+                                                .toLowerCase()
+                                                .contains(
+                                                                trimmed.toLowerCase()))
+                                .limit(5)
+                                .toList();
+
+                List<SearchSuggestionResponse.CategorySuggestion> categorySuggestions = categories.stream()
+                                .map(category -> SearchSuggestionResponse.CategorySuggestion
+                                                .builder()
+                                                .categoryId(
+                                                                category.getCategoryId())
+                                                .name(category.getName())
+                                                .build())
+                                .toList();
+
+                return SearchSuggestionResponse.builder()
+                                .products(productSuggestions)
+                                .categories(categorySuggestions)
+                                .popularSearches(
+                                                List.of(
+                                                                "UltraTech Cement",
+                                                                "Tata Tiscon 12mm",
+                                                                "Armoured Cable",
+                                                                "CPVC Pipes"))
+                                .build();
         }
-        return name.trim().toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
-    }
+
+        // =========================================================
+        // ADMIN PRODUCT MANAGEMENT
+        // =========================================================
+
+        @Override
+        @CacheEvict(value = "brands", allEntries = true)
+        public ProductResponse activate(Integer id) {
+
+                Product product = findProduct(id);
+
+                if (product.getApprovalStatus() != ApprovalStatus.APPROVED) {
+
+                        throw new ResourceConflictException(
+                                        "Product cannot be activated because it is not approved.");
+                }
+
+                product.setActive(true);
+
+                return mapToResponse(
+                                repository.save(product));
+        }
+
+        @Override
+        @CacheEvict(value = "brands", allEntries = true)
+        public ProductResponse deactivate(Integer id) {
+
+                Product product = findProduct(id);
+
+                product.setActive(false);
+
+                return mapToResponse(
+                                repository.save(product));
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public ProductListResponse getPending() {
+
+                List<ProductResponse> products = repository
+                                .findByApprovalStatus(
+                                                ApprovalStatus.PENDING)
+                                .stream()
+                                .filter(p -> p.getSeller() == null || isSellerApproved(p.getSeller()))
+                                .map(this::mapToResponse)
+                                .toList();
+
+                return new ProductListResponse(
+                                products,
+                                products.size());
+        }
+
+        private boolean isSellerApproved(Seller seller) {
+                if (seller == null)
+                        return true;
+                return seller.getVerificationStatus() == com.example.project.customer.entity.VerificationStatus.VERIFIED;
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public ProductListResponse getAdminAll() {
+
+                List<ProductResponse> products = repository
+                                .findAll()
+                                .stream()
+                                .map(this::mapToResponse)
+                                .toList();
+
+                return new ProductListResponse(
+                                products,
+                                products.size());
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public ProductResponse getAdminById(Integer id) {
+
+                return mapToResponse(
+                                findProduct(id));
+        }
+
+        @Override
+        public ProductResponse approve(Integer id) {
+
+                Product product = findProduct(id);
+
+                if (product.getSeller() != null && !isSellerApproved(product.getSeller())) {
+                        String sellerName = product.getSeller().getCompanyName() != null
+                                        ? product.getSeller().getCompanyName()
+                                        : (product.getSeller().getName() != null ? product.getSeller().getName()
+                                                        : "Seller #" + product.getSeller().getSellerId());
+                        throw new IllegalStateException("Cannot approve product because the seller '" + sellerName +
+                                        "' (ID: " + product.getSeller().getSellerId()
+                                        + ") is not yet verified and approved by admin.");
+                }
+
+                product.setApprovalStatus(
+                                ApprovalStatus.APPROVED);
+
+                product.setRejectionReason(null);
+
+                // Approval makes the product visible to customers.
+                product.setActive(true);
+
+                return mapToResponse(
+                                repository.save(product));
+        }
+
+        @Override
+        public ProductResponse reject(
+                        Integer id,
+                        ProductRejectionRequest request) {
+
+                Product product = findProduct(id);
+
+                product.setApprovalStatus(
+                                ApprovalStatus.REJECTED);
+
+                product.setActive(false);
+
+                product.setRejectionReason(
+                                request.reason());
+
+                return mapToResponse(
+                                repository.save(product));
+        }
+
+        // =========================================================
+        // HELPERS
+        // =========================================================
+
+        private Brand resolveBrand(ProductRequest request) {
+                if (request.getBrandId() != null) {
+                        return brandRepository.findById(request.getBrandId())
+                                        .orElseThrow(() -> new ResourceNotFoundException(
+                                                        "Brand not found with id: " + request.getBrandId()));
+                }
+
+                if (request.getBrand() != null && !request.getBrand().isBlank()) {
+                        if (request.getSubcategoryId() != null) {
+                                return brandRepository
+                                                .findByNameIgnoreCaseAndSubcategory_SubcategoryId(
+                                                                request.getBrand().trim(), request.getSubcategoryId())
+                                                .orElseGet(() -> brandRepository
+                                                                .findByNameIgnoreCase(request.getBrand().trim())
+                                                                .orElseThrow(() -> new ResourceNotFoundException(
+                                                                                "Brand not found with name: "
+                                                                                                + request.getBrand())));
+                        }
+                        return brandRepository.findByNameIgnoreCase(request.getBrand().trim())
+                                        .orElseThrow(() -> new ResourceNotFoundException(
+                                                        "Brand not found with name: " + request.getBrand()));
+                }
+
+                throw new IllegalArgumentException("Brand ID or Brand name is required");
+        }
+
+        private Product findProduct(Integer id) {
+
+                return repository.findById(id)
+                                .orElseThrow(() -> new ResourceNotFoundException(
+                                                "Product not found with id: " + id));
+        }
+
+        private Sort getSort(String sort) {
+
+                if ("price_asc".equalsIgnoreCase(sort)) {
+
+                        return Sort.by(
+                                        Sort.Direction.ASC,
+                                        "price");
+
+                } else if ("price_desc".equalsIgnoreCase(sort)) {
+
+                        return Sort.by(
+                                        Sort.Direction.DESC,
+                                        "price");
+
+                } else if ("rating".equalsIgnoreCase(sort)) {
+
+                        return Sort.by(
+                                        Sort.Direction.DESC,
+                                        "rating");
+
+                } else {
+
+                        return Sort.by(
+                                        Sort.Direction.DESC,
+                                        "createdAt");
+                }
+        }
+
+        private void mapRequestToProduct(
+                        Product product,
+                        ProductRequest req,
+                        Brand brand) {
+
+                product.setBrand(brand);
+
+                product.setTitle(req.getTitle());
+
+                if (req.getSlug() != null
+                                && !req.getSlug().isBlank()) {
+
+                        product.setSlug(
+                                        req.getSlug().trim());
+
+                } else if (product.getSlug() == null) {
+
+                        product.setSlug(
+                                        req.getTitle()
+                                                        .toLowerCase()
+                                                        .replaceAll(
+                                                                        "[^a-z0-9]+",
+                                                                        "-")
+                                                        .replaceAll(
+                                                                        "^-|-$",
+                                                                        ""));
+                }
+
+                product.setSku(req.getSku());
+
+                product.setDescription(
+                                req.getDescription());
+
+                product.setPrice(
+                                req.getPrice());
+
+                product.setMrp(
+                                req.getMrp() != null
+                                                ? req.getMrp()
+                                                : req.getPrice());
+
+                product.setStockQty(
+                                req.getStockQty());
+
+                product.setUnit(
+                                req.getUnit());
+
+                product.setMoq(
+                                req.getMoq() != null
+                                                ? req.getMoq()
+                                                : 1);
+
+                product.setImageUrl(
+                                req.getImageUrl());
+
+                product.setImages(
+                                req.getImages() != null
+                                                ? req.getImages()
+                                                : new ArrayList<>());
+
+                product.setIs24HourDelivery(
+                                req.getIs24HourDelivery() != null
+                                                ? req.getIs24HourDelivery()
+                                                : false);
+
+                product.setRating(
+                                req.getRating() != null
+                                                ? req.getRating()
+                                                : (product.getRating() != null ? product.getRating() : 0.0));
+
+                product.setReviewCount(
+                                req.getReviewCount() != null
+                                                ? req.getReviewCount()
+                                                : (product.getReviewCount() != null ? product.getReviewCount() : 0));
+
+                product.setGstRate(
+                                req.getGstRate() != null
+                                                ? req.getGstRate()
+                                                : BigDecimal.valueOf(18.0));
+
+                product.setHsnCode(
+                                req.getHsnCode());
+
+                product.setSpecifications(cleanSpecifications(req.getSpecifications()));
+
+                product.setBulkPricingTiers(
+                                req.getBulkPricingTiers() != null
+                                                ? req.getBulkPricingTiers()
+                                                : new ArrayList<>());
+        }
+
+        private Map<String, String> cleanSpecifications(Map<String, String> specs) {
+                if (specs == null) {
+                        return new java.util.LinkedHashMap<>();
+                }
+                Map<String, String> cleaned = new java.util.LinkedHashMap<>();
+                for (Map.Entry<String, String> entry : specs.entrySet()) {
+                        if (entry.getKey() != null && !entry.getKey().trim().isBlank()
+                                        && entry.getValue() != null && !entry.getValue().trim().isBlank()) {
+                                cleaned.put(entry.getKey().trim(), entry.getValue().trim());
+                        }
+                }
+                return cleaned;
+        }
+
+        @Override
+        public ProductResponse mapToResponse(
+                        Product p) {
+
+                Integer brandId = p.getBrand() != null ? p.getBrand().getBrandId() : null;
+                String brandName = p.getBrand() != null ? p.getBrand().getName() : null;
+
+                Integer subcategoryId = (p.getBrand() != null && p.getBrand().getSubcategory() != null)
+                                ? p.getBrand().getSubcategory().getSubcategoryId()
+                                : null;
+
+                String subcategoryName = (p.getBrand() != null && p.getBrand().getSubcategory() != null)
+                                ? p.getBrand().getSubcategory().getName()
+                                : null;
+
+                Integer categoryId = (p.getBrand() != null && p.getBrand().getSubcategory() != null
+                                && p.getBrand().getSubcategory().getCategory() != null)
+                                                ? p.getBrand().getSubcategory().getCategory().getCategoryId()
+                                                : null;
+
+                String categoryName = (p.getBrand() != null && p.getBrand().getSubcategory() != null
+                                && p.getBrand().getSubcategory().getCategory() != null)
+                                                ? p.getBrand().getSubcategory().getCategory().getName()
+                                                : null;
+
+                ApprovalStatus approvalStatus = p.getApprovalStatus() != null
+                                ? p.getApprovalStatus()
+                                : ApprovalStatus.PENDING;
+
+                String status;
+
+                if (approvalStatus == ApprovalStatus.REJECTED) {
+
+                        status = "REJECTED";
+
+                } else if (approvalStatus == ApprovalStatus.PENDING) {
+
+                        status = "PENDING";
+
+                } else {
+
+                        status = Boolean.TRUE.equals(
+                                        p.getActive())
+                                                        ? "APPROVED"
+                                                        : "INACTIVE";
+                }
+
+                Integer storeId = p.getStore() != null ? p.getStore().getStoreId() : null;
+                String storeName = p.getStore() != null ? p.getStore().getStoreName() : null;
+                String storeSlug = p.getStore() != null ? p.getStore().getSlug() : null;
+
+                return ProductResponse.builder()
+                                .productId(p.getProductId())
+                                .storeId(storeId)
+                                .storeName(storeName)
+                                .storeSlug(storeSlug)
+                                .brandId(brandId)
+                                .brand(brandName)
+                                .brandName(brandName)
+                                .subcategoryId(subcategoryId)
+                                .subcategoryName(subcategoryName)
+                                .categoryId(categoryId)
+                                .categoryName(categoryName)
+                                .title(p.getTitle())
+                                .slug(p.getSlug())
+                                .sku(p.getSku())
+                                .description(p.getDescription())
+                                .imageUrl(p.getImageUrl())
+                                .images(p.getImages())
+                                .price(p.getPrice())
+                                .mrp(p.getMrp())
+                                .unit(p.getUnit())
+                                .moq(p.getMoq())
+                                .stockQty(p.getStockQty())
+                                .active(
+                                                Boolean.TRUE.equals(
+                                                                p.getActive()))
+                                .is24HourDelivery(
+                                                p.is24HourDelivery())
+                                .rating(p.getRating())
+                                .reviewCount(p.getReviewCount())
+                                .gstRate(p.getGstRate())
+                                .hsnCode(p.getHsnCode())
+                                .specifications(p.getSpecifications())
+                                .bulkPricingTiers(
+                                                p.getBulkPricingTiers())
+                                .sellerId(
+                                                p.getSeller() != null ? p.getSeller().getSellerId() : null)
+                                .sellerName(
+                                                p.getSeller() != null ? p.getSeller().getName() : null)
+                                .approvalStatus(
+                                                approvalStatus.name())
+                                .status(status)
+                                .rejectionReason(
+                                                p.getRejectionReason())
+                                .sellingPrice(
+                                                p.getSellingPrice() != null ? p.getSellingPrice() : p.getPrice())
+                                .createdAt(p.getCreatedAt())
+                                .updatedAt(p.getUpdatedAt() != null ? p.getUpdatedAt() : p.getCreatedAt())
+                                .build();
+        }
+
+        private String generateSlug(String name, String providedSlug) {
+                if (providedSlug != null && !providedSlug.isBlank()) {
+                        return providedSlug.trim().toLowerCase().replaceAll("[^a-z0-9-]+", "-");
+                }
+                return name.trim().toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
+        }
 }

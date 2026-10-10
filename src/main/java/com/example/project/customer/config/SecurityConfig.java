@@ -80,7 +80,6 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/banners/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/search/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/stores/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/specifications/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/reviews/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/blog/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/news/**").permitAll()

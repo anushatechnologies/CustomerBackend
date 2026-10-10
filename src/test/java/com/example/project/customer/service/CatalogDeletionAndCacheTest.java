@@ -55,9 +55,6 @@ class CatalogDeletionAndCacheTest {
     private S3ImageService s3ImageService;
 
     @Mock
-    private ProductSpecificationValidator validator;
-
-    @Mock
     private OrderItemRepository orderItemRepository;
 
     @Mock
@@ -125,7 +122,7 @@ class CatalogDeletionAndCacheTest {
     @DisplayName("Product delete: Soft-deletes when order items exist")
     void testProductSoftDelete_WhenOrderItemsExist() {
         ProductServiceImpl productService = new ProductServiceImpl(
-                productRepository, brandRepository, subcategoryRepository, categoryRepository, storeRepository, s3ImageService, validator
+                productRepository, brandRepository, subcategoryRepository, categoryRepository, storeRepository, s3ImageService
         );
         ReflectionTestUtils.setField(productService, "orderItemRepository", orderItemRepository);
         ReflectionTestUtils.setField(productService, "cartItemRepository", cartItemRepository);
