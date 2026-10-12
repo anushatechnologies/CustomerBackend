@@ -32,6 +32,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -56,6 +58,9 @@ class ProductServiceTest {
 
     @Mock
     private S3ImageService s3ImageService;
+
+    @Mock
+    private ProductTaxonomyService productTaxonomyService;
 
     @InjectMocks
     private ProductServiceImpl service;
@@ -245,5 +250,72 @@ class ProductServiceTest {
         verify(s3ImageService).deleteImage("https://s3/products/old-main.jpg");
         // g2-removed.jpg was in old gallery but not in new gallery, so it should be deleted
         verify(s3ImageService).deleteImage("https://s3/products/g2-removed.jpg");
+    }
+
+    @Test
+    void createWithExplicitSubcategory_ResolvesAndSetsDirectSubcategory() {
+        Subcategory explicitSub = new Subcategory();
+        explicitSub.setSubcategoryId(99);
+        explicitSub.setName("Specialty Hardware");
+
+        when(brandRepository.findById(50)).thenReturn(Optional.of(brand));
+        when(productTaxonomyService.resolveSubcategoryForProduct(eq(5), any(), any(), eq(brand)))
+                .thenReturn(explicitSub);
+        when(repository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var response = service.create(request);
+
+        ArgumentCaptor<Product> captor = ArgumentCaptor.forClass(Product.class);
+        verify(repository).save(captor.capture());
+        assertEquals(explicitSub, captor.getValue().getSubcategory());
+        assertEquals(99, response.getSubcategoryId());
+        assertEquals("Specialty Hardware", response.getSubcategoryName());
+    }
+
+    @Test
+    void updateWithExplicitSubcategory_UpdatesDirectSubcategory() {
+        Subcategory oldSub = new Subcategory();
+        oldSub.setSubcategoryId(10);
+        product.setSubcategory(oldSub);
+
+        Subcategory newSub = new Subcategory();
+        newSub.setSubcategoryId(20);
+        newSub.setName("Updated Subcategory");
+
+        request.setSubcategoryId(20);
+
+        when(repository.findById(1)).thenReturn(Optional.of(product));
+        when(brandRepository.findById(50)).thenReturn(Optional.of(brand));
+        when(productTaxonomyService.resolveSubcategoryForProduct(eq(20), any(), eq(product), eq(brand)))
+                .thenReturn(newSub);
+        when(repository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var response = service.update(1, request);
+
+        assertEquals(newSub, product.getSubcategory());
+        assertEquals(20, response.getSubcategoryId());
+        assertEquals("Updated Subcategory", response.getSubcategoryName());
+    }
+
+    @Test
+    void updateWithOmittedSubcategory_PreservesExistingSubcategory() {
+        Subcategory existingSub = new Subcategory();
+        existingSub.setSubcategoryId(77);
+        existingSub.setName("Existing Category Item");
+        product.setSubcategory(existingSub);
+
+        request.setSubcategoryId(null);
+
+        when(repository.findById(1)).thenReturn(Optional.of(product));
+        when(brandRepository.findById(50)).thenReturn(Optional.of(brand));
+        when(productTaxonomyService.resolveSubcategoryForProduct(isNull(), any(), eq(product), eq(brand)))
+                .thenReturn(existingSub);
+        when(repository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var response = service.update(1, request);
+
+        assertEquals(existingSub, product.getSubcategory());
+        assertEquals(77, response.getSubcategoryId());
+        assertEquals("Existing Category Item", response.getSubcategoryName());
     }
 }

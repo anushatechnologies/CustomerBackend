@@ -22,6 +22,8 @@ public class SellerProductUpdateRequest {
     private String title;
     private String sku;
     private String description;
+    private Integer categoryId;
+    private Integer subcategoryId;
     private Integer brandId;
     private BigDecimal price;
     private BigDecimal sellingPrice;

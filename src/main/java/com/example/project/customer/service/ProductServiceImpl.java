@@ -13,6 +13,7 @@ import com.example.project.customer.entity.Brand;
 import com.example.project.customer.entity.Category;
 import com.example.project.customer.entity.Product;
 import com.example.project.customer.entity.Seller;
+import com.example.project.customer.entity.Subcategory;
 import com.example.project.customer.entity.StoreStatus;
 import com.example.project.customer.exception.ResourceConflictException;
 import com.example.project.customer.exception.ResourceNotFoundException;
@@ -54,6 +55,23 @@ public class ProductServiceImpl implements ProductService {
         private final CategoryRepository categoryRepository;
         private final StoreRepository storeRepository;
         private final S3ImageService s3ImageService;
+        private final ProductTaxonomyService productTaxonomyService;
+
+        public ProductServiceImpl(
+                        ProductRepository repository,
+                        BrandRepository brandRepository,
+                        SubcategoryRepository subcategoryRepository,
+                        CategoryRepository categoryRepository,
+                        StoreRepository storeRepository,
+                        S3ImageService s3ImageService) {
+                this.repository = repository;
+                this.brandRepository = brandRepository;
+                this.subcategoryRepository = subcategoryRepository;
+                this.categoryRepository = categoryRepository;
+                this.storeRepository = storeRepository;
+                this.s3ImageService = s3ImageService;
+                this.productTaxonomyService = null;
+        }
 
         @Autowired(required = false)
         private OrderItemRepository orderItemRepository;
@@ -170,50 +188,77 @@ public class ProductServiceImpl implements ProductService {
                         predicates.add(
                                         cb.isTrue(root.get("active")));
 
-                        // Category filter via brand -> subcategory -> category
+                        // Category filter via direct subcategory or brand -> subcategory -> category
                         if (categoryId != null) {
-                                predicates.add(
+                                Predicate directCat = cb.equal(
+                                                root.get("subcategory")
+                                                                .get("category")
+                                                                .get("categoryId"),
+                                                categoryId);
+                                Predicate brandCat = cb.and(
+                                                cb.isNull(root.get("subcategory")),
                                                 cb.equal(
                                                                 root.get("brand")
                                                                                 .get("subcategory")
                                                                                 .get("category")
                                                                                 .get("categoryId"),
                                                                 categoryId));
+                                predicates.add(cb.or(directCat, brandCat));
                         }
 
-                        // Category filter via brand -> subcategory -> category (Name or Slug, e.g.
+                        // Category filter via direct subcategory or brand -> subcategory -> category (Name or Slug, e.g.
                         // category=Interior)
                         if (category != null && !category.isBlank()) {
                                 String catTrimmed = category.trim();
                                 List<Predicate> catPredicates = new ArrayList<>();
                                 catPredicates.add(cb.equal(
-                                                cb.lower(root.get("brand").get("subcategory").get("category")
-                                                                .get("name")),
+                                                cb.lower(root.get("subcategory").get("category").get("name")),
                                                 catTrimmed.toLowerCase()));
                                 catPredicates.add(cb.equal(
-                                                cb.lower(root.get("brand").get("subcategory").get("category")
-                                                                .get("slug")),
+                                                cb.lower(root.get("subcategory").get("category").get("slug")),
                                                 catTrimmed.toLowerCase()));
+
+                                catPredicates.add(cb.and(
+                                                cb.isNull(root.get("subcategory")),
+                                                cb.equal(
+                                                                cb.lower(root.get("brand").get("subcategory").get("category").get("name")),
+                                                                catTrimmed.toLowerCase())));
+                                catPredicates.add(cb.and(
+                                                cb.isNull(root.get("subcategory")),
+                                                cb.equal(
+                                                                cb.lower(root.get("brand").get("subcategory").get("category").get("slug")),
+                                                                catTrimmed.toLowerCase())));
+
                                 try {
                                         int numId = Integer.parseInt(catTrimmed);
                                         catPredicates.add(cb.equal(
-                                                        root.get("brand").get("subcategory").get("category")
-                                                                        .get("categoryId"),
+                                                        root.get("subcategory").get("category").get("categoryId"),
                                                         numId));
+                                        catPredicates.add(cb.and(
+                                                        cb.isNull(root.get("subcategory")),
+                                                        cb.equal(
+                                                                        root.get("brand").get("subcategory").get("category").get("categoryId"),
+                                                                        numId)));
                                 } catch (NumberFormatException ignored) {
                                 }
 
                                 predicates.add(cb.or(catPredicates.toArray(new Predicate[0])));
                         }
 
-                        // Subcategory filter via brand -> subcategory
+                        // Subcategory filter via direct subcategory or brand -> subcategory
                         if (subcategoryId != null) {
-                                predicates.add(
+                                Predicate directSub = cb.equal(
+                                                root.get("subcategory")
+                                                                .get("subcategoryId"),
+                                                subcategoryId);
+                                Predicate brandSub = cb.and(
+                                                cb.isNull(root.get("subcategory")),
                                                 cb.equal(
                                                                 root.get("brand")
                                                                                 .get("subcategory")
                                                                                 .get("subcategoryId"),
                                                                 subcategoryId));
+                                predicates.add(cb.or(directSub, brandSub));
                         }
 
                         // Brand ID filter
@@ -712,6 +757,17 @@ public class ProductServiceImpl implements ProductService {
 
                 product.setBrand(brand);
 
+                if (productTaxonomyService != null) {
+                        Subcategory subcategory = productTaxonomyService.resolveSubcategoryForProduct(
+                                        req.getSubcategoryId(),
+                                        req.getCategoryId(),
+                                        product.getProductId() != null ? product : null,
+                                        brand);
+                        product.setSubcategory(subcategory);
+                } else if (req.getSubcategoryId() != null && subcategoryRepository != null) {
+                        product.setSubcategory(subcategoryRepository.findById(req.getSubcategoryId()).orElse(null));
+                }
+
                 product.setTitle(req.getTitle());
 
                 if (req.getSlug() != null
@@ -817,23 +873,13 @@ public class ProductServiceImpl implements ProductService {
                 Integer brandId = p.getBrand() != null ? p.getBrand().getBrandId() : null;
                 String brandName = p.getBrand() != null ? p.getBrand().getName() : null;
 
-                Integer subcategoryId = (p.getBrand() != null && p.getBrand().getSubcategory() != null)
-                                ? p.getBrand().getSubcategory().getSubcategoryId()
-                                : null;
+                Subcategory subcategory = p.getSubcategory();
+                Integer subcategoryId = subcategory != null ? subcategory.getSubcategoryId() : null;
+                String subcategoryName = subcategory != null ? subcategory.getName() : null;
 
-                String subcategoryName = (p.getBrand() != null && p.getBrand().getSubcategory() != null)
-                                ? p.getBrand().getSubcategory().getName()
-                                : null;
-
-                Integer categoryId = (p.getBrand() != null && p.getBrand().getSubcategory() != null
-                                && p.getBrand().getSubcategory().getCategory() != null)
-                                                ? p.getBrand().getSubcategory().getCategory().getCategoryId()
-                                                : null;
-
-                String categoryName = (p.getBrand() != null && p.getBrand().getSubcategory() != null
-                                && p.getBrand().getSubcategory().getCategory() != null)
-                                                ? p.getBrand().getSubcategory().getCategory().getName()
-                                                : null;
+                Category category = p.getCategory();
+                Integer categoryId = category != null ? category.getCategoryId() : null;
+                String categoryName = category != null ? category.getName() : null;
 
                 ApprovalStatus approvalStatus = p.getApprovalStatus() != null
                                 ? p.getApprovalStatus()

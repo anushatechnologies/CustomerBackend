@@ -7,8 +7,10 @@ import com.example.project.customer.dto.SellerProductPageResponse;
 import com.example.project.customer.dto.SellerProductUpdateRequest;
 import com.example.project.customer.entity.ApprovalStatus;
 import com.example.project.customer.entity.Brand;
+import com.example.project.customer.entity.Category;
 import com.example.project.customer.entity.Product;
 import com.example.project.customer.entity.Seller;
+import com.example.project.customer.entity.Subcategory;
 import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.entity.Store;
 import com.example.project.customer.repository.BrandRepository;
@@ -42,17 +44,28 @@ public class SellerProductServiceImpl implements SellerProductService {
     private final BrandRepository brandRepository;
     private final SellerRepository sellerRepository;
     private final StoreRepository storeRepository;
+    private final ProductTaxonomyService productTaxonomyService;
+
+    public SellerProductServiceImpl(
+            ProductRepository productRepository,
+            BrandRepository brandRepository,
+            SellerRepository sellerRepository,
+            StoreRepository storeRepository) {
+        this(productRepository, brandRepository, sellerRepository, storeRepository, null);
+    }
 
     @org.springframework.beans.factory.annotation.Autowired
     public SellerProductServiceImpl(
             ProductRepository productRepository,
             BrandRepository brandRepository,
             SellerRepository sellerRepository,
-            StoreRepository storeRepository) {
+            StoreRepository storeRepository,
+            ProductTaxonomyService productTaxonomyService) {
         this.productRepository = productRepository;
         this.brandRepository = brandRepository;
         this.sellerRepository = sellerRepository;
         this.storeRepository = storeRepository;
+        this.productTaxonomyService = productTaxonomyService;
     }
 
     @Override
@@ -89,18 +102,27 @@ public class SellerProductServiceImpl implements SellerProductService {
                 predicates.add(cb.or(titleLike, skuLike, descLike));
             }
 
-            // 3. Category filter
+            // 3. Category filter via direct subcategory or brand -> subcategory -> category
             if (category != null) {
                 String catStr = category.toString().trim();
                 if (!catStr.isEmpty()) {
                     if (isNumeric(catStr)) {
                         Integer catId = Integer.parseInt(catStr);
-                        predicates.add(cb.equal(root.get("brand").get("subcategory").get("category").get("categoryId"),
-                                catId));
+                        Predicate directCat = cb.equal(root.get("subcategory").get("category").get("categoryId"), catId);
+                        Predicate brandCat = cb.and(
+                                cb.isNull(root.get("subcategory")),
+                                cb.equal(root.get("brand").get("subcategory").get("category").get("categoryId"), catId)
+                        );
+                        predicates.add(cb.or(directCat, brandCat));
                     } else {
-                        predicates
-                                .add(cb.like(cb.lower(root.get("brand").get("subcategory").get("category").get("name")),
-                                        "%" + catStr.toLowerCase() + "%"));
+                        Predicate directCatLike = cb.like(cb.lower(root.get("subcategory").get("category").get("name")),
+                                "%" + catStr.toLowerCase() + "%");
+                        Predicate brandCatLike = cb.and(
+                                cb.isNull(root.get("subcategory")),
+                                cb.like(cb.lower(root.get("brand").get("subcategory").get("category").get("name")),
+                                        "%" + catStr.toLowerCase() + "%")
+                        );
+                        predicates.add(cb.or(directCatLike, brandCatLike));
                     }
                 }
             }
@@ -193,10 +215,21 @@ public class SellerProductServiceImpl implements SellerProductService {
                 ? ApprovalStatus.APPROVED
                 : ApprovalStatus.PENDING;
 
+        Subcategory subcategory = null;
+        if (productTaxonomyService != null) {
+            subcategory = productTaxonomyService.resolveSubcategoryForProduct(
+                    request.getSubcategoryId(),
+                    request.getCategoryId(),
+                    null,
+                    brand
+            );
+        }
+
         Product product = Product.builder()
                 .seller(seller)
                 .store(store)
                 .brand(brand)
+                .subcategory(subcategory)
                 .title(request.getTitle())
                 .slug(slug)
                 .sku(request.getSku())
@@ -245,6 +278,17 @@ public class SellerProductServiceImpl implements SellerProductService {
                     .orElseThrow(
                             () -> new ResourceNotFoundException("Brand not found with id: " + request.getBrandId()));
             product.setBrand(brand);
+        }
+        if (request.getSubcategoryId() != null || request.getCategoryId() != null) {
+            if (productTaxonomyService != null) {
+                Subcategory subcategory = productTaxonomyService.resolveSubcategoryForProduct(
+                        request.getSubcategoryId(),
+                        request.getCategoryId(),
+                        product,
+                        product.getBrand()
+                );
+                product.setSubcategory(subcategory);
+            }
         }
         if (request.getEffectivePrice() != null) {
             product.setPrice(request.getEffectivePrice());
@@ -378,23 +422,13 @@ public class SellerProductServiceImpl implements SellerProductService {
         Integer brandId = p.getBrand() != null ? p.getBrand().getBrandId() : null;
         String brandName = p.getBrand() != null ? p.getBrand().getName() : null;
 
-        Integer subcategoryId = (p.getBrand() != null && p.getBrand().getSubcategory() != null)
-                ? p.getBrand().getSubcategory().getSubcategoryId()
-                : null;
+        com.example.project.customer.entity.Subcategory subcategory = p.getSubcategory();
+        Integer subcategoryId = subcategory != null ? subcategory.getSubcategoryId() : null;
+        String subcategoryName = subcategory != null ? subcategory.getName() : null;
 
-        String subcategoryName = (p.getBrand() != null && p.getBrand().getSubcategory() != null)
-                ? p.getBrand().getSubcategory().getName()
-                : null;
-
-        Integer categoryId = (p.getBrand() != null && p.getBrand().getSubcategory() != null
-                && p.getBrand().getSubcategory().getCategory() != null)
-                        ? p.getBrand().getSubcategory().getCategory().getCategoryId()
-                        : null;
-
-        String categoryName = (p.getBrand() != null && p.getBrand().getSubcategory() != null
-                && p.getBrand().getSubcategory().getCategory() != null)
-                        ? p.getBrand().getSubcategory().getCategory().getName()
-                        : null;
+        com.example.project.customer.entity.Category category = p.getCategory();
+        Integer categoryId = category != null ? category.getCategoryId() : null;
+        String categoryName = category != null ? category.getName() : null;
 
         String status = p.getApprovalStatus() != null ? p.getApprovalStatus().name() : "PENDING";
 

@@ -27,6 +27,8 @@ public interface ProductRepository
             "brand",
             "brand.subcategory",
             "brand.subcategory.category",
+            "subcategory",
+            "subcategory.category",
             "store",
             "seller"
     })
@@ -62,6 +64,8 @@ public interface ProductRepository
             "brand",
             "brand.subcategory",
             "brand.subcategory.category",
+            "subcategory",
+            "subcategory.category",
             "store",
             "seller"
     })
@@ -104,6 +108,12 @@ public interface ProductRepository
     int countByBrand_Subcategory_Category_CategoryId(
             Integer categoryId
     );
+
+    @Query("SELECT COUNT(p) FROM Product p WHERE (p.subcategory.subcategoryId = :subcategoryId) OR (p.subcategory IS NULL AND p.brand.subcategory.subcategoryId = :subcategoryId)")
+    int countProductsForSubcategory(@Param("subcategoryId") Integer subcategoryId);
+
+    @Query("SELECT COUNT(p) FROM Product p WHERE (p.subcategory.category.categoryId = :categoryId) OR (p.subcategory IS NULL AND p.brand.subcategory.category.categoryId = :categoryId)")
+    int countProductsForCategory(@Param("categoryId") Integer categoryId);
 
     // Search suggestions
     List<Product> findTop5ByTitleContainingIgnoreCaseOrBrand_NameContainingIgnoreCase(

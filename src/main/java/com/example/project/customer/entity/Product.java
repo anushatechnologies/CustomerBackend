@@ -49,6 +49,11 @@ public class Product {
     @org.hibernate.annotations.NotFound(action = org.hibernate.annotations.NotFoundAction.IGNORE)
     private Brand brand;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "subcategory_id")
+    @org.hibernate.annotations.NotFound(action = org.hibernate.annotations.NotFoundAction.IGNORE)
+    private Subcategory subcategory;
+
     @Column(nullable = false)
     private String title;
 
@@ -201,10 +206,13 @@ private List<BulkPricingTier> bulkPricingTiers = new ArrayList<>();
     }
 
     public Subcategory getSubcategory() {
-        return brand != null ? brand.getSubcategory() : null;
+        return subcategory != null ? subcategory : (brand != null ? brand.getSubcategory() : null);
     }
 
     public Category getCategory() {
+        if (subcategory != null && subcategory.getCategory() != null) {
+            return subcategory.getCategory();
+        }
         return (brand != null && brand.getSubcategory() != null) ? brand.getSubcategory().getCategory() : null;
     }
 

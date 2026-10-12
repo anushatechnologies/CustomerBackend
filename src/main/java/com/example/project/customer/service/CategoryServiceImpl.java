@@ -221,7 +221,7 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     private CategoryResponse mapToResponse(Category category, boolean includeSubcategories, boolean websiteOnly, Boolean active) {
-        int count = productRepository.countByBrand_Subcategory_Category_CategoryId(category.getCategoryId());
+        int count = productRepository != null ? productRepository.countByBrand_Subcategory_Category_CategoryId(category.getCategoryId()) : 0;
 
         List<SubcategoryResponse> subs = null;
         if (includeSubcategories) {
@@ -241,7 +241,7 @@ public class CategoryServiceImpl implements CategoryService {
 
             subs = subcategories.stream()
                     .map(s -> {
-                        int sCount = productRepository.countByBrand_Subcategory_SubcategoryId(s.getSubcategoryId());
+                        int sCount = productRepository != null ? productRepository.countByBrand_Subcategory_SubcategoryId(s.getSubcategoryId()) : 0;
                         return SubcategoryResponse.builder()
                                 .subcategoryId(s.getSubcategoryId())
                                 .categoryId(category.getCategoryId())

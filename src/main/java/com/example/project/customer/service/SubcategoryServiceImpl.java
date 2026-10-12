@@ -251,7 +251,7 @@ public class SubcategoryServiceImpl implements SubcategoryService {
     }
 
     private SubcategoryResponse mapToResponse(Subcategory s) {
-        int count = productRepository.countByBrand_Subcategory_SubcategoryId(s.getSubcategoryId());
+        int count = productRepository != null ? productRepository.countByBrand_Subcategory_SubcategoryId(s.getSubcategoryId()) : 0;
         return SubcategoryResponse.builder()
                 .subcategoryId(s.getSubcategoryId())
                 .categoryId(s.getCategory().getCategoryId())
