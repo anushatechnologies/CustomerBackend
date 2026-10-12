@@ -8,6 +8,7 @@ import com.example.project.customer.dto.StoreResponse;
 import com.example.project.customer.dto.StoreStatusUpdateRequest;
 import com.example.project.customer.dto.StoreUpdateRequest;
 import com.example.project.customer.dto.SubcategoryResponse;
+import com.example.project.customer.entity.Brand;
 import com.example.project.customer.entity.Category;
 import com.example.project.customer.entity.Product;
 import com.example.project.customer.entity.Seller;
