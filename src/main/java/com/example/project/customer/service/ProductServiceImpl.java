@@ -198,21 +198,19 @@ public class ProductServiceImpl implements ProductService {
                         predicates.add(
                                         cb.isTrue(root.get("active")));
 
+                        // Explicit LEFT JOINs so that products with NULL subcategory_id or brand_id are NEVER dropped by implicit inner joins
+                        jakarta.persistence.criteria.Join<Product, Subcategory> subJoin = root.join("subcategory", jakarta.persistence.criteria.JoinType.LEFT);
+                        jakarta.persistence.criteria.Join<Subcategory, Category> subCatJoin = subJoin.join("category", jakarta.persistence.criteria.JoinType.LEFT);
+                        jakarta.persistence.criteria.Join<Product, Brand> brandJoin = root.join("brand", jakarta.persistence.criteria.JoinType.LEFT);
+                        jakarta.persistence.criteria.Join<Brand, Subcategory> brandSubJoin = brandJoin.join("subcategory", jakarta.persistence.criteria.JoinType.LEFT);
+                        jakarta.persistence.criteria.Join<Subcategory, Category> brandCatJoin = brandSubJoin.join("category", jakarta.persistence.criteria.JoinType.LEFT);
+
                         // Category filter via direct subcategory or brand -> subcategory -> category
                         if (categoryId != null) {
-                                Predicate directCat = cb.equal(
-                                                root.get("subcategory")
-                                                                .get("category")
-                                                                .get("categoryId"),
-                                                categoryId);
+                                Predicate directCat = cb.equal(subCatJoin.get("categoryId"), categoryId);
                                 Predicate brandCat = cb.and(
                                                 cb.isNull(root.get("subcategory")),
-                                                cb.equal(
-                                                                root.get("brand")
-                                                                                .get("subcategory")
-                                                                                .get("category")
-                                                                                .get("categoryId"),
-                                                                categoryId));
+                                                cb.equal(brandCatJoin.get("categoryId"), categoryId));
                                 predicates.add(cb.or(directCat, brandCat));
                         }
 
@@ -221,34 +219,22 @@ public class ProductServiceImpl implements ProductService {
                         if (category != null && !category.isBlank()) {
                                 String catTrimmed = category.trim();
                                 List<Predicate> catPredicates = new ArrayList<>();
-                                catPredicates.add(cb.equal(
-                                                cb.lower(root.get("subcategory").get("category").get("name")),
-                                                catTrimmed.toLowerCase()));
-                                catPredicates.add(cb.equal(
-                                                cb.lower(root.get("subcategory").get("category").get("slug")),
-                                                catTrimmed.toLowerCase()));
+                                catPredicates.add(cb.equal(cb.lower(subCatJoin.get("name")), catTrimmed.toLowerCase()));
+                                catPredicates.add(cb.equal(cb.lower(subCatJoin.get("slug")), catTrimmed.toLowerCase()));
 
                                 catPredicates.add(cb.and(
                                                 cb.isNull(root.get("subcategory")),
-                                                cb.equal(
-                                                                cb.lower(root.get("brand").get("subcategory").get("category").get("name")),
-                                                                catTrimmed.toLowerCase())));
+                                                cb.equal(cb.lower(brandCatJoin.get("name")), catTrimmed.toLowerCase())));
                                 catPredicates.add(cb.and(
                                                 cb.isNull(root.get("subcategory")),
-                                                cb.equal(
-                                                                cb.lower(root.get("brand").get("subcategory").get("category").get("slug")),
-                                                                catTrimmed.toLowerCase())));
+                                                cb.equal(cb.lower(brandCatJoin.get("slug")), catTrimmed.toLowerCase())));
 
                                 try {
                                         int numId = Integer.parseInt(catTrimmed);
-                                        catPredicates.add(cb.equal(
-                                                        root.get("subcategory").get("category").get("categoryId"),
-                                                        numId));
+                                        catPredicates.add(cb.equal(subCatJoin.get("categoryId"), numId));
                                         catPredicates.add(cb.and(
                                                         cb.isNull(root.get("subcategory")),
-                                                        cb.equal(
-                                                                        root.get("brand").get("subcategory").get("category").get("categoryId"),
-                                                                        numId)));
+                                                        cb.equal(brandCatJoin.get("categoryId"), numId)));
                                 } catch (NumberFormatException ignored) {
                                 }
 
@@ -257,35 +243,21 @@ public class ProductServiceImpl implements ProductService {
 
                         // Subcategory filter via direct subcategory or brand -> subcategory
                         if (subcategoryId != null) {
-                                Predicate directSub = cb.equal(
-                                                root.get("subcategory")
-                                                                .get("subcategoryId"),
-                                                subcategoryId);
+                                Predicate directSub = cb.equal(subJoin.get("subcategoryId"), subcategoryId);
                                 Predicate brandSub = cb.and(
                                                 cb.isNull(root.get("subcategory")),
-                                                cb.equal(
-                                                                root.get("brand")
-                                                                                .get("subcategory")
-                                                                                .get("subcategoryId"),
-                                                                subcategoryId));
+                                                cb.equal(brandSubJoin.get("subcategoryId"), subcategoryId));
                                 predicates.add(cb.or(directSub, brandSub));
                         }
 
                         // Brand ID filter
                         if (brandId != null) {
-                                predicates.add(
-                                                cb.equal(
-                                                                root.get("brand")
-                                                                                .get("brandId"),
-                                                                brandId));
+                                predicates.add(cb.equal(brandJoin.get("brandId"), brandId));
                         }
 
                         // Brand name string filter
                         if (brand != null && !brand.isBlank()) {
-                                predicates.add(
-                                                cb.equal(
-                                                                cb.lower(root.get("brand").get("name")),
-                                                                brand.trim().toLowerCase()));
+                                predicates.add(cb.equal(cb.lower(brandJoin.get("name")), brand.trim().toLowerCase()));
                         }
 
                         // Search filter

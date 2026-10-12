@@ -196,9 +196,9 @@ public class StoreServiceImpl implements StoreService {
         Map<Integer, Integer> subcategoryProductCounts = new HashMap<>();
 
         for (Product product : products) {
-            if (product.getBrand() != null && product.getBrand().getSubcategory() != null) {
-                Subcategory subcategory = product.getBrand().getSubcategory();
-                Category category = subcategory.getCategory();
+            Subcategory subcategory = product.getSubcategory();
+            if (subcategory != null) {
+                Category category = product.getCategory();
 
                 if (category != null) {
                     categoryMap.putIfAbsent(category.getCategoryId(), category);
@@ -275,12 +275,28 @@ public class StoreServiceImpl implements StoreService {
             predicates.add(cb.equal(root.get("store").get("storeId"), targetStoreId));
             predicates.add(cb.equal(root.get("active"), true));
 
+            jakarta.persistence.criteria.Join<Product, Subcategory> subJoin = root.join("subcategory", jakarta.persistence.criteria.JoinType.LEFT);
+            jakarta.persistence.criteria.Join<Subcategory, Category> subCatJoin = subJoin.join("category", jakarta.persistence.criteria.JoinType.LEFT);
+            jakarta.persistence.criteria.Join<Product, Brand> brandJoin = root.join("brand", jakarta.persistence.criteria.JoinType.LEFT);
+            jakarta.persistence.criteria.Join<Brand, Subcategory> brandSubJoin = brandJoin.join("subcategory", jakarta.persistence.criteria.JoinType.LEFT);
+            jakarta.persistence.criteria.Join<Subcategory, Category> brandCatJoin = brandSubJoin.join("category", jakarta.persistence.criteria.JoinType.LEFT);
+
             if (categoryId != null) {
-                predicates.add(cb.equal(root.get("brand").get("subcategory").get("category").get("categoryId"), categoryId));
+                Predicate directCat = cb.equal(subCatJoin.get("categoryId"), categoryId);
+                Predicate brandCat = cb.and(
+                        cb.isNull(root.get("subcategory")),
+                        cb.equal(brandCatJoin.get("categoryId"), categoryId)
+                );
+                predicates.add(cb.or(directCat, brandCat));
             }
 
             if (subcategoryId != null) {
-                predicates.add(cb.equal(root.get("brand").get("subcategory").get("subcategoryId"), subcategoryId));
+                Predicate directSub = cb.equal(subJoin.get("subcategoryId"), subcategoryId);
+                Predicate brandSub = cb.and(
+                        cb.isNull(root.get("subcategory")),
+                        cb.equal(brandSubJoin.get("subcategoryId"), subcategoryId)
+                );
+                predicates.add(cb.or(directSub, brandSub));
             }
 
             if (search != null && !search.isBlank()) {

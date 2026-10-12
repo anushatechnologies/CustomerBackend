@@ -106,20 +106,26 @@ public class SellerProductServiceImpl implements SellerProductService {
             if (category != null) {
                 String catStr = category.toString().trim();
                 if (!catStr.isEmpty()) {
+                    jakarta.persistence.criteria.Join<Product, Subcategory> subJoin = root.join("subcategory", jakarta.persistence.criteria.JoinType.LEFT);
+                    jakarta.persistence.criteria.Join<Subcategory, Category> subCatJoin = subJoin.join("category", jakarta.persistence.criteria.JoinType.LEFT);
+                    jakarta.persistence.criteria.Join<Product, Brand> brandJoin = root.join("brand", jakarta.persistence.criteria.JoinType.LEFT);
+                    jakarta.persistence.criteria.Join<Brand, Subcategory> brandSubJoin = brandJoin.join("subcategory", jakarta.persistence.criteria.JoinType.LEFT);
+                    jakarta.persistence.criteria.Join<Subcategory, Category> brandCatJoin = brandSubJoin.join("category", jakarta.persistence.criteria.JoinType.LEFT);
+
                     if (isNumeric(catStr)) {
                         Integer catId = Integer.parseInt(catStr);
-                        Predicate directCat = cb.equal(root.get("subcategory").get("category").get("categoryId"), catId);
+                        Predicate directCat = cb.equal(subCatJoin.get("categoryId"), catId);
                         Predicate brandCat = cb.and(
                                 cb.isNull(root.get("subcategory")),
-                                cb.equal(root.get("brand").get("subcategory").get("category").get("categoryId"), catId)
+                                cb.equal(brandCatJoin.get("categoryId"), catId)
                         );
                         predicates.add(cb.or(directCat, brandCat));
                     } else {
-                        Predicate directCatLike = cb.like(cb.lower(root.get("subcategory").get("category").get("name")),
+                        Predicate directCatLike = cb.like(cb.lower(subCatJoin.get("name")),
                                 "%" + catStr.toLowerCase() + "%");
                         Predicate brandCatLike = cb.and(
                                 cb.isNull(root.get("subcategory")),
-                                cb.like(cb.lower(root.get("brand").get("subcategory").get("category").get("name")),
+                                cb.like(cb.lower(brandCatJoin.get("name")),
                                         "%" + catStr.toLowerCase() + "%")
                         );
                         predicates.add(cb.or(directCatLike, brandCatLike));
