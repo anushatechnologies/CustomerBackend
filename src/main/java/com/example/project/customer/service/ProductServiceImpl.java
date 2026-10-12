@@ -25,7 +25,6 @@ import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.repository.StoreRepository;
 import com.example.project.customer.repository.SubcategoryRepository;
 import jakarta.persistence.criteria.Predicate;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CacheEvict;
@@ -45,7 +44,6 @@ import java.util.Map;
 @Slf4j
 @Service
 @Transactional
-@RequiredArgsConstructor
 @SuppressWarnings("null")
 public class ProductServiceImpl implements ProductService {
 
@@ -64,13 +62,25 @@ public class ProductServiceImpl implements ProductService {
                         CategoryRepository categoryRepository,
                         StoreRepository storeRepository,
                         S3ImageService s3ImageService) {
+                this(repository, brandRepository, subcategoryRepository, categoryRepository, storeRepository, s3ImageService, null);
+        }
+
+        @Autowired
+        public ProductServiceImpl(
+                        ProductRepository repository,
+                        BrandRepository brandRepository,
+                        SubcategoryRepository subcategoryRepository,
+                        CategoryRepository categoryRepository,
+                        StoreRepository storeRepository,
+                        S3ImageService s3ImageService,
+                        ProductTaxonomyService productTaxonomyService) {
                 this.repository = repository;
                 this.brandRepository = brandRepository;
                 this.subcategoryRepository = subcategoryRepository;
                 this.categoryRepository = categoryRepository;
                 this.storeRepository = storeRepository;
                 this.s3ImageService = s3ImageService;
-                this.productTaxonomyService = null;
+                this.productTaxonomyService = productTaxonomyService;
         }
 
         @Autowired(required = false)
