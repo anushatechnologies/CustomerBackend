@@ -215,6 +215,8 @@ public class StoreServiceImpl implements StoreService {
                 .map(cat -> {
                     Map<Integer, Subcategory> subs = subcategoryMap.getOrDefault(cat.getCategoryId(), Collections.emptyMap());
                     List<SubcategoryResponse> subResponses = subs.values().stream()
+                            .filter(sub -> Boolean.TRUE.equals(sub.isVisibleOnWebsite()))
+                            .filter(sub -> Boolean.TRUE.equals(sub.isActive()))
                             .map(sub -> SubcategoryResponse.builder()
                                     .subcategoryId(sub.getSubcategoryId())
                                     .categoryId(cat.getCategoryId())

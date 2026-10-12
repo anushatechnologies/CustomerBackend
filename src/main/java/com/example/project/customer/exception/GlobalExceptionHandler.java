@@ -137,6 +137,9 @@ public class GlobalExceptionHandler {
             return response(HttpStatus.BAD_REQUEST, "One of the provided values exceeds the maximum allowed length.");
         }
 
+        if (msg.contains("subcategory") || msg.contains("subcategories") || msg.contains("uk_subcategories")) {
+            return response(HttpStatus.CONFLICT, "A subcategory with this name or slug already exists under the selected parent category.");
+        }
         if (msg.contains("pan") || msg.contains("aadhaar") || msg.contains("gstin") || msg.contains("bank") || msg.contains("seller")) {
             return response(HttpStatus.CONFLICT, "A record with these unique details (Email, Aadhaar, PAN, GSTIN, or Bank Account) already exists.");
         }

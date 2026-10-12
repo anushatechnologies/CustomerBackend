@@ -2,9 +2,12 @@ package com.example.project.customer.service;
 
 import com.example.project.customer.dto.SubcategoryRequest;
 import com.example.project.customer.dto.SubcategoryResponse;
+import com.example.project.customer.entity.Brand;
 import com.example.project.customer.entity.Category;
 import com.example.project.customer.entity.Subcategory;
+import com.example.project.customer.exception.ResourceConflictException;
 import com.example.project.customer.exception.ResourceNotFoundException;
+import com.example.project.customer.repository.BrandRepository;
 import com.example.project.customer.repository.CategoryRepository;
 import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.repository.SubcategoryRepository;
@@ -15,12 +18,15 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -36,6 +42,9 @@ class SubcategoryServiceTest {
 
     @Mock
     private ProductRepository productRepository;
+
+    @Mock
+    private BrandRepository brandRepository;
 
     @Mock
     private S3ImageService s3ImageService;
@@ -79,7 +88,7 @@ class SubcategoryServiceTest {
                 .build();
 
         when(categoryRepository.findById(1)).thenReturn(Optional.of(category));
-        when(repository.existsBySlugIgnoreCase("tmt-bars")).thenReturn(false);
+        when(repository.existsBySlugIgnoreCaseAndCategory_CategoryId("tmt-bars", 1)).thenReturn(false);
         when(repository.save(any(Subcategory.class))).thenReturn(subcategory);
         when(productRepository.countByBrand_Subcategory_SubcategoryId(10)).thenReturn(5);
 
@@ -88,6 +97,110 @@ class SubcategoryServiceTest {
         assertThat(response).isNotNull();
         assertThat(response.getName()).isEqualTo("TMT Bars");
         verify(repository).save(any(Subcategory.class));
+        verify(repository).flush();
+    }
+
+    @Test
+    @DisplayName("create - rejects duplicate name with case-insensitivity under same category")
+    void create_DuplicateName_CaseInsensitive_ThrowsResourceConflict() {
+        SubcategoryRequest request = SubcategoryRequest.builder()
+                .categoryId(1)
+                .name("glass hardware")
+                .build();
+
+        when(categoryRepository.findById(1)).thenReturn(Optional.of(category));
+        when(repository.existsByNameIgnoreCaseAndCategory_CategoryId("glass hardware", 1)).thenReturn(true);
+
+        assertThatThrownBy(() -> subcategoryService.create(request))
+                .isInstanceOf(ResourceConflictException.class)
+                .hasMessageContaining("Subcategory already exists with name: 'glass hardware'");
+
+        verify(repository, never()).save(any(Subcategory.class));
+    }
+
+    @Test
+    @DisplayName("create - trims whitespace and rejects whitespace variant duplicates")
+    void create_DuplicateName_WhitespaceVariant_ThrowsResourceConflict() {
+        SubcategoryRequest request = SubcategoryRequest.builder()
+                .categoryId(1)
+                .name("   Glass    Hardware   ")
+                .build();
+
+        when(categoryRepository.findById(1)).thenReturn(Optional.of(category));
+        when(repository.existsByNameIgnoreCaseAndCategory_CategoryId("Glass Hardware", 1)).thenReturn(true);
+
+        assertThatThrownBy(() -> subcategoryService.create(request))
+                .isInstanceOf(ResourceConflictException.class)
+                .hasMessageContaining("Glass Hardware");
+
+        verify(repository, never()).save(any(Subcategory.class));
+    }
+
+    @Test
+    @DisplayName("create - rejects duplicate slug under same category")
+    void create_DuplicateSlug_UnderSameCategory_ThrowsResourceConflict() {
+        SubcategoryRequest request = SubcategoryRequest.builder()
+                .categoryId(1)
+                .name("Unique Name")
+                .slug("existing-slug")
+                .build();
+
+        when(categoryRepository.findById(1)).thenReturn(Optional.of(category));
+        when(repository.existsByNameIgnoreCaseAndCategory_CategoryId("Unique Name", 1)).thenReturn(false);
+        when(repository.existsBySlugIgnoreCaseAndCategory_CategoryId("existing-slug", 1)).thenReturn(true);
+
+        assertThatThrownBy(() -> subcategoryService.create(request))
+                .isInstanceOf(ResourceConflictException.class)
+                .hasMessageContaining("Subcategory already exists with slug: 'existing-slug'");
+
+        verify(repository, never()).save(any(Subcategory.class));
+    }
+
+    @Test
+    @DisplayName("create - allows same subcategory name under a different category")
+    void create_SameNameDifferentCategory_Success() {
+        Category otherCategory = Category.builder().categoryId(2).name("Hardware").slug("hardware").build();
+        SubcategoryRequest request = SubcategoryRequest.builder()
+                .categoryId(2)
+                .name("Standard Screws")
+                .build();
+
+        Subcategory savedSub = Subcategory.builder()
+                .subcategoryId(25)
+                .category(otherCategory)
+                .name("Standard Screws")
+                .slug("standard-screws")
+                .active(true)
+                .build();
+
+        when(categoryRepository.findById(2)).thenReturn(Optional.of(otherCategory));
+        when(repository.existsByNameIgnoreCaseAndCategory_CategoryId("Standard Screws", 2)).thenReturn(false);
+        when(repository.existsBySlugIgnoreCaseAndCategory_CategoryId("standard-screws", 2)).thenReturn(false);
+        when(repository.save(any(Subcategory.class))).thenReturn(savedSub);
+
+        SubcategoryResponse response = subcategoryService.create(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getCategoryId()).isEqualTo(2);
+        assertThat(response.getName()).isEqualTo("Standard Screws");
+    }
+
+    @Test
+    @DisplayName("create - handles concurrent race conditions gracefully by catching DataIntegrityViolationException")
+    void create_ConcurrentRaceCondition_ThrowsResourceConflict() {
+        SubcategoryRequest request = SubcategoryRequest.builder()
+                .categoryId(1)
+                .name("Glass Hardware")
+                .build();
+
+        when(categoryRepository.findById(1)).thenReturn(Optional.of(category));
+        when(repository.existsByNameIgnoreCaseAndCategory_CategoryId("Glass Hardware", 1)).thenReturn(false);
+        when(repository.existsBySlugIgnoreCaseAndCategory_CategoryId("glass-hardware", 1)).thenReturn(false);
+        when(repository.save(any(Subcategory.class))).thenThrow(new DataIntegrityViolationException("Duplicate entry '1-glass-hardware' for key 'uk_subcategories_category_slug'"));
+
+        assertThatThrownBy(() -> subcategoryService.create(request))
+                .isInstanceOf(ResourceConflictException.class)
+                .hasMessageContaining("Subcategory already exists with name: 'Glass Hardware' or slug: 'glass-hardware'");
     }
 
     @Test
@@ -103,7 +216,7 @@ class SubcategoryServiceTest {
                 .build();
 
         when(repository.findById(10)).thenReturn(Optional.of(subcategory));
-        when(repository.existsBySlugIgnoreCaseAndSubcategoryIdNot("tmt-bars-updated", 10)).thenReturn(false);
+        when(repository.existsBySlugIgnoreCaseAndCategory_CategoryIdAndSubcategoryIdNot("tmt-bars-updated", 1, 10)).thenReturn(false);
         when(repository.save(any(Subcategory.class))).thenAnswer(inv -> inv.getArgument(0));
 
         SubcategoryResponse response = subcategoryService.update(10, request);
@@ -111,17 +224,55 @@ class SubcategoryServiceTest {
         assertThat(response).isNotNull();
         verify(s3ImageService).deleteImage("https://storage/subcategories/tmt.jpg");
         verify(repository).save(subcategory);
+        verify(repository).flush();
     }
 
     @Test
-    @DisplayName("delete - should delete subcategory and clean up S3 image")
-    void delete_CleansUpS3Image() {
+    @DisplayName("delete - hard-deletes subcategory when no products or brands exist")
+    void delete_NoDependencies_HardDeletes() {
         when(repository.findById(10)).thenReturn(Optional.of(subcategory));
+        when(productRepository.countByBrand_Subcategory_SubcategoryId(10)).thenReturn(0);
+        when(brandRepository.countBySubcategory_SubcategoryId(10)).thenReturn(0);
 
         subcategoryService.delete(10);
 
         verify(repository).delete(subcategory);
         verify(s3ImageService).deleteImage("https://storage/subcategories/tmt.jpg");
+    }
+
+    @Test
+    @DisplayName("delete - soft-deletes and deactivates subcategory when linked products exist")
+    void delete_LinkedProducts_SoftDeletes() {
+        when(repository.findById(10)).thenReturn(Optional.of(subcategory));
+        when(productRepository.countByBrand_Subcategory_SubcategoryId(10)).thenReturn(3);
+
+        subcategoryService.delete(10);
+
+        assertThat(subcategory.isActive()).isFalse();
+        assertThat(subcategory.isVisibleOnWebsite()).isFalse();
+        verify(repository).save(subcategory);
+        verify(repository, never()).delete(any(Subcategory.class));
+        verify(s3ImageService, never()).deleteImage(any());
+    }
+
+    @Test
+    @DisplayName("delete - soft-deletes subcategory and cascades deactivation to brands when linked brands exist")
+    void delete_LinkedBrands_SoftDeletesAndDeactivatesBrands() {
+        Brand linkedBrand = Brand.builder().brandId(50).subcategory(subcategory).name("Tata Tiscon").active(true).build();
+
+        when(repository.findById(10)).thenReturn(Optional.of(subcategory));
+        when(productRepository.countByBrand_Subcategory_SubcategoryId(10)).thenReturn(0);
+        when(brandRepository.countBySubcategory_SubcategoryId(10)).thenReturn(1);
+        when(brandRepository.findBySubcategory_SubcategoryIdOrderBySortOrderAsc(10)).thenReturn(List.of(linkedBrand));
+
+        subcategoryService.delete(10);
+
+        assertThat(subcategory.isActive()).isFalse();
+        assertThat(subcategory.isVisibleOnWebsite()).isFalse();
+        assertThat(linkedBrand.isActive()).isFalse();
+        verify(repository).save(subcategory);
+        verify(brandRepository).saveAll(List.of(linkedBrand));
+        verify(repository, never()).delete(any(Subcategory.class));
     }
 
     @Test
@@ -150,7 +301,7 @@ class SubcategoryServiceTest {
                 .isInstanceOf(com.example.project.customer.exception.InvalidImageException.class)
                 .hasMessageContaining("Blob URLs");
 
-        verify(repository, org.mockito.Mockito.never()).save(any(Subcategory.class));
+        verify(repository, never()).save(any(Subcategory.class));
     }
 
     @Test
@@ -170,7 +321,7 @@ class SubcategoryServiceTest {
                 .isInstanceOf(com.example.project.customer.exception.InvalidImageException.class)
                 .hasMessageContaining("Base64 data URLs");
 
-        verify(repository, org.mockito.Mockito.never()).save(any(Subcategory.class));
+        verify(repository, never()).save(any(Subcategory.class));
     }
 
     @Test
@@ -194,7 +345,7 @@ class SubcategoryServiceTest {
 
         when(categoryRepository.findById(1)).thenReturn(Optional.of(category));
         when(repository.existsByNameIgnoreCaseAndCategory_CategoryId("Tiles", 1)).thenReturn(false);
-        when(repository.existsBySlugIgnoreCase("tiles")).thenReturn(false);
+        when(repository.existsBySlugIgnoreCaseAndCategory_CategoryId("tiles", 1)).thenReturn(false);
         when(repository.save(any(Subcategory.class))).thenReturn(savedSub);
 
         SubcategoryResponse response = subcategoryService.create(request);
@@ -225,7 +376,7 @@ class SubcategoryServiceTest {
 
         when(categoryRepository.findById(1)).thenReturn(Optional.of(category));
         when(repository.existsByNameIgnoreCaseAndCategory_CategoryId("Bricks", 1)).thenReturn(false);
-        when(repository.existsBySlugIgnoreCase("bricks")).thenReturn(false);
+        when(repository.existsBySlugIgnoreCaseAndCategory_CategoryId("bricks", 1)).thenReturn(false);
         when(repository.save(any(Subcategory.class))).thenReturn(savedSub);
 
         SubcategoryResponse response = subcategoryService.create(request);
@@ -257,7 +408,7 @@ class SubcategoryServiceTest {
 
         when(categoryRepository.findById(1)).thenReturn(Optional.of(category));
         when(repository.existsByNameIgnoreCaseAndCategory_CategoryId("Gravel", 1)).thenReturn(false);
-        when(repository.existsBySlugIgnoreCase("gravel")).thenReturn(false);
+        when(repository.existsBySlugIgnoreCaseAndCategory_CategoryId("gravel", 1)).thenReturn(false);
         when(repository.save(any(Subcategory.class))).thenReturn(savedSub);
 
         SubcategoryResponse response = subcategoryService.create(request);
@@ -282,8 +433,8 @@ class SubcategoryServiceTest {
                 .isInstanceOf(com.example.project.customer.exception.InvalidImageException.class)
                 .hasMessageContaining("Blob URLs");
 
-        verify(repository, org.mockito.Mockito.never()).save(any(Subcategory.class));
-        verify(s3ImageService, org.mockito.Mockito.never()).deleteImage(any());
+        verify(repository, never()).save(any(Subcategory.class));
+        verify(s3ImageService, never()).deleteImage(any());
     }
 
     @Test
@@ -305,13 +456,13 @@ class SubcategoryServiceTest {
                 .build();
 
         when(repository.findById(14)).thenReturn(Optional.of(subWithBlob));
-        when(repository.existsBySlugIgnoreCaseAndSubcategoryIdNot("old-sub", 14)).thenReturn(false);
+        when(repository.existsBySlugIgnoreCaseAndCategory_CategoryIdAndSubcategoryIdNot("old-sub", 1, 14)).thenReturn(false);
         when(repository.save(any(Subcategory.class))).thenAnswer(inv -> inv.getArgument(0));
 
         subcategoryService.update(14, request);
 
         // Crucial: S3 delete must NOT be called for the old blob URL!
-        verify(s3ImageService, org.mockito.Mockito.never()).deleteImage(org.mockito.ArgumentMatchers.contains("blob:"));
+        verify(s3ImageService, never()).deleteImage(org.mockito.ArgumentMatchers.contains("blob:"));
     }
 
     @Test
@@ -331,6 +482,6 @@ class SubcategoryServiceTest {
         subcategoryService.delete(15);
 
         verify(repository).delete(subWithBlob);
-        verify(s3ImageService, org.mockito.Mockito.never()).deleteImage(any());
+        verify(s3ImageService, never()).deleteImage(any());
     }
 }

@@ -46,9 +46,20 @@ public class CategoryController {
             @RequestParam(required = false) Boolean active,
             @RequestParam(required = false, defaultValue = "false") Boolean includeSubcategories,
             @RequestParam(required = false, defaultValue = "false") Boolean website,
+            @RequestParam(required = false) Boolean visibleOnWebsite,
             @RequestParam(required = false, defaultValue = "1") int page,
             @RequestParam(required = false, defaultValue = "20") int limit) {
-        ApiResponse<List<CategoryResponse>> response = service.getAll(active, includeSubcategories, website, page, limit);
+        boolean websiteMode = Boolean.TRUE.equals(website) || Boolean.TRUE.equals(visibleOnWebsite);
+        ApiResponse<List<CategoryResponse>> response = service.getAll(active, includeSubcategories, websiteMode, page, limit);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/website")
+    public ResponseEntity<ApiResponse<List<CategoryResponse>>> getWebsiteCategories(
+            @RequestParam(required = false, defaultValue = "true") Boolean includeSubcategories,
+            @RequestParam(required = false, defaultValue = "1") int page,
+            @RequestParam(required = false, defaultValue = "20") int limit) {
+        ApiResponse<List<CategoryResponse>> response = service.getAll(true, includeSubcategories, true, page, limit);
         return ResponseEntity.ok(response);
     }
 

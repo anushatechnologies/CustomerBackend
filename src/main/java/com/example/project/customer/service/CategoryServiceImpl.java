@@ -89,7 +89,7 @@ public class CategoryServiceImpl implements CategoryService {
 
         boolean includeSubs = Boolean.TRUE.equals(includeSubcategories);
         return categories.stream()
-                .map(cat -> mapToResponse(cat, includeSubs, false))
+                .map(cat -> mapToResponse(cat, includeSubs, false, active))
                 .toList();
     }
 
@@ -116,7 +116,7 @@ public class CategoryServiceImpl implements CategoryService {
         boolean includeSubs = Boolean.TRUE.equals(includeSubcategories);
         boolean isWebsiteOnly = Boolean.TRUE.equals(websiteOnly);
         List<CategoryResponse> data = categoryPage.getContent().stream()
-                .map(cat -> mapToResponse(cat, includeSubs, isWebsiteOnly))
+                .map(cat -> mapToResponse(cat, includeSubs, isWebsiteOnly, active))
                 .toList();
 
         PaginationMeta pagination = PaginationMeta.of(pageNumber, pageSize, categoryPage.getTotalElements());
@@ -213,10 +213,14 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     private CategoryResponse mapToResponse(Category category, boolean includeSubcategories) {
-        return mapToResponse(category, includeSubcategories, false);
+        return mapToResponse(category, includeSubcategories, false, null);
     }
 
     private CategoryResponse mapToResponse(Category category, boolean includeSubcategories, boolean websiteOnly) {
+        return mapToResponse(category, includeSubcategories, websiteOnly, null);
+    }
+
+    private CategoryResponse mapToResponse(Category category, boolean includeSubcategories, boolean websiteOnly, Boolean active) {
         int count = productRepository.countByBrand_Subcategory_Category_CategoryId(category.getCategoryId());
 
         List<SubcategoryResponse> subs = null;
@@ -225,8 +229,13 @@ public class CategoryServiceImpl implements CategoryService {
             if (websiteOnly) {
                 // For New Website: isActive = true AND visibleOnWebsite = true
                 subcategories = subcategoryRepository.findByCategory_CategoryIdAndActiveTrueAndVisibleOnWebsiteTrueOrderBySortOrderAsc(category.getCategoryId());
+            } else if (Boolean.TRUE.equals(active)) {
+                // For Existing App: active subcategories without website filtering
+                subcategories = subcategoryRepository.findByCategory_CategoryIdAndActiveOrderBySortOrderAsc(category.getCategoryId(), true);
+            } else if (Boolean.FALSE.equals(active)) {
+                subcategories = subcategoryRepository.findByCategory_CategoryIdAndActiveOrderBySortOrderAsc(category.getCategoryId(), false);
             } else {
-                // For Existing App: all subcategories without website filtering
+                // For Admin: all subcategories
                 subcategories = subcategoryRepository.findByCategory_CategoryIdOrderBySortOrderAsc(category.getCategoryId());
             }
 

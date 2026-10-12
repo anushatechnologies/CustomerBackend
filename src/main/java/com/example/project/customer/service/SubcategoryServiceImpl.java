@@ -6,6 +6,7 @@ import com.example.project.customer.entity.Category;
 import com.example.project.customer.entity.Subcategory;
 import com.example.project.customer.exception.ResourceConflictException;
 import com.example.project.customer.exception.ResourceNotFoundException;
+import com.example.project.customer.repository.BrandRepository;
 import com.example.project.customer.repository.CategoryRepository;
 import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.repository.SubcategoryRepository;
@@ -26,6 +27,7 @@ public class SubcategoryServiceImpl implements SubcategoryService {
     private final SubcategoryRepository repository;
     private final CategoryRepository categoryRepository;
     private final ProductRepository productRepository;
+    private final BrandRepository brandRepository;
     private final S3ImageService s3ImageService;
 
     @Override
@@ -33,7 +35,7 @@ public class SubcategoryServiceImpl implements SubcategoryService {
         Category category = categoryRepository.findById(request.getCategoryId())
                 .orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + request.getCategoryId()));
 
-        String cleanName = request.getName() != null ? request.getName().trim() : "";
+        String cleanName = request.getName() != null ? request.getName().trim().replaceAll("\\s+", " ") : "";
         if (cleanName.isEmpty()) {
             throw new IllegalArgumentException("Subcategory name cannot be empty");
         }
@@ -43,8 +45,8 @@ public class SubcategoryServiceImpl implements SubcategoryService {
         }
 
         String slug = generateSlug(cleanName, request.getSlug());
-        if (repository.existsBySlugIgnoreCase(slug)) {
-            throw new ResourceConflictException("Subcategory already exists with slug: '" + slug + "'");
+        if (repository.existsBySlugIgnoreCaseAndCategory_CategoryId(slug, category.getCategoryId())) {
+            throw new ResourceConflictException("Subcategory already exists with slug: '" + slug + "' in category: '" + category.getName() + "'");
         }
 
         String validImageUrl = com.example.project.customer.validation.ImageUrlValidator.validateForSave(request.getImageUrl());
@@ -60,7 +62,15 @@ public class SubcategoryServiceImpl implements SubcategoryService {
                 .productCount(0)
                 .build();
 
-        return mapToResponse(repository.save(subcategory));
+        try {
+            Subcategory saved = repository.save(subcategory);
+            repository.flush();
+            return mapToResponse(saved);
+        } catch (org.springframework.dao.DataIntegrityViolationException ex) {
+            log.warn("Concurrent duplicate creation conflict for subcategory name='{}', slug='{}', categoryId={}: {}",
+                    cleanName, slug, category.getCategoryId(), ex.getMessage());
+            throw new ResourceConflictException("Subcategory already exists with name: '" + cleanName + "' or slug: '" + slug + "' in category: '" + category.getName() + "'");
+        }
     }
 
     @Override
@@ -131,24 +141,25 @@ public class SubcategoryServiceImpl implements SubcategoryService {
         Subcategory subcategory = findSubcategory(id);
         String oldImageUrl = subcategory.getImageUrl();
 
-        if (request.getCategoryId() != null && !request.getCategoryId().equals(subcategory.getCategory().getCategoryId())) {
-            Category category = categoryRepository.findById(request.getCategoryId())
+        Category parentCategory = subcategory.getCategory();
+        if (request.getCategoryId() != null && !request.getCategoryId().equals(parentCategory.getCategoryId())) {
+            parentCategory = categoryRepository.findById(request.getCategoryId())
                     .orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + request.getCategoryId()));
-            subcategory.setCategory(category);
+            subcategory.setCategory(parentCategory);
         }
 
-        String cleanName = request.getName() != null ? request.getName().trim() : "";
+        String cleanName = request.getName() != null ? request.getName().trim().replaceAll("\\s+", " ") : "";
         if (cleanName.isEmpty()) {
             throw new IllegalArgumentException("Subcategory name cannot be empty");
         }
 
-        if (repository.existsByNameIgnoreCaseAndCategory_CategoryIdAndSubcategoryIdNot(cleanName, subcategory.getCategory().getCategoryId(), id)) {
-            throw new ResourceConflictException("Subcategory already exists with name: '" + cleanName + "' in category: '" + subcategory.getCategory().getName() + "'");
+        if (repository.existsByNameIgnoreCaseAndCategory_CategoryIdAndSubcategoryIdNot(cleanName, parentCategory.getCategoryId(), id)) {
+            throw new ResourceConflictException("Subcategory already exists with name: '" + cleanName + "' in category: '" + parentCategory.getName() + "'");
         }
 
         String slug = generateSlug(cleanName, request.getSlug());
-        if (repository.existsBySlugIgnoreCaseAndSubcategoryIdNot(slug, id)) {
-            throw new ResourceConflictException("Subcategory already exists with slug: '" + slug + "'");
+        if (repository.existsBySlugIgnoreCaseAndCategory_CategoryIdAndSubcategoryIdNot(slug, parentCategory.getCategoryId(), id)) {
+            throw new ResourceConflictException("Subcategory already exists with slug: '" + slug + "' in category: '" + parentCategory.getName() + "'");
         }
 
         subcategory.setName(cleanName);
@@ -167,15 +178,22 @@ public class SubcategoryServiceImpl implements SubcategoryService {
             subcategory.setSortOrder(request.getSortOrder());
         }
 
-        Subcategory saved = repository.save(subcategory);
+        try {
+            Subcategory saved = repository.save(subcategory);
+            repository.flush();
 
-        if (request.getImageUrl() != null && oldImageUrl != null && !oldImageUrl.isBlank()
-                && !oldImageUrl.equals(subcategory.getImageUrl())
-                && !com.example.project.customer.validation.ImageUrlValidator.isBlobOrDataUrl(oldImageUrl)) {
-            s3ImageService.deleteImage(oldImageUrl);
+            if (request.getImageUrl() != null && oldImageUrl != null && !oldImageUrl.isBlank()
+                    && !oldImageUrl.equals(subcategory.getImageUrl())
+                    && !com.example.project.customer.validation.ImageUrlValidator.isBlobOrDataUrl(oldImageUrl)) {
+                s3ImageService.deleteImage(oldImageUrl);
+            }
+
+            return mapToResponse(saved);
+        } catch (org.springframework.dao.DataIntegrityViolationException ex) {
+            log.warn("Concurrent duplicate update conflict for subcategory id={}, name='{}', slug='{}': {}",
+                    id, cleanName, slug, ex.getMessage());
+            throw new ResourceConflictException("Subcategory already exists with name: '" + cleanName + "' or slug: '" + slug + "' in category: '" + parentCategory.getName() + "'");
         }
-
-        return mapToResponse(saved);
     }
 
     @Override
@@ -192,13 +210,23 @@ public class SubcategoryServiceImpl implements SubcategoryService {
         String imageUrl = subcategory.getImageUrl();
 
         int productCount = productRepository != null ? productRepository.countByBrand_Subcategory_SubcategoryId(id) : 0;
+        int brandCount = brandRepository != null ? brandRepository.countBySubcategory_SubcategoryId(id) : 0;
 
-        if (productCount > 0) {
-            // Soft-delete: deactivate & hide from website to preserve foreign key integrity with products
+        if (productCount > 0 || brandCount > 0) {
+            // Soft-delete: deactivate & hide from website to preserve foreign key integrity with products and brands
             subcategory.setActive(false);
             subcategory.setVisibleOnWebsite(false);
             repository.save(subcategory);
-            log.info("Soft-deleted subcategory id={} because it has {} linked products", id, productCount);
+
+            if (brandRepository != null) {
+                List<com.example.project.customer.entity.Brand> brands = brandRepository.findBySubcategory_SubcategoryIdOrderBySortOrderAsc(id);
+                for (com.example.project.customer.entity.Brand b : brands) {
+                    b.setActive(false);
+                }
+                brandRepository.saveAll(brands);
+            }
+
+            log.info("Soft-deleted subcategory id={} because it has linked records (products={}, brands={})", id, productCount, brandCount);
         } else {
             repository.delete(subcategory);
 
@@ -206,6 +234,7 @@ public class SubcategoryServiceImpl implements SubcategoryService {
                     && !com.example.project.customer.validation.ImageUrlValidator.isBlobOrDataUrl(imageUrl)) {
                 s3ImageService.deleteImage(imageUrl);
             }
+            log.info("Hard-deleted subcategory id={} as it has no linked products or brands", id);
         }
     }
 
@@ -216,7 +245,7 @@ public class SubcategoryServiceImpl implements SubcategoryService {
 
     private String generateSlug(String name, String providedSlug) {
         if (providedSlug != null && !providedSlug.isBlank()) {
-            return providedSlug.trim().toLowerCase().replaceAll("[^a-z0-9-]+", "-");
+            return providedSlug.trim().toLowerCase().replaceAll("[^a-z0-9-]+", "-").replaceAll("^-|-$", "");
         }
         return name.trim().toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
     }

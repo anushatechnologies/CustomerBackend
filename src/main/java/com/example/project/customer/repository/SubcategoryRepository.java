@@ -10,8 +10,11 @@ import java.util.Optional;
 @Repository
 public interface SubcategoryRepository extends JpaRepository<Subcategory, Integer> {
     Optional<Subcategory> findBySlugIgnoreCase(String slug);
+    Optional<Subcategory> findBySlugIgnoreCaseAndCategory_CategoryId(String slug, Integer categoryId);
     boolean existsBySlugIgnoreCase(String slug);
     boolean existsBySlugIgnoreCaseAndSubcategoryIdNot(String slug, Integer subcategoryId);
+    boolean existsBySlugIgnoreCaseAndCategory_CategoryId(String slug, Integer categoryId);
+    boolean existsBySlugIgnoreCaseAndCategory_CategoryIdAndSubcategoryIdNot(String slug, Integer categoryId, Integer subcategoryId);
 
     boolean existsByNameIgnoreCase(String name);
     boolean existsByNameIgnoreCaseAndSubcategoryIdNot(String name, Integer subcategoryId);
