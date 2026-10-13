@@ -74,7 +74,7 @@ public class Store {
 
     @Column(name = "commission_rate", precision = 5, scale = 2, nullable = false)
     @Builder.Default
-    private BigDecimal commissionRate = BigDecimal.valueOf(5.00);
+    private BigDecimal commissionRate = BigDecimal.ZERO;
 
     @Column(name = "rating")
     @Builder.Default
@@ -99,7 +99,7 @@ public class Store {
         }
         this.updatedAt = LocalDateTime.now();
         if (this.commissionRate == null) {
-            this.commissionRate = BigDecimal.valueOf(5.00);
+            this.commissionRate = BigDecimal.ZERO;
         }
         if (this.status == null) {
             this.status = StoreStatus.ACTIVE;

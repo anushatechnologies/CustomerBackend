@@ -70,4 +70,28 @@ public class OrderItem {
 
     @Column(name = "line_gst", nullable = false, precision = 14, scale = 2)
     private BigDecimal lineGst;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "seller_id")
+    private Seller seller;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "fulfillment_store_id")
+    private Store fulfillmentStore;
+
+    @Column(name = "is_hinch_store", nullable = false)
+    @Builder.Default
+    private Boolean isHinchStore = false;
+
+    @Column(name = "commission_rate", precision = 5, scale = 2, nullable = false)
+    @Builder.Default
+    private BigDecimal commissionRate = BigDecimal.ZERO;
+
+    @Column(name = "seller_payable", precision = 14, scale = 2, nullable = false)
+    @Builder.Default
+    private BigDecimal sellerPayable = BigDecimal.ZERO;
+
+    @Column(name = "hinch_keeps", precision = 14, scale = 2, nullable = false)
+    @Builder.Default
+    private BigDecimal hinchKeeps = BigDecimal.ZERO;
 }

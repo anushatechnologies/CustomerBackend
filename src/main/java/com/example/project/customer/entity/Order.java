@@ -55,8 +55,7 @@ public class Order {
     private String storeInvoiceNumber;
 
     @Column(name = "commission_rate", precision = 5, scale = 2)
-    @Builder.Default
-    private BigDecimal commissionRate = BigDecimal.valueOf(5.00);
+    private BigDecimal commissionRate;
 
     @Column(name = "commission_amount", precision = 14, scale = 2)
     @Builder.Default

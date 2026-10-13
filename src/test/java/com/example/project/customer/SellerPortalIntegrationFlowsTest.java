@@ -20,6 +20,7 @@ import com.example.project.customer.entity.Category;
 import com.example.project.customer.entity.DocumentType;
 import com.example.project.customer.entity.Product;
 import com.example.project.customer.entity.Seller;
+import com.example.project.customer.entity.Store;
 import com.example.project.customer.entity.Subcategory;
 import com.example.project.customer.entity.Warehouse;
 import com.example.project.customer.repository.BrandRepository;
@@ -116,6 +117,10 @@ public class SellerPortalIntegrationFlowsTest {
     @Test
     @DisplayName("Flow 2: Seller Product Creation auto-assigns sellerId and PENDING status")
     void testSellerProductCreation() {
+        Seller mockSeller = Seller.builder().sellerId(1001).name("Tata Seller").build();
+        Store mockStore = Store.builder().storeId(10).seller(mockSeller).name("Tata Store").build();
+        when(sellerRepository.findById(1001)).thenReturn(Optional.of(mockSeller));
+        when(storeRepository.findBySellerSellerId(1001)).thenReturn(Optional.of(mockStore));
         when(brandRepository.findById(1)).thenReturn(Optional.of(mockBrand));
         when(productRepository.save(any(Product.class))).thenAnswer(invocation -> {
             Product p = invocation.getArgument(0);

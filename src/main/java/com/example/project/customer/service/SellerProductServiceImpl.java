@@ -206,16 +206,10 @@ public class SellerProductServiceImpl implements SellerProductService {
         BigDecimal mrp = request.getMrp() != null ? request.getMrp() : price;
 
         Seller seller = sellerRepository.findById(sellerId)
-                .orElseGet(() -> Seller.builder().sellerId(sellerId).name("Seller #" + sellerId).build());
+                .orElseThrow(() -> new ResourceNotFoundException("Seller not found with id: " + sellerId));
 
-        Store store = null;
-        if (request.getStoreId() != null) {
-            store = storeRepository.findById(request.getStoreId()).orElse(null);
-        }
-        if (store == null) {
-            store = storeRepository.findBySellerSellerId(sellerId)
-                    .orElseGet(() -> storeRepository.findAll().stream().findFirst().orElse(null));
-        }
+        Store store = storeRepository.findBySellerSellerId(sellerId)
+                .orElseThrow(() -> new ResourceNotFoundException("No active store found for seller id: " + sellerId));
 
         ApprovalStatus initialStatus = com.example.project.customer.security.SecurityUtils.isAdmin()
                 ? ApprovalStatus.APPROVED

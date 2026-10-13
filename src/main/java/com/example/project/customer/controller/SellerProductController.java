@@ -68,7 +68,7 @@ public class SellerProductController {
 
     @PostMapping
     public ResponseEntity<Map<String, Object>> createSellerProduct(@Valid @RequestBody SellerProductCreateRequest request) {
-        Integer effectiveSellerId = resolveEffectiveSellerId(request.getSellerId());
+        Integer effectiveSellerId = sellerContextUtil.getCurrentSellerId();
         ProductResponse created = sellerProductService.createSellerProduct(effectiveSellerId, request);
 
         Map<String, Object> data = new LinkedHashMap<>();

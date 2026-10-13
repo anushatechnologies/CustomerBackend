@@ -26,8 +26,10 @@ public class OrderResponse {
     private String storeName;
     private String storeSlug;
     private String storeInvoiceNumber;
-    private BigDecimal commissionRate;
-    private BigDecimal commissionAmount;
+    @Builder.Default
+    private BigDecimal commissionRate = BigDecimal.ZERO;
+    @Builder.Default
+    private BigDecimal commissionAmount = BigDecimal.ZERO;
     private BigDecimal totalAmount;
     private BigDecimal totalWeightKg;
     private BigDecimal subtotal;

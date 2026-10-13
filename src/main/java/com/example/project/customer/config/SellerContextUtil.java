@@ -124,7 +124,7 @@ public class SellerContextUtil {
                 .name(storeName)
                 .slug(uniqueSlug)
                 .status(StoreStatus.ACTIVE)
-                .commissionRate(BigDecimal.valueOf(5.00))
+                .commissionRate(BigDecimal.ZERO)
                 .description("Official Store of " + storeName)
                 .rating(4.8)
                 .reviewCount(0)

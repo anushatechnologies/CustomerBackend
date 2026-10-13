@@ -19,5 +19,9 @@ public interface SellerPayoutLedgerRepository extends JpaRepository<SellerPayout
 
     Optional<SellerPayoutLedger> findByOrder_OrderId(Integer orderId);
 
+    List<SellerPayoutLedger> findAllByOrder_OrderId(Integer orderId);
+
+    List<SellerPayoutLedger> findBySeller_SellerIdOrderByCreatedAtDesc(Integer sellerId);
+
     Page<SellerPayoutLedger> findByStatus(PayoutLedgerStatus status, Pageable pageable);
 }

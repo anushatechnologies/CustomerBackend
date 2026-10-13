@@ -17,10 +17,13 @@ import com.example.project.customer.entity.Order;
 import com.example.project.customer.entity.OrderItem;
 import com.example.project.customer.entity.PayoutLedgerStatus;
 import com.example.project.customer.entity.Product;
+import com.example.project.customer.entity.Seller;
 import com.example.project.customer.entity.SellerPayoutLedger;
 import com.example.project.customer.entity.Store;
 import com.example.project.customer.entity.StoreStatus;
 import com.example.project.customer.entity.TrackingCheckpoint;
+import com.example.project.customer.config.PlatformMarketplaceProperties;
+import com.example.project.customer.dto.settlement.ItemSettlementSnapshot;
 import com.example.project.customer.config.SellerContextUtil;
 import com.example.project.customer.config.UserContextUtil;
 import com.example.project.customer.exception.ForbiddenException;
@@ -77,11 +80,23 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
     private final StoreRepository storeRepository;
     private final UserContextUtil userContextUtil;
     private final SellerContextUtil sellerContextUtil;
+    private SettlementCalculationService settlementCalculationService;
+    private PlatformMarketplaceProperties platformMarketplaceProperties;
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @Override
     public void setApplicationEventPublisher(org.springframework.context.ApplicationEventPublisher applicationEventPublisher) {
         this.eventPublisher = applicationEventPublisher;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setSettlementCalculationService(SettlementCalculationService settlementCalculationService) {
+        this.settlementCalculationService = settlementCalculationService;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPlatformMarketplaceProperties(PlatformMarketplaceProperties platformMarketplaceProperties) {
+        this.platformMarketplaceProperties = platformMarketplaceProperties;
     }
 
     @Autowired
@@ -175,6 +190,15 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
             throw new IllegalStateException("Cannot checkout: Store '" + store.getName() + "' is currently " + store.getStatus() + " and not accepting orders.");
         }
 
+        // Feature flag gating for HinchStore checkout in Phase 1
+        if (platformMarketplaceProperties != null) {
+            boolean isHinchStoreOrder = platformMarketplaceProperties.isPlatformStore(store.getStoreId())
+                    || (store.getStoreId() != null && store.getStoreId().equals(1));
+            if (isHinchStoreOrder && !platformMarketplaceProperties.isHinchStoreCheckoutEnabled()) {
+                throw new IllegalStateException("HinchStore checkout is temporarily disabled pending Phase 2 vendor consignment rollout.");
+            }
+        }
+
         // 2. Pre-checkout stock & price re-validation
         Map<Integer, Product> productMap = new HashMap<>();
         for (CartItemResponse ci : cart.getItems()) {
@@ -259,12 +283,7 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         }
         String formattedAddress = sb.toString();
 
-        // 3. Compute Commission snapshot
-        BigDecimal commissionRate = store.getCommissionRate() != null ? store.getCommissionRate() : BigDecimal.valueOf(5.00);
-        BigDecimal commissionAmount = preview.getTaxableAmount().multiply(commissionRate)
-                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-
-        // 4. Generate sequential GST Invoice Number per-store
+        // 3. Sequential GST Invoice Number per-store
         String storeInvoiceNumber = storeInvoiceSequenceService.generateNextInvoiceNumber(store);
 
         Order order = Order.builder()
@@ -272,8 +291,8 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 .customer(customer)
                 .store(store)
                 .storeInvoiceNumber(storeInvoiceNumber)
-                .commissionRate(commissionRate)
-                .commissionAmount(commissionAmount)
+                .commissionRate(BigDecimal.ZERO)
+                .commissionAmount(BigDecimal.ZERO)
                 .addressId(address.getId())
                 .deliveryLocation(formattedAddress)
                 .orderForSomeoneElse(isForOther)
@@ -314,11 +333,74 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         BigDecimal totalWeightKg = BigDecimal.ZERO;
         boolean hasAnyWeight = false;
 
-        for (CartItemResponse ci : cart.getItems()) {
+        BigDecimal subtotal = preview.getSubtotal() != null ? preview.getSubtotal() : BigDecimal.ZERO;
+        BigDecimal totalDiscount = preview.getDiscount() != null ? preview.getDiscount() : BigDecimal.ZERO;
+        BigDecimal allocatedDiscountSum = BigDecimal.ZERO;
+        int itemCount = cart.getItems().size();
+
+        for (int i = 0; i < itemCount; i++) {
+            CartItemResponse ci = cart.getItems().get(i);
             decrementStock(ci);
 
             Product p = productMap.get(ci.getProductId());
             BigDecimal itemWeight = p != null ? p.getWeightKg() : null;
+
+            // Pro-rate coupon discount across items
+            BigDecimal itemDiscount = BigDecimal.ZERO;
+            if (totalDiscount.compareTo(BigDecimal.ZERO) > 0 && subtotal.compareTo(BigDecimal.ZERO) > 0) {
+                if (i == itemCount - 1) {
+                    itemDiscount = totalDiscount.subtract(allocatedDiscountSum);
+                } else {
+                    itemDiscount = totalDiscount.multiply(ci.getLineTotal())
+                            .divide(subtotal, 2, RoundingMode.HALF_UP);
+                    allocatedDiscountSum = allocatedDiscountSum.add(itemDiscount);
+                }
+            }
+
+            boolean isHinchItem = (platformMarketplaceProperties != null && platformMarketplaceProperties.isPlatformStore(store.getStoreId()))
+                    || (store.getStoreId() != null && store.getStoreId().equals(1));
+
+            // Seller resolution: for HinchStore items in Phase 1, seller_id is NULL.
+            // For vendor items, derive strictly from product or store seller, throwing if missing.
+            Seller itemSeller = null;
+            if (!isHinchItem) {
+                if (p != null && p.getSeller() != null) {
+                    itemSeller = p.getSeller();
+                } else if (store != null && store.getSeller() != null) {
+                    itemSeller = store.getSeller();
+                }
+                if (itemSeller == null) {
+                    throw new IllegalStateException("Order item for product '" + (p != null ? p.getTitle() : ci.getTitle())
+                            + "' has no associated seller. Seller ID is required for vendor products.");
+                }
+            }
+
+            ItemSettlementSnapshot settlement = null;
+            if (settlementCalculationService != null) {
+                Integer categoryId = null;
+                if (p != null) {
+                    if (p.getSubcategory() != null && p.getSubcategory().getCategory() != null) {
+                        categoryId = p.getSubcategory().getCategory().getCategoryId();
+                    } else if (p.getBrand() != null && p.getBrand().getSubcategory() != null && p.getBrand().getSubcategory().getCategory() != null) {
+                        categoryId = p.getBrand().getSubcategory().getCategory().getCategoryId();
+                    }
+                }
+                settlement = settlementCalculationService.calculateItemSettlement(
+                        isHinchItem,
+                        ci.getLineTotal(),
+                        itemDiscount,
+                        categoryId
+                );
+            }
+
+            if (!isHinchItem && itemDiscount.compareTo(BigDecimal.ZERO) > 0) {
+                log.warn("Coupon applied to vendor-own item: orderId={}, orderNumber={}, productId={}, couponAmount={}. Platform funds full vendor settlement.",
+                        savedOrder.getOrderId(), savedOrder.getOrderNumber(), ci.getProductId(), itemDiscount);
+            }
+
+            BigDecimal commissionRate = settlement != null ? settlement.commissionRate() : BigDecimal.ZERO;
+            BigDecimal sellerPayable = settlement != null ? settlement.sellerPayable() : ci.getLineTotal();
+            BigDecimal hinchKeeps = settlement != null ? settlement.hinchKeeps() : BigDecimal.ZERO;
 
             OrderItem oi = OrderItem.builder()
                     .order(savedOrder)
@@ -334,6 +416,12 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                     .gstRate(ci.getGstRate())
                     .lineTotal(ci.getLineTotal())
                     .lineGst(ci.getLineGst())
+                    .seller(itemSeller)
+                    .fulfillmentStore(store)
+                    .isHinchStore(isHinchItem)
+                    .commissionRate(commissionRate)
+                    .sellerPayable(sellerPayable)
+                    .hinchKeeps(hinchKeeps)
                     .build();
             OrderItem savedOi = orderItemRepository.save(oi);
             orderItems.add(savedOi);
@@ -345,23 +433,39 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         }
         savedOrder.setItems(orderItems);
         savedOrder.setTotalWeightKg(hasAnyWeight ? totalWeightKg : null);
+
+        BigDecimal totalHinchKeeps = orderItems.stream()
+                .map(OrderItem::getHinchKeeps)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        savedOrder.setCommissionAmount(totalHinchKeeps);
         savedOrder = orderRepository.save(savedOrder);
 
-        // 5. Create SellerPayoutLedger entry (Gross - Commission - 1% TCS = Net Payout)
-        BigDecimal tcsAmount = preview.getTaxableAmount().multiply(BigDecimal.valueOf(0.01)).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal grossAmount = savedOrder.getTotalAmount();
-        BigDecimal netPayout = grossAmount.subtract(commissionAmount).subtract(tcsAmount);
+        // 5. Create SellerPayoutLedger entries per-item (Gross = seller_payable, excluding GST and delivery fees)
+        for (OrderItem oi : orderItems) {
+            BigDecimal sellerPayable = oi.getSellerPayable();
+            BigDecimal tcsAmount = oi.getIsHinchStore()
+                    ? BigDecimal.ZERO
+                    : sellerPayable.multiply(BigDecimal.valueOf(0.01)).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal netPayout = sellerPayable.subtract(tcsAmount);
 
-        SellerPayoutLedger ledger = SellerPayoutLedger.builder()
-                .store(store)
-                .order(savedOrder)
-                .grossAmount(grossAmount)
-                .commissionAmount(commissionAmount)
-                .tcsAmount(tcsAmount)
-                .netPayoutAmount(netPayout)
-                .status(PayoutLedgerStatus.PENDING)
-                .build();
-        sellerPayoutLedgerRepository.save(ledger);
+            PayoutLedgerStatus initialStatus = oi.getIsHinchStore()
+                    ? PayoutLedgerStatus.ON_HOLD
+                    : PayoutLedgerStatus.PENDING;
+
+            SellerPayoutLedger ledger = SellerPayoutLedger.builder()
+                    .store(oi.getFulfillmentStore() != null ? oi.getFulfillmentStore() : store)
+                    .seller(oi.getSeller())
+                    .order(savedOrder)
+                    .orderItem(oi)
+                    .grossAmount(sellerPayable)
+                    .commissionAmount(BigDecimal.ZERO)
+                    .hinchKeeps(oi.getHinchKeeps())
+                    .tcsAmount(tcsAmount)
+                    .netPayoutAmount(netPayout)
+                    .status(initialStatus)
+                    .build();
+            sellerPayoutLedgerRepository.save(ledger);
+        }
 
         // Initial tracking checkpoint
         TrackingCheckpoint initialCheckpoint = TrackingCheckpoint.builder()
@@ -610,11 +714,18 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         Order updated = orderRepository.save(order);
 
         if ("DELIVERED".equalsIgnoreCase(upperStatus)) {
-            sellerPayoutLedgerRepository.findByOrder_OrderId(order.getOrderId()).ifPresent(ledger -> {
-                ledger.setStatus(PayoutLedgerStatus.PENDING);
-                ledger.setSettlementDate(LocalDateTime.now().plusDays(7)); // T+7 days settlement
-                sellerPayoutLedgerRepository.save(ledger);
-            });
+            List<SellerPayoutLedger> ledgers = sellerPayoutLedgerRepository.findAllByOrder_OrderId(order.getOrderId());
+            if (ledgers.isEmpty()) {
+                sellerPayoutLedgerRepository.findByOrder_OrderId(order.getOrderId()).ifPresent(ledgers::add);
+            }
+            for (SellerPayoutLedger ledger : ledgers) {
+                // Set ledger ELIGIBLE with settlementDate = now + 7 days (idempotently)
+                if (ledger.getStatus() == PayoutLedgerStatus.PENDING) {
+                    ledger.setStatus(PayoutLedgerStatus.ELIGIBLE);
+                    ledger.setSettlementDate(LocalDateTime.now().plusDays(7));
+                    sellerPayoutLedgerRepository.save(ledger);
+                }
+            }
         }
 
         return mapToOrderResponse(updated);
@@ -933,8 +1044,8 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 .storeName(store != null ? store.getName() : null)
                 .storeSlug(store != null ? store.getSlug() : null)
                 .storeInvoiceNumber(o.getStoreInvoiceNumber())
-                .commissionRate(o.getCommissionRate())
-                .commissionAmount(o.getCommissionAmount())
+                .commissionRate(o.getCommissionRate() != null ? o.getCommissionRate() : BigDecimal.ZERO)
+                .commissionAmount(o.getCommissionAmount() != null ? o.getCommissionAmount() : BigDecimal.ZERO)
                 .totalAmount(o.getTotalAmount())
                 .totalWeightKg(o.getTotalWeightKg())
                 .subtotal(o.getSubtotal())

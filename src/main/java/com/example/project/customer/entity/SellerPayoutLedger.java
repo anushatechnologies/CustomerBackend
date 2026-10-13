@@ -38,12 +38,24 @@ public class SellerPayoutLedger {
     private Store store;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "seller_id")
+    private Seller seller;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "order_id")
     private Order order;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_item_id")
+    private OrderItem orderItem;
 
     @Column(name = "gross_amount", precision = 14, scale = 2, nullable = false)
     @Builder.Default
     private BigDecimal grossAmount = BigDecimal.ZERO;
+
+    @Column(name = "hinch_keeps", precision = 14, scale = 2, nullable = false)
+    @Builder.Default
+    private BigDecimal hinchKeeps = BigDecimal.ZERO;
 
     @Column(name = "commission_amount", precision = 14, scale = 2, nullable = false)
     @Builder.Default

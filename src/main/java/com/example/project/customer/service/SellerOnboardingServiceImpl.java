@@ -784,7 +784,7 @@ public class SellerOnboardingServiceImpl implements SellerOnboardingService {
                 .name(storeName)
                 .slug(uniqueSlug)
                 .status(StoreStatus.ACTIVE)
-                .commissionRate(java.math.BigDecimal.valueOf(5.00))
+                .commissionRate(java.math.BigDecimal.ZERO)
                 .description("Official Store of " + storeName)
                 .rating(4.8)
                 .reviewCount(0)
