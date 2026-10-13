@@ -24,4 +24,11 @@ public class OrderConfirmedEvent {
     private Double deliveryLatitude;
     private Double deliveryLongitude;
     private BigDecimal totalWeightKg;
+
+    // Additive version 2.0 fields
+    private Integer fulfillmentStoreId;
+    private String fulfillmentStoreName;
+    private String pickupAddress;
+    @Builder.Default
+    private String eventVersion = "2.0";
 }

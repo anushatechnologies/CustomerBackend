@@ -6,6 +6,7 @@ import com.example.project.customer.dto.OrderCreateRequest;
 import com.example.project.customer.dto.OrderResponse;
 import com.example.project.customer.dto.OrderSummaryResponse;
 import com.example.project.customer.dto.OrderTrackingResponse;
+import com.example.project.customer.entity.Order;
 
 import java.util.List;
 
@@ -24,4 +25,6 @@ public interface OrderService {
     OrderResponse cancelOrder(Integer id, String location, String description);
     com.example.project.customer.dto.OrderDisputeResponse raiseDispute(Integer id, com.example.project.customer.dto.OrderDisputeRequest request);
     com.example.project.customer.dto.OrderMtcResponse getOrderMtc(Integer id);
+    void commitHinchStoreReservation(Order order);
+    void releaseOrRestockHinchStoreInventory(Order order);
 }

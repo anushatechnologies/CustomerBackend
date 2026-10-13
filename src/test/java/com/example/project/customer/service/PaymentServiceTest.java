@@ -107,6 +107,8 @@ class PaymentServiceTest {
                 .paymentStatus("PENDING")
                 .orderStatus("PLACED")
                 .build();
+
+        org.mockito.Mockito.lenient().when(paymentRepository.claimRefundAtomic(any())).thenReturn(1);
     }
 
     @Test
@@ -330,8 +332,8 @@ class PaymentServiceTest {
     }
 
     @Test
-    @DisplayName("refundOrderPayment - falls back to customer wallet when gateway refund fails")
-    void testRefundOrderPayment_WalletFallback() throws Exception {
+    @DisplayName("refundOrderPayment - marks REFUND_PENDING when gateway refund fails and no existing refund found")
+    void testRefundOrderPayment_GatewayFailure_MarksRefundPending() throws Exception {
         Payment capturedPayment = Payment.builder()
                 .paymentId(16)
                 .order(order)
@@ -349,25 +351,18 @@ class PaymentServiceTest {
         ReflectionTestUtils.setField(razorpayClient, "payments", mockPaymentsClient);
 
         when(mockPaymentsClient.refund(eq("pay_CapturedGatewayFail"), any(JSONObject.class)))
-                .thenThrow(new com.razorpay.RazorpayException("Gateway timeout / already settled"));
+                .thenThrow(new com.razorpay.RazorpayException("Gateway timeout / network error"));
+        when(mockPaymentsClient.fetchAllRefunds("pay_CapturedGatewayFail"))
+                .thenReturn(java.util.Collections.emptyList());
 
-        com.example.project.customer.entity.Wallet wallet = com.example.project.customer.entity.Wallet.builder()
-                .customer(customer)
-                .balance(BigDecimal.valueOf(100.00))
-                .active(true)
-                .build();
-        when(walletRepository.findByCustomer_CustomerIdForUpdate(101))
-                .thenReturn(Optional.of(wallet));
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
 
         PaymentStatusResponse response = paymentService.refundOrderPayment(5001, "Customer cancellation");
 
         assertThat(response).isNotNull();
-        assertThat(response.getStatus()).isEqualTo("REFUNDED_TO_WALLET");
-        assertThat(wallet.getBalance()).isEqualByComparingTo("1600.00");
-        assertThat(order.getPaymentStatus()).isEqualTo("REFUNDED");
-        verify(walletRepository).save(wallet);
-        verify(walletTransactionRepository).save(any(com.example.project.customer.entity.WalletTransaction.class));
+        assertThat(response.getStatus()).isEqualTo("REFUND_PENDING");
+        assertThat(capturedPayment.getStatus()).isEqualTo("REFUND_PENDING");
+        verify(walletRepository, org.mockito.Mockito.never()).findByCustomer_CustomerIdForUpdate(any());
     }
 
     @Test

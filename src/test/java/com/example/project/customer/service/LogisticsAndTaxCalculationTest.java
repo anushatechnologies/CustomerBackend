@@ -75,6 +75,16 @@ class LogisticsAndTaxCalculationTest {
                 userContextUtil,
                 sellerContextUtil
         );
+
+        VendorSelectionService mockVendorSelection = org.mockito.Mockito.mock(VendorSelectionService.class);
+        HinchStoreVendorInventoryRepository mockHsvi = org.mockito.Mockito.mock(HinchStoreVendorInventoryRepository.class);
+        orderService.setVendorSelectionService(mockVendorSelection);
+        orderService.setHinchStoreVendorInventoryRepository(mockHsvi);
+        Store mockFulfillmentStore = Store.builder().storeId(1).name("HinchStore").status(StoreStatus.ACTIVE).build();
+        org.mockito.Mockito.lenient().when(mockVendorSelection.getRankedCandidateVendors(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> List.of(mockFulfillmentStore));
+        org.mockito.Mockito.lenient().when(mockHsvi.atomicReserve(org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(1);
     }
 
     @AfterEach

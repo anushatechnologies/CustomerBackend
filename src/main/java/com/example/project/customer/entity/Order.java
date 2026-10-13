@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -51,6 +53,10 @@ public class Order {
     @JoinColumn(name = "store_id", referencedColumnName = "store_id")
     private Store store;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "fulfillment_store_id", referencedColumnName = "store_id")
+    private Store fulfillmentStore;
+
     @Column(name = "store_invoice_number", length = 100)
     private String storeInvoiceNumber;
 
@@ -60,6 +66,11 @@ public class Order {
     @Column(name = "commission_amount", precision = 14, scale = 2)
     @Builder.Default
     private BigDecimal commissionAmount = BigDecimal.ZERO;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "inventory_state", length = 50, nullable = false)
+    @Builder.Default
+    private OrderInventoryState inventoryState = OrderInventoryState.NONE;
 
     @Column(name = "address_id")
     private Integer addressId;

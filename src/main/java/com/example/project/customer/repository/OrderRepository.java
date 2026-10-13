@@ -26,4 +26,31 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
 
     @org.springframework.data.jpa.repository.Query("SELECT COUNT(o) FROM Order o WHERE o.customer.customerId = :userId AND UPPER(COALESCE(o.orderStatus, '')) <> 'CANCELLED'")
     long countNonCancelledByCustomerId(@org.springframework.data.repository.query.Param("userId") Integer userId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query("UPDATE Order o SET o.inventoryState = :newState WHERE o.orderId = :orderId AND o.inventoryState = :expectedState")
+    int transitionInventoryState(@org.springframework.data.repository.query.Param("orderId") Integer orderId,
+                                 @org.springframework.data.repository.query.Param("expectedState") com.example.project.customer.entity.OrderInventoryState expectedState,
+                                 @org.springframework.data.repository.query.Param("newState") com.example.project.customer.entity.OrderInventoryState newState);
+
+    @org.springframework.data.jpa.repository.Query("SELECT o FROM Order o WHERE " +
+           "(o.fulfillmentStore.seller.sellerId = :sellerId OR " +
+           " o.store.seller.sellerId = :sellerId OR " +
+           " EXISTS (SELECT oi FROM OrderItem oi WHERE oi.order = o AND oi.seller.sellerId = :sellerId)) " +
+           "ORDER BY o.createdAt DESC")
+    Page<Order> findSellerOrders(@org.springframework.data.repository.query.Param("sellerId") Integer sellerId, Pageable pageable);
+
+    @org.springframework.data.jpa.repository.Query("SELECT o FROM Order o WHERE " +
+           "(o.fulfillmentStore.seller.sellerId = :sellerId OR " +
+           " o.store.seller.sellerId = :sellerId OR " +
+           " EXISTS (SELECT oi FROM OrderItem oi WHERE oi.order = o AND oi.seller.sellerId = :sellerId)) AND " +
+           "UPPER(o.orderStatus) = UPPER(:orderStatus) " +
+           "ORDER BY o.createdAt DESC")
+    Page<Order> findSellerOrdersByStatus(@org.springframework.data.repository.query.Param("sellerId") Integer sellerId,
+                                         @org.springframework.data.repository.query.Param("orderStatus") String orderStatus,
+                                         Pageable pageable);
+
+    @org.springframework.data.jpa.repository.Query("SELECT o FROM Order o WHERE o.store.storeId = :platformStoreId AND UPPER(o.orderStatus) = 'PLACED' AND UPPER(o.paymentStatus) = 'PENDING' AND o.inventoryState = com.example.project.customer.entity.OrderInventoryState.RESERVED AND o.createdAt < :cutoff")
+    List<Order> findExpiredUnpaidHinchOrders(@org.springframework.data.repository.query.Param("platformStoreId") Integer platformStoreId,
+                                            @org.springframework.data.repository.query.Param("cutoff") java.time.LocalDateTime cutoff);
 }

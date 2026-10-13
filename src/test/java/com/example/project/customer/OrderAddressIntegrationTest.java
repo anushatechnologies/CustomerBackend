@@ -33,9 +33,14 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
+import com.example.project.customer.entity.Seller;
+import com.example.project.customer.entity.Store;
+import com.example.project.customer.entity.StoreStatus;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -83,11 +88,19 @@ class OrderAddressIntegrationTest {
     @Mock
     private com.example.project.customer.config.SellerContextUtil sellerContextUtil;
 
+    @Mock
+    private com.example.project.customer.service.VendorSelectionService vendorSelectionService;
+
+    @Mock
+    private com.example.project.customer.repository.HinchStoreVendorInventoryRepository hinchStoreVendorInventoryRepository;
+
     private OrderServiceImpl orderService;
     private CheckoutServiceImpl checkoutServiceImpl;
 
     private Customer customer101;
     private Address address1;
+    private Store mockStore;
+    private Seller mockSeller;
 
     @BeforeEach
     void setUp() {
@@ -127,14 +140,20 @@ class OrderAddressIntegrationTest {
                 .isDefault(true)
                 .build();
 
-        com.example.project.customer.entity.Store mockStore = com.example.project.customer.entity.Store.builder()
-                .storeId(1)
-                .name("HinchStore")
-                .slug("hinchstore")
-                .status(com.example.project.customer.entity.StoreStatus.ACTIVE)
-                .commissionRate(BigDecimal.valueOf(5.0))
+        mockSeller = Seller.builder()
+                .sellerId(42)
+                .companyName("Vendor Infra")
                 .build();
-        org.mockito.Mockito.lenient().when(storeRepository.findById(any())).thenReturn(Optional.of(mockStore));
+
+        mockStore = Store.builder()
+                .storeId(10)
+                .seller(mockSeller)
+                .name("Vendor Store")
+                .slug("vendor-store")
+                .status(StoreStatus.ACTIVE)
+                .commissionRate(BigDecimal.ZERO)
+                .build();
+        org.mockito.Mockito.lenient().when(storeRepository.findById(10)).thenReturn(Optional.of(mockStore));
     }
 
     @Test
@@ -149,6 +168,7 @@ class OrderAddressIntegrationTest {
 
         CartResponse cart = CartResponse.builder()
                 .cartId(1)
+                .storeId(10)
                 .items(List.of(item))
                 .subtotal(BigDecimal.valueOf(5000.0))
                 .build();
@@ -168,7 +188,7 @@ class OrderAddressIntegrationTest {
 
         when(checkoutService.previewCheckout(eq(101), any(CheckoutPreviewRequest.class))).thenReturn(preview);
 
-        Product product = Product.builder().productId(1).title("Steel Rebar").stockQty(100).build();
+        Product product = Product.builder().productId(1).seller(mockSeller).store(mockStore).title("Steel Rebar").stockQty(100).build();
         when(productRepository.findById(1)).thenReturn(Optional.of(product));
         when(productRepository.findByIdForStockUpdate(1)).thenReturn(Optional.of(product));
 
@@ -217,6 +237,7 @@ class OrderAddressIntegrationTest {
 
         CartResponse cart = CartResponse.builder()
                 .cartId(1)
+                .storeId(10)
                 .items(List.of(item))
                 .subtotal(BigDecimal.valueOf(500.00))
                 .build();
@@ -231,7 +252,7 @@ class OrderAddressIntegrationTest {
                 .build();
         when(checkoutService.previewCheckout(eq(101), any(CheckoutPreviewRequest.class))).thenReturn(preview);
 
-        Product product = Product.builder().productId(1).title("Steel Rebar").stockQty(100).build();
+        Product product = Product.builder().productId(1).seller(mockSeller).store(mockStore).title("Steel Rebar").stockQty(100).build();
         when(productRepository.findById(1)).thenReturn(Optional.of(product));
         when(productRepository.findByIdForStockUpdate(1)).thenReturn(Optional.of(product));
 
@@ -272,9 +293,9 @@ class OrderAddressIntegrationTest {
     @DisplayName("Order Checkout: Rejects order placement when address belongs to another customer")
     void testOrderCreation_RejectsUnauthorizedAddress() {
         CartItemResponse item = CartItemResponse.builder().productId(1).title("Steel Rebar").quantity(2).build();
-        CartResponse cart = CartResponse.builder().items(List.of(item)).build();
+        CartResponse cart = CartResponse.builder().storeId(10).items(List.of(item)).build();
 
-        Product product = Product.builder().productId(1).title("Steel Rebar").stockQty(100).build();
+        Product product = Product.builder().productId(1).seller(mockSeller).store(mockStore).title("Steel Rebar").stockQty(100).build();
         when(productRepository.findById(1)).thenReturn(Optional.of(product));
 
         when(cartService.getCart(101)).thenReturn(cart);

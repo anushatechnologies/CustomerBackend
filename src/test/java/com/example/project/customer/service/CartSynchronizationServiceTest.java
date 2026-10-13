@@ -28,6 +28,8 @@ import com.example.project.customer.repository.OrderRepository;
 import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.repository.SellerPayoutLedgerRepository;
 import com.example.project.customer.repository.StoreRepository;
+import com.example.project.customer.repository.HinchStoreVendorInventoryRepository;
+import com.example.project.customer.service.VendorSelectionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -87,6 +89,15 @@ class CartSynchronizationServiceTest {
 
         testCustomer = Customer.builder().customerId(101).email("customer@example.com").build();
         testStore = Store.builder().storeId(1).name("HinchMart Main Store").slug("main-store").status(StoreStatus.ACTIVE).build();
+
+        VendorSelectionService mockVendorSelection = org.mockito.Mockito.mock(VendorSelectionService.class);
+        HinchStoreVendorInventoryRepository mockHsvi = org.mockito.Mockito.mock(HinchStoreVendorInventoryRepository.class);
+        orderService.setVendorSelectionService(mockVendorSelection);
+        orderService.setHinchStoreVendorInventoryRepository(mockHsvi);
+        org.mockito.Mockito.lenient().when(mockVendorSelection.getRankedCandidateVendors(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> List.of(testStore));
+        org.mockito.Mockito.lenient().when(mockHsvi.atomicReserve(org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(1);
 
         testCart = Cart.builder()
                 .cartId(50)

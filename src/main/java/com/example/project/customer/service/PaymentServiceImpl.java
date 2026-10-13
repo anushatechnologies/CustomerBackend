@@ -246,6 +246,7 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
+    @Transactional
     public PaymentStatusResponse verifyPayment(Integer customerId, PaymentVerifyRequest request) {
         log.info("Verifying Razorpay payment for orderId: {}, paymentId: {}", request.getOrderId(),
                 request.getRazorpayPaymentId());
@@ -317,7 +318,9 @@ public class PaymentServiceImpl implements PaymentService {
 
         payment.setRazorpayPaymentId(request.getRazorpayPaymentId());
         payment.setRazorpaySignature(request.getRazorpaySignature());
-        payment.setStatus(rzpStatus != null ? rzpStatus.toUpperCase() : "CAPTURED");
+        if (!isRefundOrPendingState(payment.getStatus())) {
+            payment.setStatus(rzpStatus != null ? rzpStatus.toUpperCase() : "CAPTURED");
+        }
 
         if (rzpPayment.has("method") && rzpPayment.get("method") != null) {
             payment.setPaymentMethod(rzpPayment.get("method").toString().toUpperCase());
@@ -387,6 +390,15 @@ public class PaymentServiceImpl implements PaymentService {
             }
 
             if (order != null) {
+                // If payment captured AFTER order was cancelled or expired -> auto-refund
+                if ("CANCELLED".equalsIgnoreCase(order.getOrderStatus()) || "EXPIRED".equalsIgnoreCase(order.getPaymentStatus())) {
+                    log.warn("Payment {} captured for already cancelled/expired Order #{}. Initiating automatic refund.",
+                            request.getRazorpayPaymentId(), order.getOrderId());
+                    refundPaymentOrCreditWallet(payment, request.getRazorpayPaymentId(),
+                            "Late payment captured for cancelled/expired order #" + order.getOrderId());
+                    return mapToStatusResponse(payment, rzpPayment);
+                }
+
                 order.setPaymentStatus("PAID");
                 if (payment.getPaymentMethod() != null) {
                     order.setPaymentMethod(payment.getPaymentMethod());
@@ -395,6 +407,7 @@ public class PaymentServiceImpl implements PaymentService {
                         || "PENDING".equalsIgnoreCase(order.getOrderStatus());
                 if (transitioningToConfirmed) {
                     order.setOrderStatus("CONFIRMED");
+                    orderService.commitHinchStoreReservation(order);
                 }
                 orderRepository.save(order);
                 log.info("Order #{} marked as PAID and CONFIRMED", order.getOrderId());
@@ -493,6 +506,7 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
+    @Transactional
     public void handleWebhook(String payload, String signatureHeader) {
         log.info("Received Razorpay webhook event");
 
@@ -531,7 +545,9 @@ public class PaymentServiceImpl implements PaymentService {
 
             paymentRepository.findByRazorpayOrderId(rzpOrderId).ifPresent(p -> {
                 p.setRazorpayPaymentId(rzpPaymentId);
-                p.setStatus("CAPTURED");
+                if (!isRefundOrPendingState(p.getStatus())) {
+                    p.setStatus("CAPTURED");
+                }
                 if (method != null && !method.isBlank()) {
                     p.setPaymentMethod(method.toUpperCase());
                 }
@@ -542,6 +558,11 @@ public class PaymentServiceImpl implements PaymentService {
                     creditCustomerWallet(p.getCustomer().getCustomerId(), p.getAmount(), rzpPaymentId);
                 } else if (p.getOrder() != null) {
                     Order o = p.getOrder();
+                    if ("CANCELLED".equalsIgnoreCase(o.getOrderStatus()) || "EXPIRED".equalsIgnoreCase(o.getPaymentStatus())) {
+                        log.warn("Late payment received via webhook for already cancelled/expired Order #{}. Initiating automatic refund.", o.getOrderId());
+                        refundPaymentOrCreditWallet(p, rzpPaymentId, "Late payment captured via webhook for cancelled/expired order #" + o.getOrderId());
+                        return;
+                    }
                     o.setPaymentStatus("PAID");
                     if (p.getPaymentMethod() != null) {
                         o.setPaymentMethod(p.getPaymentMethod());
@@ -550,6 +571,7 @@ public class PaymentServiceImpl implements PaymentService {
                             || "PENDING".equalsIgnoreCase(o.getOrderStatus());
                     if (transitioningToConfirmed) {
                         o.setOrderStatus("CONFIRMED");
+                        orderService.commitHinchStoreReservation(o);
                     }
                     orderRepository.save(o);
                     log.info("Order #{} marked PAID via webhook", o.getOrderId());
@@ -636,6 +658,7 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
+    @Transactional
     public PaymentStatusResponse refundOrderPayment(Integer orderId, String reason) {
         if (orderId == null) {
             throw new IllegalArgumentException("Order ID cannot be null for refund processing.");
@@ -686,6 +709,23 @@ public class PaymentServiceImpl implements PaymentService {
      * customer's in-app wallet.
      */
     private void refundPaymentOrCreditWallet(Payment payment, String razorpayPaymentId, String reason) {
+        if (payment == null) {
+            return;
+        }
+        // Ensure entity is persisted so paymentId is available
+        if (payment.getPaymentId() == null) {
+            payment = paymentRepository.save(payment);
+        }
+
+        // (a) Claim the refund atomically so only one caller proceeds
+        int claimed = paymentRepository.claimRefundAtomic(payment.getPaymentId());
+        if (claimed == 0) {
+            log.info("Payment #{} refund already claimed or in final state (status: {}). Skipping duplicate refund attempt.",
+                    payment.getPaymentId(), payment.getStatus());
+            return;
+        }
+        payment.setStatus("REFUND_IN_PROGRESS");
+
         log.warn("Initiating customer protection refund for payment {} (Customer: #{}). Reason: {}",
                 razorpayPaymentId, payment.getCustomer() != null ? payment.getCustomer().getCustomerId() : "unknown",
                 reason);
@@ -694,11 +734,13 @@ public class PaymentServiceImpl implements PaymentService {
         if (razorpayPaymentId != null && !razorpayPaymentId.isBlank()) {
             try {
                 JSONObject refundRequest = new JSONObject();
+                // (c) receipt and notes kept for human/gateway reference only (not relied upon as the idempotency mechanism)
+                refundRequest.put("receipt", "ref_" + razorpayPaymentId.trim());
                 refundRequest.put("notes", new JSONObject()
                         .put("reason", "Automatic refund")
                         .put("details", reason != null ? reason : "Customer protection refund"));
                 com.razorpay.Refund rzpRefund = razorpayClient.payments.refund(razorpayPaymentId, refundRequest);
-                String refundId = rzpRefund.get("id");
+                String refundId = (rzpRefund != null && rzpRefund.has("id")) ? rzpRefund.get("id") : "processed";
                 payment.setStatus("REFUNDED");
                 payment.setErrorDescription(
                         "Payment automatically refunded via Razorpay (Refund ID: " + refundId + "). Reason: " + reason);
@@ -706,26 +748,51 @@ public class PaymentServiceImpl implements PaymentService {
                 refundedViaGateway = true;
                 log.info("Successfully processed gateway refund {} for payment {}", refundId, razorpayPaymentId);
             } catch (Exception rzpEx) {
-                log.error("Razorpay online refund failed for payment {}: {}. Falling back to customer wallet credit.",
+                log.error("Razorpay online refund threw exception for payment {}: {}. Inspecting existing refunds from gateway...",
                         razorpayPaymentId, rzpEx.getMessage(), rzpEx);
+                // (b) on a Razorpay exception, fetch the payment's refunds from Razorpay first:
+                // if one exists mark REFUNDED and stop; otherwise mark REFUND_PENDING (or similar) for retry/alert; do NOT credit the wallet on a bare exception;
+                try {
+                    List<com.razorpay.Refund> existingRefunds = razorpayClient.payments.fetchAllRefunds(razorpayPaymentId);
+                    if (existingRefunds != null && !existingRefunds.isEmpty()) {
+                        com.razorpay.Refund existing = existingRefunds.get(0);
+                        String refundId = (existing != null && existing.has("id")) ? existing.get("id") : "existing";
+                        payment.setStatus("REFUNDED");
+                        payment.setErrorDescription("Discovered existing gateway refund (Refund ID: " + refundId + "). Reason: " + reason);
+                        paymentRepository.save(payment);
+                        refundedViaGateway = true;
+                        log.info("Verified existing gateway refund {} for payment {}. Marked REFUNDED.", refundId, razorpayPaymentId);
+                    } else {
+                        payment.setStatus("REFUND_PENDING");
+                        payment.setErrorDescription("Razorpay refund failed (" + rzpEx.getMessage() + ") and no gateway refund exists. Queued for operational review/retry.");
+                        paymentRepository.save(payment);
+                        log.warn("No existing gateway refunds found for payment {}. Marked REFUND_PENDING for retry/alert.", razorpayPaymentId);
+                    }
+                } catch (Exception fetchEx) {
+                    log.error("Failed to inspect refunds from Razorpay for payment {}: {}", razorpayPaymentId, fetchEx.getMessage(), fetchEx);
+                    payment.setStatus("REFUND_PENDING");
+                    payment.setErrorDescription("Razorpay refund exception (" + rzpEx.getMessage() + ") and status check failed. Marked REFUND_PENDING.");
+                    paymentRepository.save(payment);
+                }
             }
         }
 
-        if (!refundedViaGateway && payment.getCustomer() != null) {
+        // Only offline or internal payments with no Razorpay payment ID credit wallet
+        if (!refundedViaGateway && (razorpayPaymentId == null || razorpayPaymentId.isBlank()) && payment.getCustomer() != null) {
             try {
                 creditCustomerWallet(
                         payment.getCustomer().getCustomerId(),
                         payment.getAmount(),
-                        "REFUND-" + (razorpayPaymentId != null ? razorpayPaymentId : ("PAY-" + payment.getPaymentId())),
+                        "REFUND-PAY-" + payment.getPaymentId(),
                         "REFUND",
                         "Automatic Wallet Refund: " + reason);
                 payment.setStatus("REFUNDED_TO_WALLET");
                 payment.setErrorDescription("Payment automatically credited to customer wallet. Reason: " + reason);
                 paymentRepository.save(payment);
-                log.info("Successfully credited {} INR to customer #{} wallet as fallback refund",
+                log.info("Successfully credited {} INR to customer #{} wallet as internal refund",
                         payment.getAmount(), payment.getCustomer().getCustomerId());
             } catch (Exception walletEx) {
-                log.error("CRITICAL: Failed to credit customer wallet for payment {}: {}", razorpayPaymentId,
+                log.error("CRITICAL: Failed to credit customer wallet for internal payment #{}: {}", payment.getPaymentId(),
                         walletEx.getMessage(), walletEx);
                 payment.setStatus("REFUND_FAILED");
                 payment.setErrorDescription("Auto-refund failed (" + reason + "). Immediate manual action required.");
@@ -886,5 +953,138 @@ public class PaymentServiceImpl implements PaymentService {
                 .createdAt(localPayment != null ? localPayment.getCreatedAt() : LocalDateTime.now())
                 .updatedAt(localPayment != null ? localPayment.getUpdatedAt() : LocalDateTime.now())
                 .build();
+    }
+
+    private boolean isRefundOrPendingState(String status) {
+        if (status == null) {
+            return false;
+        }
+        String s = status.trim().toUpperCase();
+        return "REFUND_IN_PROGRESS".equals(s)
+                || "REFUND_PENDING".equals(s)
+                || "REFUNDED".equals(s)
+                || "REFUNDED_TO_WALLET".equals(s);
+    }
+
+    @Override
+    @Transactional
+    public int reconcileStaleRefunds(int olderThanMinutes) {
+        LocalDateTime cutoff = LocalDateTime.now().minusMinutes(olderThanMinutes);
+        List<Payment> stalePayments = paymentRepository.findByStatusAndUpdatedAtBefore("REFUND_IN_PROGRESS", cutoff);
+        if (stalePayments.isEmpty()) {
+            return 0;
+        }
+
+        log.info("Found {} stale REFUND_IN_PROGRESS payments older than {} minutes. Reconciling with Razorpay...",
+                stalePayments.size(), olderThanMinutes);
+
+        int reconciledCount = 0;
+        for (Payment payment : stalePayments) {
+            String rzpPaymentId = payment.getRazorpayPaymentId();
+            if (rzpPaymentId != null && !rzpPaymentId.isBlank()) {
+                try {
+                    List<com.razorpay.Refund> existingRefunds = razorpayClient.payments.fetchAllRefunds(rzpPaymentId);
+                    if (existingRefunds != null && !existingRefunds.isEmpty()) {
+                        com.razorpay.Refund existing = existingRefunds.get(0);
+                        String refundId = (existing != null && existing.has("id")) ? existing.get("id") : "reconciled";
+                        payment.setStatus("REFUNDED");
+                        payment.setErrorDescription("Stale refund reconciled: Confirmed existing gateway refund (Refund ID: " + refundId + ")");
+                        paymentRepository.save(payment);
+                        if (payment.getOrder() != null) {
+                            payment.getOrder().setPaymentStatus("REFUNDED");
+                            orderRepository.save(payment.getOrder());
+                        }
+                        log.info("Stale refund #{} reconciled to REFUNDED (Gateway Refund ID: {})", payment.getPaymentId(), refundId);
+                        reconciledCount++;
+                    } else {
+                        payment.setStatus("REFUND_PENDING");
+                        payment.setErrorDescription("Stale REFUND_IN_PROGRESS older than " + olderThanMinutes + " min reconciled: No gateway refund found. Flagged for review/retry.");
+                        paymentRepository.save(payment);
+                        log.warn("Stale refund #{} had no gateway refund. Moved to REFUND_PENDING.", payment.getPaymentId());
+                        reconciledCount++;
+                    }
+                } catch (Exception e) {
+                    log.error("Failed to query gateway refunds for stale payment #{}: {}", payment.getPaymentId(), e.getMessage());
+                    payment.setStatus("REFUND_PENDING");
+                    payment.setErrorDescription("Stale refund reconciliation error: " + e.getMessage() + ". Flagged as REFUND_PENDING.");
+                    paymentRepository.save(payment);
+                    reconciledCount++;
+                }
+            } else {
+                payment.setStatus("REFUND_PENDING");
+                payment.setErrorDescription("Stale REFUND_IN_PROGRESS without Razorpay payment ID. Flagged for operational review.");
+                paymentRepository.save(payment);
+                reconciledCount++;
+            }
+        }
+        return reconciledCount;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PaymentStatusResponse> getPendingRefunds() {
+        return paymentRepository.findByStatusOrderByUpdatedAtDesc("REFUND_PENDING").stream()
+                .map(p -> mapToStatusResponse(p, null))
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public PaymentStatusResponse retryPendingRefund(Integer paymentId) {
+        if (paymentId == null) {
+            throw new IllegalArgumentException("Payment ID cannot be null for refund retry.");
+        }
+        Payment payment = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Payment not found with id: " + paymentId));
+
+        if (!"REFUND_PENDING".equalsIgnoreCase(payment.getStatus()) && !"REFUND_IN_PROGRESS".equalsIgnoreCase(payment.getStatus())) {
+            log.info("Payment #{} is in status '{}', no retry necessary.", paymentId, payment.getStatus());
+            return mapToStatusResponse(payment, null);
+        }
+
+        String rzpPaymentId = payment.getRazorpayPaymentId();
+        if (rzpPaymentId == null || rzpPaymentId.isBlank()) {
+            throw new IllegalStateException("Cannot retry gateway refund: Payment #" + paymentId + " has no Razorpay payment ID.");
+        }
+
+        try {
+            List<com.razorpay.Refund> existingRefunds = razorpayClient.payments.fetchAllRefunds(rzpPaymentId);
+            if (existingRefunds != null && !existingRefunds.isEmpty()) {
+                com.razorpay.Refund existing = existingRefunds.get(0);
+                String refundId = (existing != null && existing.has("id")) ? existing.get("id") : "verified";
+                payment.setStatus("REFUNDED");
+                payment.setErrorDescription("Retry verified existing gateway refund (Refund ID: " + refundId + ")");
+                paymentRepository.save(payment);
+                if (payment.getOrder() != null) {
+                    payment.getOrder().setPaymentStatus("REFUNDED");
+                    orderRepository.save(payment.getOrder());
+                }
+                log.info("Retry for payment #{} discovered existing gateway refund {}", paymentId, refundId);
+                return mapToStatusResponse(payment, null);
+            }
+
+            JSONObject refundRequest = new JSONObject();
+            refundRequest.put("receipt", "ref_" + rzpPaymentId.trim());
+            refundRequest.put("notes", new JSONObject()
+                    .put("reason", "Admin retry of pending refund")
+                    .put("paymentId", String.valueOf(paymentId)));
+            com.razorpay.Refund rzpRefund = razorpayClient.payments.refund(rzpPaymentId, refundRequest);
+            String refundId = (rzpRefund != null && rzpRefund.has("id")) ? rzpRefund.get("id") : "processed";
+            payment.setStatus("REFUNDED");
+            payment.setErrorDescription("Refund successfully executed via retry (Refund ID: " + refundId + ")");
+            paymentRepository.save(payment);
+            if (payment.getOrder() != null) {
+                payment.getOrder().setPaymentStatus("REFUNDED");
+                orderRepository.save(payment.getOrder());
+            }
+            log.info("Retry for payment #{} succeeded with refund ID {}", paymentId, refundId);
+        } catch (Exception e) {
+            log.error("Retry of pending refund for payment #{} failed: {}", paymentId, e.getMessage());
+            payment.setStatus("REFUND_PENDING");
+            payment.setErrorDescription("Refund retry failed: " + e.getMessage());
+            paymentRepository.save(payment);
+        }
+
+        return mapToStatusResponse(payment, null);
     }
 }

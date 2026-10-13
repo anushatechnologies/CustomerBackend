@@ -14,6 +14,7 @@ import com.example.project.customer.entity.Order;
 import com.example.project.customer.entity.OrderItem;
 import com.example.project.customer.entity.OutboxEvent;
 import com.example.project.customer.entity.Product;
+import com.example.project.customer.entity.Seller;
 import com.example.project.customer.entity.Store;
 import com.example.project.customer.entity.StoreStatus;
 import com.example.project.customer.repository.AddressRepository;
@@ -25,10 +26,12 @@ import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.repository.SellerPayoutLedgerRepository;
 import com.example.project.customer.repository.StoreInvoiceSequenceRepository;
 import com.example.project.customer.repository.StoreRepository;
+import com.example.project.customer.repository.HinchStoreVendorInventoryRepository;
 import com.example.project.customer.service.CartService;
 import com.example.project.customer.service.CheckoutService;
 import com.example.project.customer.service.OrderServiceImpl;
 import com.example.project.customer.service.StoreInvoiceSequenceService;
+import com.example.project.customer.service.VendorSelectionService;
 import com.example.project.customer.service.outbox.OutboxEventRelay;
 import com.example.project.customer.service.outbox.OutboxService;
 import com.example.project.customer.service.outbox.OutboxServiceImpl;
@@ -57,6 +60,7 @@ import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -104,6 +108,12 @@ public class HichExpressIntegrationTest {
     @Mock
     private KafkaTemplate<String, String> kafkaTemplate;
 
+    @Mock
+    private VendorSelectionService vendorSelectionService;
+
+    @Mock
+    private HinchStoreVendorInventoryRepository hinchStoreVendorInventoryRepository;
+
     private ObjectMapper objectMapper;
     private OutboxServiceImpl outboxService;
     private OutboxEventRelay outboxEventRelay;
@@ -117,7 +127,7 @@ public class HichExpressIntegrationTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        outboxService = new OutboxServiceImpl(outboxEventRepository, addressRepository, storeRepository, objectMapper);
+        outboxService = new OutboxServiceImpl(outboxEventRepository, addressRepository, storeRepository, objectMapper, null);
 
         outboxEventRelay = new OutboxEventRelay(outboxEventRepository);
         ReflectionTestUtils.setField(outboxEventRelay, "kafkaTemplate", kafkaTemplate);
@@ -139,11 +149,18 @@ public class HichExpressIntegrationTest {
                 null
         );
 
+        Seller mockSeller = Seller.builder()
+                .sellerId(55)
+                .companyName("Vendor Infra Co")
+                .build();
+
         mockStore = Store.builder()
-                .storeId(1)
-                .name("HinchStore Hyderabad Central")
-                .slug("hinchstore-hyd")
+                .storeId(10)
+                .seller(mockSeller)
+                .name("Vendor Store Hyderabad")
+                .slug("vendor-store-hyd")
                 .status(StoreStatus.ACTIVE)
+                .commissionRate(BigDecimal.ZERO)
                 .latitude(17.385044)
                 .longitude(78.486671)
                 .build();
@@ -161,6 +178,8 @@ public class HichExpressIntegrationTest {
 
         product1 = Product.builder()
                 .productId(101)
+                .seller(mockSeller)
+                .store(mockStore)
                 .title("Ultratech Cement 50kg")
                 .price(BigDecimal.valueOf(380.00))
                 .stockQty(500)
@@ -170,6 +189,8 @@ public class HichExpressIntegrationTest {
 
         product2 = Product.builder()
                 .productId(102)
+                .seller(mockSeller)
+                .store(mockStore)
                 .title("TMT Steel Rebar 12mm")
                 .price(BigDecimal.valueOf(650.00))
                 .stockQty(200)
@@ -230,14 +251,14 @@ public class HichExpressIntegrationTest {
                 .build();
 
         CartResponse cart = CartResponse.builder()
-                .storeId(1)
+                .storeId(10)
                 .items(List.of(item1, item2))
                 .subtotal(BigDecimal.valueOf(2820.00))
                 .grandTotal(BigDecimal.valueOf(3327.60))
                 .build();
 
         when(cartService.getCart(userId)).thenReturn(cart);
-        when(storeRepository.findById(1)).thenReturn(Optional.of(mockStore));
+        when(storeRepository.findById(10)).thenReturn(Optional.of(mockStore));
         when(productRepository.findById(101)).thenReturn(Optional.of(product1));
         when(productRepository.findById(102)).thenReturn(Optional.of(product2));
         when(productRepository.findByIdForStockUpdate(101)).thenReturn(Optional.of(product1));
@@ -335,7 +356,7 @@ public class HichExpressIntegrationTest {
         JsonNode json = objectMapper.readTree(outboxEvent.getPayload());
         assertThat(json.get("orderId").asInt()).isEqualTo(501);
         assertThat(json.get("customerId").asInt()).isEqualTo(85);
-        assertThat(json.get("storeId").asInt()).isEqualTo(1);
+        assertThat(json.get("storeId").asInt()).isEqualTo(10);
         assertThat(json.get("pickupLatitude").asDouble()).isEqualTo(17.385044);
         assertThat(json.get("pickupLongitude").asDouble()).isEqualTo(78.486671);
         assertThat(json.get("deliveryAddressId").asInt()).isEqualTo(25);

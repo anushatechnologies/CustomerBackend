@@ -89,6 +89,12 @@ public class ProductServiceImpl implements ProductService {
         @Autowired(required = false)
         private CartItemRepository cartItemRepository;
 
+        @Autowired(required = false)
+        private com.example.project.customer.repository.HinchStoreVendorInventoryRepository hinchStoreVendorInventoryRepository;
+
+        @Autowired(required = false)
+        private com.example.project.customer.config.PlatformMarketplaceProperties platformMarketplaceProperties;
+
         @Override
         @CacheEvict(value = "brands", allEntries = true)
         public ProductResponse create(ProductRequest request) {
@@ -156,7 +162,12 @@ public class ProductServiceImpl implements ProductService {
                                 .orElseThrow(() -> new ResourceNotFoundException(
                                                 "Product not found with id: " + id));
 
-                return mapToResponse(product);
+                ProductResponse resp = mapToResponse(product);
+                if (hinchStoreVendorInventoryRepository != null && platformMarketplaceProperties != null
+                        && product.getStore() != null && platformMarketplaceProperties.isPlatformStore(product.getStore().getStoreId())) {
+                        resp.setStockQty(hinchStoreVendorInventoryRepository.getAvailableStockForProduct(id));
+                }
+                return resp;
         }
 
         @Override
@@ -317,6 +328,27 @@ public class ProductServiceImpl implements ProductService {
                                 .stream()
                                 .map(this::mapToResponse)
                                 .toList();
+
+                if (hinchStoreVendorInventoryRepository != null && platformMarketplaceProperties != null) {
+                        List<Integer> platformProductIds = productPage.getContent().stream()
+                                        .filter(p -> p.getStore() != null && platformMarketplaceProperties.isPlatformStore(p.getStore().getStoreId()))
+                                        .map(Product::getProductId)
+                                        .toList();
+                        if (!platformProductIds.isEmpty()) {
+                                List<Object[]> stockRows = hinchStoreVendorInventoryRepository.getAvailableStockForProducts(platformProductIds);
+                                java.util.Map<Integer, Integer> stockMap = new java.util.HashMap<>();
+                                for (Object[] row : stockRows) {
+                                        if (row != null && row.length >= 2 && row[0] != null && row[1] != null) {
+                                                stockMap.put(((Number) row[0]).intValue(), ((Number) row[1]).intValue());
+                                        }
+                                }
+                                for (ProductResponse resp : data) {
+                                        if (platformProductIds.contains(resp.getProductId())) {
+                                                resp.setStockQty(stockMap.getOrDefault(resp.getProductId(), 0));
+                                        }
+                                }
+                        }
+                }
 
                 PaginationMeta pagination = PaginationMeta.of(
                                 page > 0 ? page : 1,

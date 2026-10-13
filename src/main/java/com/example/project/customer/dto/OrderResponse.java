@@ -25,6 +25,9 @@ public class OrderResponse {
     private Integer storeId;
     private String storeName;
     private String storeSlug;
+    private Integer fulfillmentStoreId;
+    private String fulfillmentStoreName;
+    private String inventoryState;
     private String storeInvoiceNumber;
     @Builder.Default
     private BigDecimal commissionRate = BigDecimal.ZERO;

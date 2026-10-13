@@ -22,4 +22,10 @@ public interface PaymentService {
     void handleWebhook(String payload, String signatureHeader);
 
     PaymentStatusResponse refundOrderPayment(Integer orderId, String reason);
+
+    int reconcileStaleRefunds(int olderThanMinutes);
+
+    List<PaymentStatusResponse> getPendingRefunds();
+
+    PaymentStatusResponse retryPendingRefund(Integer paymentId);
 }

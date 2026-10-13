@@ -30,6 +30,8 @@ import com.example.project.customer.repository.OrderRepository;
 import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.repository.SellerPayoutLedgerRepository;
 import com.example.project.customer.repository.StoreRepository;
+import com.example.project.customer.repository.HinchStoreVendorInventoryRepository;
+import com.example.project.customer.service.VendorSelectionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -72,6 +74,8 @@ class OrderSettlementWorkflowTest {
     @Mock private UserContextUtil userContextUtil;
     @Mock private SellerContextUtil sellerContextUtil;
     @Mock private CommissionRuleRepository commissionRuleRepository;
+    @Mock private VendorSelectionService vendorSelectionService;
+    @Mock private HinchStoreVendorInventoryRepository hinchStoreVendorInventoryRepository;
 
     private SettlementCalculationServiceImpl settlementCalculationService;
     private PlatformMarketplaceProperties platformMarketplaceProperties;
@@ -111,6 +115,8 @@ class OrderSettlementWorkflowTest {
         );
         orderService.setSettlementCalculationService(settlementCalculationService);
         orderService.setPlatformMarketplaceProperties(platformMarketplaceProperties);
+        orderService.setVendorSelectionService(vendorSelectionService);
+        orderService.setHinchStoreVendorInventoryRepository(hinchStoreVendorInventoryRepository);
 
         vendorSeller = Seller.builder().sellerId(42).name("Vendor Seller Co").build();
         vendorStore = Store.builder().storeId(10).seller(vendorSeller).name("Vendor Steel Depot").status(StoreStatus.ACTIVE).build();
@@ -301,11 +307,12 @@ class OrderSettlementWorkflowTest {
         when(cartService.getCart(userId)).thenReturn(cart);
         when(storeRepository.findById(1)).thenReturn(Optional.of(hinchStore));
         when(productRepository.findById(301)).thenReturn(Optional.of(hinchProduct));
-        when(productRepository.findByIdForStockUpdate(301)).thenReturn(Optional.of(hinchProduct));
         when(addressRepository.findByCustomer_CustomerIdAndId(userId, 99)).thenReturn(Optional.of(deliveryAddress));
         when(customerRepository.findById(userId)).thenReturn(Optional.of(mockCustomer));
         when(checkoutService.previewCheckout(eq(userId), any())).thenReturn(preview);
         when(storeInvoiceSequenceService.generateNextInvoiceNumber(hinchStore)).thenReturn("INV-HINCH-001");
+        when(vendorSelectionService.getRankedCandidateVendors(any(), eq(deliveryAddress))).thenReturn(List.of(vendorStore));
+        when(hinchStoreVendorInventoryRepository.atomicReserve(eq(301), eq(vendorStore.getStoreId()), eq(1))).thenReturn(1);
 
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
             Order o = inv.getArgument(0);
@@ -495,5 +502,49 @@ class OrderSettlementWorkflowTest {
         BigDecimal netReconciled = sumSellerPayable.add(sumHinchKeeps);
         BigDecimal customerPaidTaxable = preview.getTaxableAmount();
         assertThat(netReconciled).isEqualByComparingTo(customerPaidTaxable);
+    }
+
+    private void authenticateAsSeller(int sellerId) {
+        com.example.project.customer.security.FirebaseUserPrincipal principal =
+                com.example.project.customer.security.FirebaseUserPrincipal.builder()
+                        .firebaseUid("seller-uid-" + sellerId)
+                        .internalUserId(sellerId)
+                        .sellerId(sellerId)
+                        .email("seller@hinchmart.com")
+                        .role(com.example.project.customer.entity.Role.SELLER)
+                        .authorities(List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_SELLER")))
+                        .build();
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                        principal, null, principal.getAuthorities()
+                )
+        );
+    }
+
+    @Test
+    @DisplayName("7. Restrict DELIVERED status update: Sellers cannot mark DELIVERED; Only Admin can")
+    void testDeliveredPermission_SellerForbidden_AdminAllowed() {
+        int orderId = 6001;
+        Order mockOrder = Order.builder()
+                .orderId(orderId)
+                .orderStatus("SHIPPED")
+                .store(vendorStore)
+                .checkpoints(new ArrayList<>())
+                .build();
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(mockOrder));
+
+        // 1. Authenticated seller attempts DELIVERED -> throws ForbiddenException
+        authenticateAsSeller(vendorSeller.getSellerId());
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.example.project.customer.exception.ForbiddenException.class,
+                () -> orderService.updateOrderStatus(orderId, "DELIVERED", "Site", "Delivered")
+        );
+
+        // 2. Admin attempts DELIVERED -> succeeds
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(sellerPayoutLedgerRepository.findAllByOrder_OrderId(orderId)).thenReturn(List.of());
+        authenticateAsAdmin();
+        OrderResponse adminResp = orderService.updateOrderStatus(orderId, "DELIVERED", "Site", "Delivered");
+        assertThat(adminResp.getOrderStatus()).isEqualTo("DELIVERED");
     }
 }

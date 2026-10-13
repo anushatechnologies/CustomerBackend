@@ -19,13 +19,28 @@ import java.time.LocalDateTime;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class OutboxServiceImpl implements OutboxService {
 
     private final OutboxEventRepository outboxEventRepository;
     private final AddressRepository addressRepository;
     private final StoreRepository storeRepository;
     private final ObjectMapper objectMapper;
+    private final com.example.project.customer.config.PlatformMarketplaceProperties platformMarketplaceProperties;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public OutboxServiceImpl(
+            OutboxEventRepository outboxEventRepository,
+            AddressRepository addressRepository,
+            StoreRepository storeRepository,
+            ObjectMapper objectMapper,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) com.example.project.customer.config.PlatformMarketplaceProperties platformMarketplaceProperties
+    ) {
+        this.outboxEventRepository = outboxEventRepository;
+        this.addressRepository = addressRepository;
+        this.storeRepository = storeRepository;
+        this.objectMapper = objectMapper;
+        this.platformMarketplaceProperties = platformMarketplaceProperties;
+    }
 
     @Override
     @Transactional
@@ -44,13 +59,25 @@ public class OutboxServiceImpl implements OutboxService {
         }
 
         // 2. Resolve pickup location from Store
-        Store store = order.getStore();
-        if (store == null && order.getOrderId() != null) {
-            // Lazy load safeguard if detached
-            store = storeRepository.findAll().stream().findFirst().orElse(null);
+        boolean isHinchOrder = (order.getStore() != null && platformMarketplaceProperties != null
+                && platformMarketplaceProperties.isPlatformStore(order.getStore().getStoreId()));
+
+        Store pickupStore;
+        if (isHinchOrder) {
+            pickupStore = order.getFulfillmentStore();
+            if (pickupStore == null) {
+                throw new IllegalStateException("HinchStore order #" + order.getOrderId() + " has no fulfillment store configured.");
+            }
+        } else {
+            pickupStore = order.getFulfillmentStore() != null ? order.getFulfillmentStore() : order.getStore();
+            if (pickupStore == null && order.getOrderId() != null) {
+                // Lazy load safeguard if detached
+                pickupStore = storeRepository.findAll().stream().findFirst().orElse(null);
+            }
         }
-        Double pickupLat = store != null ? store.getLatitude() : null;
-        Double pickupLng = store != null ? store.getLongitude() : null;
+
+        Double pickupLat = pickupStore != null ? pickupStore.getLatitude() : null;
+        Double pickupLng = pickupStore != null ? pickupStore.getLongitude() : null;
 
         // 3. Resolve delivery location from Address
         Double deliveryLat = null;
@@ -67,13 +94,17 @@ public class OutboxServiceImpl implements OutboxService {
         OrderConfirmedEvent event = OrderConfirmedEvent.builder()
                 .orderId(order.getOrderId())
                 .customerId(order.getCustomer() != null ? order.getCustomer().getCustomerId() : null)
-                .storeId(store != null ? store.getStoreId() : null)
+                .storeId(order.getStore() != null ? order.getStore().getStoreId() : (pickupStore != null ? pickupStore.getStoreId() : null))
                 .pickupLatitude(pickupLat)
                 .pickupLongitude(pickupLng)
                 .deliveryAddressId(order.getAddressId())
                 .deliveryLatitude(deliveryLat)
                 .deliveryLongitude(deliveryLng)
                 .totalWeightKg(order.getTotalWeightKg())
+                .fulfillmentStoreId(order.getFulfillmentStore() != null ? order.getFulfillmentStore().getStoreId() : null)
+                .fulfillmentStoreName(order.getFulfillmentStore() != null ? order.getFulfillmentStore().getName() : null)
+                .pickupAddress(pickupStore != null ? pickupStore.getName() : null)
+                .eventVersion("2.0")
                 .build();
 
         try {

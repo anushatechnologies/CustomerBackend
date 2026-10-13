@@ -24,6 +24,8 @@ public class OrderSummaryResponse {
     private Integer storeId;
     private String storeName;
     private String storeSlug;
+    private Integer fulfillmentStoreId;
+    private String fulfillmentStoreName;
     private String storeInvoiceNumber;
     private BigDecimal totalAmount;
     private String orderStatus;
@@ -36,4 +38,5 @@ public class OrderSummaryResponse {
     private String firstItemImage;
     private LocalDateTime createdAt;
     private LocalDateTime estimatedDelivery;
+    private String inventoryState;
 }

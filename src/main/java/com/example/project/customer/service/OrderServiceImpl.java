@@ -14,6 +14,7 @@ import com.example.project.customer.dto.PaginationMeta;
 import com.example.project.customer.entity.Address;
 import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.Order;
+import com.example.project.customer.entity.OrderInventoryState;
 import com.example.project.customer.entity.OrderItem;
 import com.example.project.customer.entity.PayoutLedgerStatus;
 import com.example.project.customer.entity.Product;
@@ -53,6 +54,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -97,6 +99,19 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setPlatformMarketplaceProperties(PlatformMarketplaceProperties platformMarketplaceProperties) {
         this.platformMarketplaceProperties = platformMarketplaceProperties;
+    }
+
+    private VendorSelectionService vendorSelectionService;
+    private com.example.project.customer.repository.HinchStoreVendorInventoryRepository hinchStoreVendorInventoryRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setVendorSelectionService(VendorSelectionService vendorSelectionService) {
+        this.vendorSelectionService = vendorSelectionService;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setHinchStoreVendorInventoryRepository(com.example.project.customer.repository.HinchStoreVendorInventoryRepository hinchStoreVendorInventoryRepository) {
+        this.hinchStoreVendorInventoryRepository = hinchStoreVendorInventoryRepository;
     }
 
     @Autowired
@@ -191,15 +206,14 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         }
 
         // Feature flag gating for HinchStore checkout in Phase 1
-        if (platformMarketplaceProperties != null) {
-            boolean isHinchStoreOrder = platformMarketplaceProperties.isPlatformStore(store.getStoreId())
-                    || (store.getStoreId() != null && store.getStoreId().equals(1));
-            if (isHinchStoreOrder && !platformMarketplaceProperties.isHinchStoreCheckoutEnabled()) {
-                throw new IllegalStateException("HinchStore checkout is temporarily disabled pending Phase 2 vendor consignment rollout.");
-            }
+        boolean isHinchStoreOrder = (platformMarketplaceProperties != null)
+                ? platformMarketplaceProperties.isPlatformStore(store.getStoreId())
+                : (store.getStoreId() != null && store.getStoreId().equals(1));
+
+        if (isHinchStoreOrder && platformMarketplaceProperties != null && !platformMarketplaceProperties.isHinchStoreCheckoutEnabled()) {
+            throw new IllegalStateException("HinchStore checkout is temporarily disabled pending Phase 2 vendor consignment rollout.");
         }
 
-        // 2. Pre-checkout stock & price re-validation
         Map<Integer, Product> productMap = new HashMap<>();
         for (CartItemResponse ci : cart.getItems()) {
             Product p = productRepository.findById(ci.getProductId())
@@ -208,9 +222,11 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
             if (!p.isActive()) {
                 throw new IllegalStateException("Product '" + p.getTitle() + "' is no longer active in the catalog.");
             }
-            int availableStock = p.getStockQty() != null ? p.getStockQty() : 0;
-            if (availableStock < ci.getQuantity()) {
-                throw new ResourceConflictException("Insufficient stock for '" + p.getTitle() + "'. Requested: " + ci.getQuantity() + ", Available: " + availableStock);
+            if (!isHinchStoreOrder) {
+                int availableStock = p.getStockQty() != null ? p.getStockQty() : 0;
+                if (availableStock < ci.getQuantity()) {
+                    throw new ResourceConflictException("Insufficient stock for '" + p.getTitle() + "'. Requested: " + ci.getQuantity() + ", Available: " + availableStock);
+                }
             }
             productMap.put(ci.getProductId(), p);
         }
@@ -226,6 +242,60 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
             address = addressRepository.findByCustomer_CustomerIdAndIsDefaultTrue(uid)
                     .orElseGet(() -> addressRepository.findFirstByCustomer_CustomerIdOrderByCreatedAtDesc(uid)
                             .orElseThrow(() -> new ResourceNotFoundException("No delivery address found for user ID: " + uid)));
+        }
+
+        // Sort items ascending by productId for deadlock-free reservation & deterministic processing
+        List<CartItemResponse> sortedCartItems = new ArrayList<>(cart.getItems());
+        sortedCartItems.sort(Comparator.comparing(CartItemResponse::getProductId));
+
+        Store fulfillmentStore;
+        OrderInventoryState inventoryState;
+
+        if (isHinchStoreOrder) {
+            if (vendorSelectionService == null) {
+                throw new IllegalStateException("VendorSelectionService is required for HinchStore consignment order fulfillment.");
+            }
+            List<Store> candidates = vendorSelectionService.getRankedCandidateVendors(sortedCartItems, address);
+            if (candidates == null || candidates.isEmpty()) {
+                throw new ResourceConflictException("No consignment vendor has sufficient stock to fulfill this order.");
+            }
+
+            Store chosenVendor = null;
+            for (Store candidateStore : candidates) {
+                boolean allReserved = true;
+                List<CartItemResponse> reservedSoFar = new ArrayList<>();
+                for (CartItemResponse ci : sortedCartItems) {
+                    int rows = (hinchStoreVendorInventoryRepository != null)
+                            ? hinchStoreVendorInventoryRepository.atomicReserve(ci.getProductId(), candidateStore.getStoreId(), ci.getQuantity())
+                            : 0;
+                    if (rows > 0) {
+                        reservedSoFar.add(ci);
+                    } else {
+                        allReserved = false;
+                        break;
+                    }
+                }
+                if (allReserved) {
+                    chosenVendor = candidateStore;
+                    break;
+                } else {
+                    if (hinchStoreVendorInventoryRepository != null) {
+                        for (CartItemResponse ci : reservedSoFar) {
+                            hinchStoreVendorInventoryRepository.atomicRelease(ci.getProductId(), candidateStore.getStoreId(), ci.getQuantity());
+                        }
+                    }
+                    log.warn("Candidate vendor store #{} failed atomic reservation. Retrying next candidate...", candidateStore.getStoreId());
+                }
+            }
+
+            if (chosenVendor == null) {
+                throw new ResourceConflictException("Consignment stock reservation failed across all candidate vendor stores. Items may be out of stock.");
+            }
+            fulfillmentStore = chosenVendor;
+            inventoryState = OrderInventoryState.RESERVED;
+        } else {
+            fulfillmentStore = store;
+            inventoryState = OrderInventoryState.NONE;
         }
 
         CheckoutPreviewRequest previewReq = CheckoutPreviewRequest.builder()
@@ -290,6 +360,8 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 .orderNumber(orderNumber)
                 .customer(customer)
                 .store(store)
+                .fulfillmentStore(fulfillmentStore)
+                .inventoryState(inventoryState)
                 .storeInvoiceNumber(storeInvoiceNumber)
                 .commissionRate(BigDecimal.ZERO)
                 .commissionAmount(BigDecimal.ZERO)
@@ -336,11 +408,13 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         BigDecimal subtotal = preview.getSubtotal() != null ? preview.getSubtotal() : BigDecimal.ZERO;
         BigDecimal totalDiscount = preview.getDiscount() != null ? preview.getDiscount() : BigDecimal.ZERO;
         BigDecimal allocatedDiscountSum = BigDecimal.ZERO;
-        int itemCount = cart.getItems().size();
+        int itemCount = sortedCartItems.size();
 
         for (int i = 0; i < itemCount; i++) {
-            CartItemResponse ci = cart.getItems().get(i);
-            decrementStock(ci);
+            CartItemResponse ci = sortedCartItems.get(i);
+            if (!isHinchStoreOrder) {
+                decrementStock(ci);
+            }
 
             Product p = productMap.get(ci.getProductId());
             BigDecimal itemWeight = p != null ? p.getWeightKg() : null;
@@ -357,13 +431,12 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 }
             }
 
-            boolean isHinchItem = (platformMarketplaceProperties != null && platformMarketplaceProperties.isPlatformStore(store.getStoreId()))
-                    || (store.getStoreId() != null && store.getStoreId().equals(1));
-
-            // Seller resolution: for HinchStore items in Phase 1, seller_id is NULL.
+            // Seller resolution: for HinchStore items, seller is derived from fulfillmentStore (null-guarded).
             // For vendor items, derive strictly from product or store seller, throwing if missing.
             Seller itemSeller = null;
-            if (!isHinchItem) {
+            if (isHinchStoreOrder) {
+                itemSeller = null; // HinchStore platform items have NULL seller on OrderItem (Phase 1/2 rule)
+            } else {
                 if (p != null && p.getSeller() != null) {
                     itemSeller = p.getSeller();
                 } else if (store != null && store.getSeller() != null) {
@@ -386,14 +459,14 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                     }
                 }
                 settlement = settlementCalculationService.calculateItemSettlement(
-                        isHinchItem,
+                        isHinchStoreOrder,
                         ci.getLineTotal(),
                         itemDiscount,
                         categoryId
                 );
             }
 
-            if (!isHinchItem && itemDiscount.compareTo(BigDecimal.ZERO) > 0) {
+            if (!isHinchStoreOrder && itemDiscount.compareTo(BigDecimal.ZERO) > 0) {
                 log.warn("Coupon applied to vendor-own item: orderId={}, orderNumber={}, productId={}, couponAmount={}. Platform funds full vendor settlement.",
                         savedOrder.getOrderId(), savedOrder.getOrderNumber(), ci.getProductId(), itemDiscount);
             }
@@ -417,8 +490,8 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                     .lineTotal(ci.getLineTotal())
                     .lineGst(ci.getLineGst())
                     .seller(itemSeller)
-                    .fulfillmentStore(store)
-                    .isHinchStore(isHinchItem)
+                    .fulfillmentStore(fulfillmentStore)
+                    .isHinchStore(isHinchStoreOrder)
                     .commissionRate(commissionRate)
                     .sellerPayable(sellerPayable)
                     .hinchKeeps(hinchKeeps)
@@ -448,12 +521,12 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                     : sellerPayable.multiply(BigDecimal.valueOf(0.01)).setScale(2, RoundingMode.HALF_UP);
             BigDecimal netPayout = sellerPayable.subtract(tcsAmount);
 
-            PayoutLedgerStatus initialStatus = oi.getIsHinchStore()
-                    ? PayoutLedgerStatus.ON_HOLD
+            PayoutLedgerStatus initialStatus = isHinchStoreOrder
+                    ? (oi.getSeller() != null ? PayoutLedgerStatus.PENDING : PayoutLedgerStatus.ON_HOLD)
                     : PayoutLedgerStatus.PENDING;
 
             SellerPayoutLedger ledger = SellerPayoutLedger.builder()
-                    .store(oi.getFulfillmentStore() != null ? oi.getFulfillmentStore() : store)
+                    .store(fulfillmentStore != null ? fulfillmentStore : store)
                     .seller(oi.getSeller())
                     .order(savedOrder)
                     .orderItem(oi)
@@ -468,12 +541,14 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         }
 
         // Initial tracking checkpoint
+        String logisticsHub = (fulfillmentStore != null ? fulfillmentStore.getName() : store.getName()) + " Logistics Hub";
+        String fulfillmentTeam = (fulfillmentStore != null ? fulfillmentStore.getName() : store.getName()) + " fulfillment team.";
         TrackingCheckpoint initialCheckpoint = TrackingCheckpoint.builder()
                 .order(savedOrder)
                 .status("ORDER_PLACED")
                 .title("Order Placed & Verified")
-                .location(store.getName() + " Logistics Hub")
-                .description("Order confirmed and assigned to " + store.getName() + " fulfillment team.")
+                .location(logisticsHub)
+                .description("Order confirmed and assigned to " + fulfillmentTeam)
                 .timestamp(LocalDateTime.now())
                 .build();
         savedOrder.getCheckpoints().add(initialCheckpoint);
@@ -482,8 +557,9 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         // Clear active cart
         cartService.clearCart(uid);
 
-        log.info("Successfully created Order #{} (Invoice: {}) for Customer #{} from Store #{} ('{}')",
-                savedOrder.getOrderId(), storeInvoiceNumber, uid, store.getStoreId(), store.getName());
+        log.info("Successfully created Order #{} (Invoice: {}) for Customer #{} from Store #{} ('{}'), fulfilled by Store #{} ('{}')",
+                savedOrder.getOrderId(), storeInvoiceNumber, uid, store.getStoreId(), store.getName(),
+                fulfillmentStore.getStoreId(), fulfillmentStore.getName());
 
         return mapToOrderResponse(savedOrder);
     }
@@ -514,6 +590,28 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         int pageNumber = page > 0 ? page : 1;
         int pageSize = limit > 0 ? limit : 20;
         Pageable pageable = PageRequest.of(pageNumber - 1, pageSize);
+
+        if (SecurityUtils.isSeller()) {
+            Integer sellerId = SecurityUtils.getCurrentSellerId()
+                    .or(() -> {
+                        try {
+                            return Optional.ofNullable(sellerContextUtil.getCurrentSellerId());
+                        } catch (Exception e) {
+                            return Optional.empty();
+                        }
+                    })
+                    .orElseThrow(() -> new UnauthorizedException("Seller identity could not be resolved."));
+
+            Page<Order> orderPage = (status != null && !status.trim().isEmpty())
+                    ? orderRepository.findSellerOrdersByStatus(sellerId, status.trim().toUpperCase(), pageable)
+                    : orderRepository.findSellerOrders(sellerId, pageable);
+
+            List<OrderSummaryResponse> summaryList = orderPage.getContent().stream()
+                    .map(this::mapToSummaryResponse)
+                    .toList();
+            PaginationMeta meta = PaginationMeta.of(pageNumber, pageSize, orderPage.getTotalElements());
+            return ApiResponse.paginated("Orders retrieved successfully", summaryList, meta);
+        }
 
         if (userId == null) {
             throw new UnauthorizedException("Authentication required: User ID must not be null.");
@@ -679,6 +777,13 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         Order order = findOrder(id);
         validateOrderStatusUpdateAccess(order);
         String upperStatus = status.trim().toUpperCase();
+
+        if ("DELIVERED".equals(upperStatus)) {
+            if (!SecurityUtils.isAdmin()) {
+                throw new ForbiddenException("Access denied: Only administrators can mark an order as DELIVERED.");
+            }
+        }
+
         order.setOrderStatus(upperStatus);
 
         if (carrierName != null && !carrierName.isBlank()) {
@@ -754,20 +859,23 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         order.getCheckpoints().add(cp);
         Order updated = orderRepository.save(order);
 
-        // Restore stock
-        if (order.getItems() != null) {
-            for (OrderItem item : order.getItems()) {
-                restoreStock(item);
+        boolean isHinchOrder = (order.getStore() != null && platformMarketplaceProperties != null
+                && platformMarketplaceProperties.isPlatformStore(order.getStore().getStoreId()))
+                || (order.getStore() != null && Integer.valueOf(1).equals(order.getStore().getStoreId()));
+
+        if (isHinchOrder) {
+            releaseOrRestockHinchStoreInventory(order);
+        } else {
+            // Restore stock for vendor-own product
+            if (order.getItems() != null) {
+                for (OrderItem item : order.getItems()) {
+                    restoreStock(item);
+                }
             }
         }
 
-        // Mark payout ledger as REVERSED
-        sellerPayoutLedgerRepository.findByOrder_OrderId(order.getOrderId()).ifPresent(ledger -> {
-            ledger.setStatus(PayoutLedgerStatus.REVERSED);
-            ledger.setClawbackReason("Pre-dispatch order cancellation by customer");
-            sellerPayoutLedgerRepository.save(ledger);
-            log.info("Payout ledger for Order #{} marked as REVERSED", order.getOrderId());
-        });
+        // Mark all payout ledgers as REVERSED
+        reverseOrderLedgers(order.getOrderId(), description != null ? description : "Pre-dispatch order cancellation by customer");
 
         // Publish cancellation event to trigger automatic customer refund
         if (eventPublisher != null) {
@@ -778,6 +886,109 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         }
 
         return mapToOrderResponse(updated);
+    }
+
+    @Override
+    @Transactional
+    public void commitHinchStoreReservation(Order order) {
+        if (order == null || order.getOrderId() == null) {
+            return;
+        }
+        int rows = orderRepository.transitionInventoryState(
+                order.getOrderId(),
+                OrderInventoryState.RESERVED,
+                OrderInventoryState.COMMITTED
+        );
+        if (rows > 0) {
+            Store fulfillmentStore = order.getFulfillmentStore();
+            if (fulfillmentStore != null && hinchStoreVendorInventoryRepository != null && order.getItems() != null) {
+                List<OrderItem> items = new ArrayList<>(order.getItems());
+                items.sort(Comparator.comparing(OrderItem::getProductId));
+                for (OrderItem item : items) {
+                    hinchStoreVendorInventoryRepository.atomicCommit(
+                            item.getProductId(),
+                            fulfillmentStore.getStoreId(),
+                            item.getQuantity()
+                    );
+                }
+            }
+            order.setInventoryState(OrderInventoryState.COMMITTED);
+            log.info("Committed inventory reservation for HinchStore Order #{}", order.getOrderId());
+        } else {
+            log.info("Order #{} inventory state transition RESERVED -> COMMITTED skipped (state is not RESERVED or already transitioned).", order.getOrderId());
+        }
+    }
+
+    @Override
+    @Transactional
+    public void releaseOrRestockHinchStoreInventory(Order order) {
+        if (order == null || order.getOrderId() == null) {
+            return;
+        }
+
+        if (order.getInventoryState() == OrderInventoryState.COMMITTED) {
+            // Attempt COMMITTED -> RESTOCKED transition
+            int rowsRestocked = orderRepository.transitionInventoryState(
+                    order.getOrderId(),
+                    OrderInventoryState.COMMITTED,
+                    OrderInventoryState.RESTOCKED
+            );
+            if (rowsRestocked > 0) {
+                Store fulfillmentStore = order.getFulfillmentStore();
+                if (fulfillmentStore != null && hinchStoreVendorInventoryRepository != null && order.getItems() != null) {
+                    List<OrderItem> items = new ArrayList<>(order.getItems());
+                    items.sort(Comparator.comparing(OrderItem::getProductId));
+                    for (OrderItem item : items) {
+                        hinchStoreVendorInventoryRepository.atomicRestock(
+                                item.getProductId(),
+                                fulfillmentStore.getStoreId(),
+                                item.getQuantity()
+                        );
+                    }
+                }
+                order.setInventoryState(OrderInventoryState.RESTOCKED);
+                reverseOrderLedgers(order.getOrderId(), "Order cancelled post-commit, restocked at vendor store");
+                log.info("Restocked committed inventory for Order #{}", order.getOrderId());
+            }
+            return;
+        }
+
+        // Attempt RESERVED -> RELEASED transition
+        int rowsReleased = orderRepository.transitionInventoryState(
+                order.getOrderId(),
+                OrderInventoryState.RESERVED,
+                OrderInventoryState.RELEASED
+        );
+        if (rowsReleased > 0) {
+            Store fulfillmentStore = order.getFulfillmentStore();
+            if (fulfillmentStore != null && hinchStoreVendorInventoryRepository != null && order.getItems() != null) {
+                List<OrderItem> items = new ArrayList<>(order.getItems());
+                items.sort(Comparator.comparing(OrderItem::getProductId));
+                for (OrderItem item : items) {
+                    hinchStoreVendorInventoryRepository.atomicRelease(
+                            item.getProductId(),
+                            fulfillmentStore.getStoreId(),
+                            item.getQuantity()
+                    );
+                }
+            }
+            order.setInventoryState(OrderInventoryState.RELEASED);
+            reverseOrderLedgers(order.getOrderId(), "Consignment reservation released");
+            log.info("Released reserved inventory for Order #{}", order.getOrderId());
+        }
+    }
+
+    private void reverseOrderLedgers(Integer orderId, String reason) {
+        List<SellerPayoutLedger> ledgers = sellerPayoutLedgerRepository.findAllByOrder_OrderId(orderId);
+        if (ledgers.isEmpty()) {
+            sellerPayoutLedgerRepository.findByOrder_OrderId(orderId).ifPresent(ledgers::add);
+        }
+        for (SellerPayoutLedger ledger : ledgers) {
+            ledger.setStatus(PayoutLedgerStatus.REVERSED);
+            ledger.setClawbackReason(reason);
+            sellerPayoutLedgerRepository.save(ledger);
+            log.info("Payout ledger #{} for Order #{} marked as REVERSED", ledger.getId(), orderId);
+        }
     }
 
     @Override
@@ -862,6 +1073,28 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 .build();
     }
 
+    private boolean isSellerAuthorizedForOrder(Order order, Integer sellerId) {
+        if (order == null || sellerId == null) {
+            return false;
+        }
+        // 1. Fulfilling vendor holding the stock
+        if (order.getFulfillmentStore() != null && order.getFulfillmentStore().getSeller() != null
+                && sellerId.equals(order.getFulfillmentStore().getSeller().getSellerId())) {
+            return true;
+        }
+        // 2. Direct store seller
+        if (order.getStore() != null && order.getStore().getSeller() != null
+                && sellerId.equals(order.getStore().getSeller().getSellerId())) {
+            return true;
+        }
+        // 3. Any item seller
+        if (order.getItems() != null) {
+            return order.getItems().stream()
+                    .anyMatch(oi -> oi.getSeller() != null && sellerId.equals(oi.getSeller().getSellerId()));
+        }
+        return false;
+    }
+
     private void validateOrderReadAccess(Order order) {
         if (SecurityUtils.isAdmin()) {
             return;
@@ -870,15 +1103,14 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         if (currentUserId != null && order.getCustomer() != null && currentUserId.equals(order.getCustomer().getCustomerId())) {
             return;
         }
-        // Check if current user is the seller who owns the store of this order
+        // Check if current user is the seller who owns the store or is fulfilling this order
         Optional<Integer> currentSellerId = SecurityUtils.getCurrentSellerId();
         if (currentSellerId.isEmpty()) {
             try {
                 currentSellerId = Optional.ofNullable(sellerContextUtil.getCurrentSellerId());
             } catch (Exception ignored) {}
         }
-        if (currentSellerId.isPresent() && order.getStore() != null && order.getStore().getSeller() != null
-                && currentSellerId.get().equals(order.getStore().getSeller().getSellerId())) {
+        if (currentSellerId.isPresent() && isSellerAuthorizedForOrder(order, currentSellerId.get())) {
             return;
         }
         throw new ForbiddenException("Access denied: You do not have permission to access Order #" + order.getOrderId());
@@ -904,8 +1136,7 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                     currentSellerId = Optional.ofNullable(sellerContextUtil.getCurrentSellerId());
                 } catch (Exception ignored) {}
             }
-            if (currentSellerId.isPresent() && order.getStore() != null && order.getStore().getSeller() != null
-                    && currentSellerId.get().equals(order.getStore().getSeller().getSellerId())) {
+            if (currentSellerId.isPresent() && isSellerAuthorizedForOrder(order, currentSellerId.get())) {
                 return;
             }
         }
@@ -924,12 +1155,11 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                     currentSellerId = Optional.ofNullable(sellerContextUtil.getCurrentSellerId());
                 } catch (Exception ignored) {}
             }
-            if (currentSellerId.isPresent() && order.getStore() != null && order.getStore().getSeller() != null
-                    && currentSellerId.get().equals(order.getStore().getSeller().getSellerId())) {
+            if (currentSellerId.isPresent() && isSellerAuthorizedForOrder(order, currentSellerId.get())) {
                 return;
             }
         }
-        throw new ForbiddenException("Access denied: Only administrators or the store owner can update order status.");
+        throw new ForbiddenException("Access denied: Only administrators or the fulfilling store owner can update order status.");
     }
 
     private synchronized void restoreStock(OrderItem orderItem) {
@@ -988,6 +1218,9 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 .storeId(store != null ? store.getStoreId() : null)
                 .storeName(store != null ? store.getName() : null)
                 .storeSlug(store != null ? store.getSlug() : null)
+                .fulfillmentStoreId(o.getFulfillmentStore() != null ? o.getFulfillmentStore().getStoreId() : null)
+                .fulfillmentStoreName(o.getFulfillmentStore() != null ? o.getFulfillmentStore().getName() : null)
+                .inventoryState(o.getInventoryState() != null ? o.getInventoryState().name() : null)
                 .storeInvoiceNumber(o.getStoreInvoiceNumber())
                 .totalAmount(o.getTotalAmount())
                 .orderStatus(o.getOrderStatus())
@@ -1043,6 +1276,9 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 .storeId(store != null ? store.getStoreId() : null)
                 .storeName(store != null ? store.getName() : null)
                 .storeSlug(store != null ? store.getSlug() : null)
+                .fulfillmentStoreId(o.getFulfillmentStore() != null ? o.getFulfillmentStore().getStoreId() : null)
+                .fulfillmentStoreName(o.getFulfillmentStore() != null ? o.getFulfillmentStore().getName() : null)
+                .inventoryState(o.getInventoryState() != null ? o.getInventoryState().name() : null)
                 .storeInvoiceNumber(o.getStoreInvoiceNumber())
                 .commissionRate(o.getCommissionRate() != null ? o.getCommissionRate() : BigDecimal.ZERO)
                 .commissionAmount(o.getCommissionAmount() != null ? o.getCommissionAmount() : BigDecimal.ZERO)
