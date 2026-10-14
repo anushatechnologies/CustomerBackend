@@ -28,4 +28,6 @@ public interface PaymentService {
     List<PaymentStatusResponse> getPendingRefunds();
 
     PaymentStatusResponse retryPendingRefund(Integer paymentId);
+
+    int sweepCancelledOrderRefunds(int ageMinutes, int batchSize);
 }

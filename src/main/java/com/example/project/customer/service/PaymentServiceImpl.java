@@ -39,6 +39,13 @@ import com.example.project.customer.repository.AddressRepository;
 
 import com.example.project.customer.service.outbox.OutboxService;
 
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.event.TransactionalEventListener;
+import org.springframework.transaction.event.TransactionPhase;
 import java.util.List;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -67,6 +74,10 @@ public class PaymentServiceImpl implements PaymentService {
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.example.project.customer.service.helper.PaymentRefundExecutionHelper paymentRefundExecutionHelper;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @org.springframework.context.annotation.Lazy
+    private PaymentService self;
 
     private int doClaimRefundAtomic(Integer paymentId) {
         if (paymentRefundExecutionHelper != null) {
@@ -685,27 +696,35 @@ public class PaymentServiceImpl implements PaymentService {
         }
     }
 
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onOrderCancelled(OrderCancelledEvent event) {
         log.info("Handling OrderCancelledEvent for Order #{}. Initiating automatic refund...", event.orderId());
         try {
-            refundOrderPayment(event.orderId(), event.reason());
+            PaymentService service = (self != null) ? self : this;
+            service.refundOrderPayment(event.orderId(), event.reason());
         } catch (Exception e) {
             log.error("Failed to process auto-refund for cancelled Order #{}: {}", event.orderId(), e.getMessage(), e);
         }
     }
 
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public PaymentStatusResponse refundOrderPayment(Integer orderId, String reason) {
         if (orderId == null) {
             throw new IllegalArgumentException("Order ID cannot be null for refund processing.");
         }
 
         Payment payment = paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(orderId).orElse(null);
+        Order order = (payment != null && payment.getOrder() != null)
+                ? payment.getOrder()
+                : orderRepository.findById(orderId).orElse(null);
+
+        if (order != null) {
+            validateOrderRefundAccess(order, payment);
+        }
+
         if (payment == null) {
             log.warn("No payment record found for Order #{}. Marking paymentStatus as REFUNDED directly.", orderId);
-            Order order = orderRepository.findById(orderId).orElse(null);
             if (order != null) {
                 order.setPaymentStatus("REFUNDED");
                 orderRepository.save(order);
@@ -727,13 +746,57 @@ public class PaymentServiceImpl implements PaymentService {
         refundPaymentOrCreditWallet(payment, payment.getRazorpayPaymentId(),
                 reason != null ? reason : "Order #" + orderId + " cancellation refund");
 
-        Order order = payment.getOrder() != null ? payment.getOrder() : orderRepository.findById(orderId).orElse(null);
         if (order != null) {
-            order.setPaymentStatus("REFUNDED");
+            if ("REFUNDED".equalsIgnoreCase(payment.getStatus()) || "REFUNDED_TO_WALLET".equalsIgnoreCase(payment.getStatus())) {
+                order.setPaymentStatus("REFUNDED");
+            } else if ("REFUND_PENDING".equalsIgnoreCase(payment.getStatus())) {
+                order.setPaymentStatus("REFUND_PENDING");
+            }
             orderRepository.save(order);
         }
 
         return mapToStatusResponse(payment, null);
+    }
+
+    private void validateOrderRefundAccess(Order order, Payment payment) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            // Internal call (event listener, background task, system execution)
+            return;
+        }
+
+        if (SecurityUtils.isAdmin()) {
+            return;
+        }
+
+        Integer currentUserId = SecurityUtils.getCurrentUserId().orElse(null);
+        if (currentUserId == null && userContextUtil != null) {
+            try {
+                currentUserId = userContextUtil.getOptionalCurrentUserId();
+            } catch (Exception ignored) {}
+        }
+
+        if (currentUserId != null && order != null && order.getCustomer() != null && currentUserId.equals(order.getCustomer().getCustomerId())) {
+            String status = order.getOrderStatus();
+            boolean isAllowedOrderState = "CANCELLED".equalsIgnoreCase(status)
+                    || "RETURNED".equalsIgnoreCase(status);
+            if (!isAllowedOrderState) {
+                throw new IllegalStateException("Refund can only be requested for cancelled or returned orders.");
+            }
+
+            if (payment != null) {
+                String paymentStatus = payment.getStatus();
+                if ("REFUND_PENDING".equalsIgnoreCase(paymentStatus) || "REFUND_IN_PROGRESS".equalsIgnoreCase(paymentStatus)) {
+                    throw new ForbiddenException("Retrying pending or in-progress refunds is restricted to administrators.");
+                }
+                if (!"CAPTURED".equalsIgnoreCase(paymentStatus)) {
+                    throw new IllegalStateException("Refund can only be requested for captured payments (current status: " + paymentStatus + ").");
+                }
+            }
+            return;
+        }
+
+        throw new ForbiddenException("Access denied: You can only refund your own orders.");
     }
 
     /**
@@ -1125,5 +1188,46 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         return mapToStatusResponse(payment, null);
+    }
+
+    @Override
+    public int sweepCancelledOrderRefunds(int ageMinutes, int batchSize) {
+        java.time.LocalDateTime cutoff = java.time.LocalDateTime.now().minusMinutes(ageMinutes);
+        int effectiveBatchSize = batchSize > 0 ? batchSize : 50;
+        List<Payment> candidates = paymentRepository.findCapturedPaymentsForCancelledOrdersOlderThan(
+                cutoff, PageRequest.of(0, effectiveBatchSize));
+
+        if (candidates.isEmpty()) {
+            return 0;
+        }
+
+        log.info("Cancelled-order refund sweep found {} candidate payments older than {} minutes (cutoff: {})",
+                candidates.size(), ageMinutes, cutoff);
+
+        int processedCount = 0;
+        for (Payment payment : candidates) {
+            if (payment.getOrder() == null || payment.getOrder().getOrderId() == null) {
+                continue;
+            }
+            Integer orderId = payment.getOrder().getOrderId();
+            try {
+                PaymentStatusResponse resp;
+                if (self != null) {
+                    resp = self.refundOrderPayment(orderId, "Cancelled-order background refund sweep");
+                } else {
+                    resp = refundOrderPayment(orderId, "Cancelled-order background refund sweep");
+                }
+                if (resp != null && ("REFUNDED".equalsIgnoreCase(resp.getStatus()) || "REFUNDED_TO_WALLET".equalsIgnoreCase(resp.getStatus()))) {
+                    processedCount++;
+                }
+            } catch (Exception e) {
+                log.warn("Cancelled-order refund sweep: Refund failed for Order #{}, Payment #{}: {}",
+                        orderId, payment.getPaymentId(), e.getMessage());
+                // One failure never stops the rest of the batch
+            }
+        }
+
+        log.info("Cancelled-order refund sweep completed. Processed {}/{} payments.", processedCount, candidates.size());
+        return processedCount;
     }
 }

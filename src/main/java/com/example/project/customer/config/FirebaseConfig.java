@@ -52,11 +52,11 @@ public class FirebaseConfig {
     }
 
     /**
-     * Returns true if the current active profile is the 'dev' profile, where Firebase
-     * credentials are optional (H2 in-memory DB is used and token verification is skipped).
+     * Returns true if the current active profile is 'dev' or 'test', where Firebase
+     * credentials can fall back to an isolated dev stub.
      */
-    private boolean isDevProfile() {
-        return environment.acceptsProfiles(Profiles.of("dev"));
+    private boolean isDevOrTestProfile() {
+        return environment.acceptsProfiles(Profiles.of("dev", "test"));
     }
 
     @Bean
@@ -69,11 +69,13 @@ public class FirebaseConfig {
             GoogleCredentials credentials = resolveCredentials();
 
             if (credentials == null) {
-                if (isDevProfile()) {
-                    // In dev mode, Firebase is optional. Return null — the filter handles a null FirebaseApp gracefully.
-                    log.warn("[DEV] No Firebase credentials configured. Firebase token verification is DISABLED. "
-                            + "Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_CLIENT_ID, FIREBASE_PRIVATE_KEY, FIREBASE_PRIVATE_KEY_ID to enable it.");
-                    return null;
+                if (isDevOrTestProfile()) {
+                    log.warn("[DEV] No Firebase credentials configured. Initializing dev stub FirebaseApp. Firebase token verification is DISABLED.");
+                    FirebaseOptions devOptions = FirebaseOptions.builder()
+                            .setCredentials(GoogleCredentials.create(new com.google.auth.oauth2.AccessToken("dev-mock-token", new java.util.Date(System.currentTimeMillis() + 864000000L))))
+                            .setProjectId("hinchmart-dev-stub")
+                            .build();
+                    return FirebaseApp.initializeApp(devOptions);
                 }
                 // In production, missing credentials is a fatal misconfiguration.
                 throw new IllegalStateException(
@@ -107,9 +109,20 @@ public class FirebaseConfig {
             // Re-throw fatal configuration errors immediately — do NOT swallow.
             throw e;
         } catch (Exception e) {
-            if (isDevProfile()) {
-                log.warn("[DEV] Firebase Admin SDK initialization failed: {}. Firebase token verification is DISABLED.", e.getMessage());
-                return null;
+            if (isDevOrTestProfile()) {
+                log.warn("[DEV] Firebase Admin SDK initialization failed: {}. Initializing dev stub FirebaseApp.", e.getMessage());
+                try {
+                    if (!FirebaseApp.getApps().isEmpty()) {
+                        return FirebaseApp.getInstance();
+                    }
+                    FirebaseOptions devOptions = FirebaseOptions.builder()
+                            .setCredentials(GoogleCredentials.create(new com.google.auth.oauth2.AccessToken("dev-mock-token", new java.util.Date(System.currentTimeMillis() + 864000000L))))
+                            .setProjectId("hinchmart-dev-stub")
+                            .build();
+                    return FirebaseApp.initializeApp(devOptions);
+                } catch (Exception ignored) {
+                    return null;
+                }
             }
             // In production, any initialization failure is fatal.
             throw new IllegalStateException(
@@ -119,7 +132,7 @@ public class FirebaseConfig {
     }
 
     @Bean
-    public FirebaseAuth firebaseAuth(FirebaseApp firebaseApp) {
+    public FirebaseAuth firebaseAuth(@org.springframework.beans.factory.annotation.Autowired(required = false) FirebaseApp firebaseApp) {
         if (firebaseApp == null) {
             log.warn("FirebaseApp is null — FirebaseAuth bean will be null. Token verification is disabled.");
             return null;

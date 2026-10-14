@@ -27,4 +27,9 @@ public interface PaymentRepository extends JpaRepository<Payment, Integer> {
     List<Payment> findByStatusAndUpdatedAtBefore(String status, java.time.LocalDateTime cutoff);
 
     List<Payment> findByStatusOrderByUpdatedAtDesc(String status);
+
+    @org.springframework.data.jpa.repository.Query("SELECT p FROM Payment p WHERE p.order IS NOT NULL AND p.order.orderStatus = 'CANCELLED' AND p.status = 'CAPTURED' AND p.createdAt < :cutoff ORDER BY p.createdAt ASC")
+    List<Payment> findCapturedPaymentsForCancelledOrdersOlderThan(
+            @org.springframework.data.repository.query.Param("cutoff") java.time.LocalDateTime cutoff,
+            org.springframework.data.domain.Pageable pageable);
 }

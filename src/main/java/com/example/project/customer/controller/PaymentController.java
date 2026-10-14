@@ -111,6 +111,7 @@ public class PaymentController {
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<PaymentStatusResponse>> refundOrderPayment(
             @PathVariable Integer orderId) {
+        userContextUtil.getCurrentUserId();
         PaymentStatusResponse response = paymentService.refundOrderPayment(orderId, "Customer or admin requested cancellation refund");
         return ResponseEntity.ok(ApiResponse.ok("Order refund processed successfully", response));
     }

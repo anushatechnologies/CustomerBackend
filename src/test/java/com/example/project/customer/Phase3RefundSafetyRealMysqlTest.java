@@ -1,5 +1,6 @@
 package com.example.project.customer;
 
+import com.example.project.customer.dto.PaymentStatusResponse;
 import com.example.project.customer.dto.PaymentVerifyRequest;
 import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.Order;
@@ -45,7 +46,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import com.example.project.customer.entity.Role;
+import com.example.project.customer.security.FirebaseUserPrincipal;
+import com.example.project.customer.service.OrderService;
+import com.example.project.customer.exception.ForbiddenException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -123,10 +131,14 @@ public class Phase3RefundSafetyRealMysqlTest {
     private PaymentService paymentService;
 
     @Autowired
+    private OrderService orderService;
+
+    @Autowired
     private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.clearContext();
         mockPaymentClient = mock(PaymentClient.class);
         ReflectionTestUtils.setField(razorpayClient, "payments", mockPaymentClient);
         ReflectionTestUtils.setField(paymentService, "keyId", "rzp_test_mockKey");
@@ -409,5 +421,351 @@ public class Phase3RefundSafetyRealMysqlTest {
         Payment reloaded = paymentRepository.findById(p.getPaymentId()).orElseThrow();
         assertThat(reloaded.getStatus()).isEqualTo("REFUND_PENDING");
         assertThat(reloaded.getErrorDescription()).contains("Gateway connection timeout");
+    }
+
+    @Test
+    @DisplayName("5. Security: User A cannot refund User B's order (ForbiddenException)")
+    void testUserCannotRefundAnotherUsersOrder() {
+        Customer customerA = createCustomer("9100000005");
+        Customer customerB = createCustomer("9100000006");
+        Store store = createStore("store-ownership-test");
+
+        Order orderB = orderRepository.save(Order.builder()
+                .customer(customerB)
+                .store(store)
+                .orderNumber("ORD-OWNERSHIP-001")
+                .orderStatus("CANCELLED")
+                .paymentStatus("REFUND_PENDING")
+                .commissionRate(new BigDecimal("5.00"))
+                .totalAmount(new BigDecimal("999.00"))
+                .build());
+
+        paymentRepository.save(Payment.builder()
+                .customer(customerB)
+                .order(orderB)
+                .amount(new BigDecimal("999.00"))
+                .currency("INR")
+                .status("CAPTURED")
+                .razorpayPaymentId("pay_ownership_123")
+                .razorpayOrderId("order_ownership_123")
+                .build());
+
+        // Authenticate as User A
+        FirebaseUserPrincipal principalA = FirebaseUserPrincipal.create(
+                customerA.getCustomerId(), "firebase_uid_a", "user_a@test.com", "User A", Role.CUSTOMER, null, true, null);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(principalA, null, principalA.getAuthorities()));
+
+        try {
+            assertThatThrownBy(() -> paymentService.refundOrderPayment(orderB.getOrderId(), "User A attempting refund"))
+                    .isInstanceOf(ForbiddenException.class)
+                    .hasMessageContaining("You can only refund your own orders");
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    @DisplayName("6. Real MySQL: Order cancel triggers @TransactionalEventListener(AFTER_COMMIT) and executes refund in REQUIRES_NEW")
+    void testOrderCancel_TriggersAfterCommitRefund_RealMysql() throws Exception {
+        Customer c = createCustomer("9100000007");
+        Store s = createStore("store-cancel-event-test");
+
+        Order o = orderRepository.save(Order.builder()
+                .customer(c)
+                .store(s)
+                .orderNumber("ORD-CANCEL-AUTO-001")
+                .orderStatus("PLACED")
+                .paymentStatus("PAID")
+                .commissionRate(new BigDecimal("5.00"))
+                .totalAmount(new BigDecimal("1200.00"))
+                .build());
+
+        Payment p = paymentRepository.save(Payment.builder()
+                .customer(c)
+                .order(o)
+                .amount(new BigDecimal("1200.00"))
+                .currency("INR")
+                .status("CAPTURED")
+                .razorpayPaymentId("pay_cancel_auto_999")
+                .razorpayOrderId("order_cancel_auto_999")
+                .build());
+
+        Refund mockRefund = mock(Refund.class);
+        when(mockRefund.has("id")).thenReturn(true);
+        when(mockRefund.get("id")).thenReturn("rfnd_cancel_auto_success");
+        when(mockPaymentClient.refund(eq("pay_cancel_auto_999"), any(JSONObject.class))).thenReturn(mockRefund);
+
+        FirebaseUserPrincipal principal = FirebaseUserPrincipal.create(
+                c.getCustomerId(), "firebase_uid_c", "user_c@test.com", "User C", Role.CUSTOMER, null, true, null);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
+
+        try {
+            // Goes through full OrderServiceImpl.cancelOrder
+            orderService.cancelOrder(o.getOrderId(), "Hyderabad", "Customer cancelled before dispatch");
+
+            Order reloadedOrder = orderRepository.findById(o.getOrderId()).orElseThrow();
+            assertThat(reloadedOrder.getOrderStatus()).isEqualTo("CANCELLED");
+
+            // Payment must have been processed by the AFTER_COMMIT listener and reached REFUNDED
+            Payment reloadedPayment = paymentRepository.findById(p.getPaymentId()).orElseThrow();
+            assertThat(reloadedPayment.getStatus()).isEqualTo("REFUNDED");
+            verify(mockPaymentClient, atLeastOnce()).refund(eq("pay_cancel_auto_999"), any(JSONObject.class));
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    @DisplayName("7. Real MySQL: Order cancel when gateway fails transitions to REFUND_PENDING without unhandled exception")
+    void testOrderCancel_WhenGatewayFails_BecomesRefundPending_RealMysql() throws Exception {
+        Customer c = createCustomer("9100000008");
+        Store s = createStore("store-cancel-fail-test");
+
+        Order o = orderRepository.save(Order.builder()
+                .customer(c)
+                .store(s)
+                .orderNumber("ORD-CANCEL-FAIL-001")
+                .orderStatus("PLACED")
+                .paymentStatus("PAID")
+                .commissionRate(new BigDecimal("5.00"))
+                .totalAmount(new BigDecimal("1200.00"))
+                .build());
+
+        Payment p = paymentRepository.save(Payment.builder()
+                .customer(c)
+                .order(o)
+                .amount(new BigDecimal("1200.00"))
+                .currency("INR")
+                .status("CAPTURED")
+                .razorpayPaymentId("pay_cancel_fail_999")
+                .razorpayOrderId("order_cancel_fail_999")
+                .build());
+
+        when(mockPaymentClient.refund(eq("pay_cancel_fail_999"), any(JSONObject.class)))
+                .thenThrow(new com.razorpay.RazorpayException("Simulated gateway error"));
+        when(mockPaymentClient.fetchAllRefunds("pay_cancel_fail_999"))
+                .thenReturn(Collections.emptyList());
+
+        FirebaseUserPrincipal principal = FirebaseUserPrincipal.create(
+                c.getCustomerId(), "firebase_uid_fail", "user_fail@test.com", "User Fail", Role.CUSTOMER, null, true, null);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
+
+        try {
+            // Cancel order through OrderServiceImpl.cancelOrder
+            orderService.cancelOrder(o.getOrderId(), "Hyderabad", "Customer cancelled before dispatch");
+
+            Order reloadedOrder = orderRepository.findById(o.getOrderId()).orElseThrow();
+            assertThat(reloadedOrder.getOrderStatus()).isEqualTo("CANCELLED");
+            assertThat(reloadedOrder.getPaymentStatus()).isEqualTo("REFUND_PENDING");
+
+            Payment reloadedPayment = paymentRepository.findById(p.getPaymentId()).orElseThrow();
+            assertThat(reloadedPayment.getStatus()).isEqualTo("REFUND_PENDING");
+            assertThat(reloadedPayment.getErrorDescription()).contains("Simulated gateway error");
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    @DisplayName("8. Sweep: refunds a CANCELLED order with a CAPTURED payment older than the threshold")
+    void testSweep_RefundsCancelledOrderWithCapturedPayment_OlderThanThreshold() throws Exception {
+        jdbcTemplate.update("DELETE FROM payments");
+        jdbcTemplate.update("DELETE FROM order_items");
+        jdbcTemplate.update("DELETE FROM orders");
+
+        Customer c = createCustomer("9100000010");
+        Store s = createStore("store-sweep-1");
+        Order o = orderRepository.save(Order.builder()
+                .customer(c).store(s).orderNumber("ORD-SWEEP-001").orderStatus("CANCELLED")
+                .paymentStatus("PAID").commissionRate(new BigDecimal("5.00")).totalAmount(new BigDecimal("1500.00")).build());
+
+        Payment p = paymentRepository.save(Payment.builder()
+                .customer(c).order(o).amount(new BigDecimal("1500.00")).currency("INR").status("CAPTURED")
+                .razorpayPaymentId("pay_sweep_001").razorpayOrderId("order_sweep_001").build());
+
+        jdbcTemplate.update("UPDATE payments SET created_at = ? WHERE payment_id = ?",
+                java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(15)), p.getPaymentId());
+
+        Refund mockRefund = mock(Refund.class);
+        when(mockRefund.has("id")).thenReturn(true);
+        when(mockRefund.get("id")).thenReturn("rfnd_sweep_001_success");
+        when(mockPaymentClient.refund(eq("pay_sweep_001"), any(JSONObject.class))).thenReturn(mockRefund);
+
+        int swept = paymentService.sweepCancelledOrderRefunds(10, 50);
+        assertThat(swept).isEqualTo(1);
+
+        Payment reloaded = paymentRepository.findById(p.getPaymentId()).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo("REFUNDED");
+        verify(mockPaymentClient, times(1)).refund(eq("pay_sweep_001"), any(JSONObject.class));
+    }
+
+    @Test
+    @DisplayName("9. Sweep: skips payments newer than threshold, and payments already REFUNDED, IN_PROGRESS, or PENDING")
+    void testSweep_SkipsNewerPaymentsAndNonCapturedStates() {
+        jdbcTemplate.update("DELETE FROM payments");
+        jdbcTemplate.update("DELETE FROM order_items");
+        jdbcTemplate.update("DELETE FROM orders");
+
+        Customer c = createCustomer("9100000011");
+        Store s = createStore("store-sweep-2");
+
+        // 1. Newer than threshold (created 2 mins ago, threshold is 10 mins)
+        Order o1 = orderRepository.save(Order.builder().customer(c).store(s).orderNumber("ORD-SWEEP-NEW").orderStatus("CANCELLED").paymentStatus("PAID").commissionRate(new BigDecimal("5.00")).totalAmount(new BigDecimal("100.00")).build());
+        Payment p1 = paymentRepository.save(Payment.builder().customer(c).order(o1).amount(new BigDecimal("100.00")).currency("INR").status("CAPTURED").razorpayPaymentId("pay_swp_new").razorpayOrderId("ord_swp_new").build());
+        jdbcTemplate.update("UPDATE payments SET created_at = ? WHERE payment_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(2)), p1.getPaymentId());
+
+        // 2. Already REFUNDED (older than 15 mins)
+        Order o2 = orderRepository.save(Order.builder().customer(c).store(s).orderNumber("ORD-SWEEP-RFND").orderStatus("CANCELLED").paymentStatus("REFUNDED").commissionRate(new BigDecimal("5.00")).totalAmount(new BigDecimal("100.00")).build());
+        Payment p2 = paymentRepository.save(Payment.builder().customer(c).order(o2).amount(new BigDecimal("100.00")).currency("INR").status("REFUNDED").razorpayPaymentId("pay_swp_rfnd").razorpayOrderId("ord_swp_rfnd").build());
+        jdbcTemplate.update("UPDATE payments SET created_at = ? WHERE payment_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(15)), p2.getPaymentId());
+
+        // 3. Already REFUND_IN_PROGRESS (older than 15 mins)
+        Order o3 = orderRepository.save(Order.builder().customer(c).store(s).orderNumber("ORD-SWEEP-INPROG").orderStatus("CANCELLED").paymentStatus("PAID").commissionRate(new BigDecimal("5.00")).totalAmount(new BigDecimal("100.00")).build());
+        Payment p3 = paymentRepository.save(Payment.builder().customer(c).order(o3).amount(new BigDecimal("100.00")).currency("INR").status("REFUND_IN_PROGRESS").razorpayPaymentId("pay_swp_inprog").razorpayOrderId("ord_swp_inprog").build());
+        jdbcTemplate.update("UPDATE payments SET created_at = ? WHERE payment_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(15)), p3.getPaymentId());
+
+        // 4. Already REFUND_PENDING (older than 15 mins)
+        Order o4 = orderRepository.save(Order.builder().customer(c).store(s).orderNumber("ORD-SWEEP-PEND").orderStatus("CANCELLED").paymentStatus("REFUND_PENDING").commissionRate(new BigDecimal("5.00")).totalAmount(new BigDecimal("100.00")).build());
+        Payment p4 = paymentRepository.save(Payment.builder().customer(c).order(o4).amount(new BigDecimal("100.00")).currency("INR").status("REFUND_PENDING").razorpayPaymentId("pay_swp_pend").razorpayOrderId("ord_swp_pend").build());
+        jdbcTemplate.update("UPDATE payments SET created_at = ? WHERE payment_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(15)), p4.getPaymentId());
+
+        int swept = paymentService.sweepCancelledOrderRefunds(10, 50);
+        assertThat(swept).isEqualTo(0);
+        verifyNoInteractions(mockPaymentClient);
+    }
+
+    @Test
+    @DisplayName("10. Sweep concurrency: two sweep runs at once call Razorpay mock once per payment")
+    void testSweep_ConcurrentRuns_CallsRazorpayMockOnce() throws Exception {
+        jdbcTemplate.update("DELETE FROM payments");
+        jdbcTemplate.update("DELETE FROM order_items");
+        jdbcTemplate.update("DELETE FROM orders");
+
+        Customer c = createCustomer("9100000012");
+        Store s = createStore("store-sweep-3");
+        Order o = orderRepository.save(Order.builder().customer(c).store(s).orderNumber("ORD-SWEEP-CONC").orderStatus("CANCELLED").paymentStatus("PAID").commissionRate(new BigDecimal("5.00")).totalAmount(new BigDecimal("2000.00")).build());
+        Payment p = paymentRepository.save(Payment.builder().customer(c).order(o).amount(new BigDecimal("2000.00")).currency("INR").status("CAPTURED").razorpayPaymentId("pay_swp_conc_001").razorpayOrderId("ord_swp_conc_001").build());
+        jdbcTemplate.update("UPDATE payments SET created_at = ? WHERE payment_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(20)), p.getPaymentId());
+
+        Refund mockRefund = mock(Refund.class);
+        when(mockRefund.has("id")).thenReturn(true);
+        when(mockRefund.get("id")).thenReturn("rfnd_conc_sweep_success");
+        when(mockPaymentClient.refund(eq("pay_swp_conc_001"), any(JSONObject.class))).thenReturn(mockRefund);
+
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        java.util.concurrent.CountDownLatch readyLatch = new java.util.concurrent.CountDownLatch(2);
+        java.util.concurrent.CountDownLatch startLatch = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicInteger totalSwept = new java.util.concurrent.atomic.AtomicInteger(0);
+
+        for (int i = 0; i < 2; i++) {
+            executor.submit(() -> {
+                readyLatch.countDown();
+                try {
+                    startLatch.await();
+                    int count = paymentService.sweepCancelledOrderRefunds(10, 50);
+                    totalSwept.addAndGet(count);
+                } catch (Exception ignored) {}
+            });
+        }
+
+        readyLatch.await();
+        startLatch.countDown();
+        executor.shutdown();
+        executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS);
+
+        assertThat(totalSwept.get()).isEqualTo(1);
+        verify(mockPaymentClient, times(1)).refund(eq("pay_swp_conc_001"), any(JSONObject.class));
+    }
+
+    @Test
+    @DisplayName("11. Sweep resilience: one failing payment does not stop others, ends as REFUND_PENDING")
+    void testSweep_OneFailingPaymentDoesNotStopOthers() throws Exception {
+        jdbcTemplate.update("DELETE FROM payments");
+        jdbcTemplate.update("DELETE FROM order_items");
+        jdbcTemplate.update("DELETE FROM orders");
+
+        Customer c = createCustomer("9100000013");
+        Store s = createStore("store-sweep-4");
+
+        // Payment 1: Fails at gateway
+        Order o1 = orderRepository.save(Order.builder().customer(c).store(s).orderNumber("ORD-SWP-FAIL1").orderStatus("CANCELLED").paymentStatus("PAID").commissionRate(new BigDecimal("5.00")).totalAmount(new BigDecimal("500.00")).build());
+        Payment p1 = paymentRepository.save(Payment.builder().customer(c).order(o1).amount(new BigDecimal("500.00")).currency("INR").status("CAPTURED").razorpayPaymentId("pay_swp_fail_1").razorpayOrderId("ord_swp_fail_1").build());
+        jdbcTemplate.update("UPDATE payments SET created_at = ? WHERE payment_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(20)), p1.getPaymentId());
+
+        // Payment 2: Succeeds
+        Order o2 = orderRepository.save(Order.builder().customer(c).store(s).orderNumber("ORD-SWP-SUCC2").orderStatus("CANCELLED").paymentStatus("PAID").commissionRate(new BigDecimal("5.00")).totalAmount(new BigDecimal("800.00")).build());
+        Payment p2 = paymentRepository.save(Payment.builder().customer(c).order(o2).amount(new BigDecimal("800.00")).currency("INR").status("CAPTURED").razorpayPaymentId("pay_swp_succ_2").razorpayOrderId("ord_swp_succ_2").build());
+        jdbcTemplate.update("UPDATE payments SET created_at = ? WHERE payment_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(15)), p2.getPaymentId());
+
+        when(mockPaymentClient.refund(eq("pay_swp_fail_1"), any(JSONObject.class)))
+                .thenThrow(new com.razorpay.RazorpayException("Simulated gateway failure for payment 1"));
+        when(mockPaymentClient.fetchAllRefunds("pay_swp_fail_1"))
+                .thenReturn(Collections.emptyList());
+
+        Refund mockRefund2 = mock(Refund.class);
+        when(mockRefund2.has("id")).thenReturn(true);
+        when(mockRefund2.get("id")).thenReturn("rfnd_swp_succ_2");
+        when(mockPaymentClient.refund(eq("pay_swp_succ_2"), any(JSONObject.class))).thenReturn(mockRefund2);
+
+        int swept = paymentService.sweepCancelledOrderRefunds(10, 50);
+        // Only successful refunds are counted in processedCount
+        assertThat(swept).isEqualTo(1);
+
+        Payment reloaded1 = paymentRepository.findById(p1.getPaymentId()).orElseThrow();
+        assertThat(reloaded1.getStatus()).isEqualTo("REFUND_PENDING");
+        assertThat(reloaded1.getErrorDescription()).contains("Simulated gateway failure");
+
+        Payment reloaded2 = paymentRepository.findById(p2.getPaymentId()).orElseThrow();
+        assertThat(reloaded2.getStatus()).isEqualTo("REFUNDED");
+    }
+
+    @Test
+    @DisplayName("12. Security: Customer cannot retry REFUND_PENDING, but Admin can")
+    void testCustomerCannotRetryRefundPending_AdminCan() throws Exception {
+        Customer c = createCustomer("9100000014");
+        Store s = createStore("store-retry-perm");
+
+        Order o = orderRepository.save(Order.builder().customer(c).store(s).orderNumber("ORD-RETRY-001").orderStatus("CANCELLED").paymentStatus("REFUND_PENDING").commissionRate(new BigDecimal("5.00")).totalAmount(new BigDecimal("1000.00")).build());
+        Payment p = paymentRepository.save(Payment.builder().customer(c).order(o).amount(new BigDecimal("1000.00")).currency("INR").status("REFUND_PENDING").errorDescription("Previous gateway timeout").razorpayPaymentId("pay_retry_perm_001").razorpayOrderId("ord_retry_perm_001").build());
+
+        // 1. Authenticate as Customer -> refundOrderPayment must throw ForbiddenException
+        FirebaseUserPrincipal customerPrincipal = FirebaseUserPrincipal.create(
+                c.getCustomerId(), "fb_uid_cust_retry", "cust_retry@test.com", "Cust Retry", Role.CUSTOMER, null, true, null);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(customerPrincipal, null, customerPrincipal.getAuthorities()));
+
+        try {
+            assertThatThrownBy(() -> paymentService.refundOrderPayment(o.getOrderId(), "Customer retry"))
+                    .isInstanceOf(ForbiddenException.class)
+                    .hasMessageContaining("Retrying pending or in-progress refunds is restricted to administrators");
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+
+        // 2. Authenticate as Admin -> retryPendingRefund must succeed
+        FirebaseUserPrincipal adminPrincipal = FirebaseUserPrincipal.create(
+                9999, "fb_uid_admin_retry", "admin_retry@test.com", "Admin Retry", Role.ADMIN, null, true, null);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(adminPrincipal, null, adminPrincipal.getAuthorities()));
+
+        Refund mockAdminRefund = mock(Refund.class);
+        when(mockAdminRefund.has("id")).thenReturn(true);
+        when(mockAdminRefund.get("id")).thenReturn("rfnd_admin_retry_succ");
+        when(mockPaymentClient.fetchAllRefunds("pay_retry_perm_001")).thenReturn(Collections.emptyList());
+        when(mockPaymentClient.refund(eq("pay_retry_perm_001"), any(JSONObject.class))).thenReturn(mockAdminRefund);
+
+        try {
+            PaymentStatusResponse response = paymentService.retryPendingRefund(p.getPaymentId());
+            assertThat(response).isNotNull();
+            assertThat(response.getStatus()).isEqualTo("REFUNDED");
+
+            Payment reloaded = paymentRepository.findById(p.getPaymentId()).orElseThrow();
+            assertThat(reloaded.getStatus()).isEqualTo("REFUNDED");
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
     }
 }
