@@ -808,13 +808,14 @@ public class ProductServiceImpl implements ProductService {
                 product.setDescription(
                                 req.getDescription());
 
+                if (req.getMrp() != null && req.getPrice() != null && req.getMrp().compareTo(req.getPrice()) < 0) {
+                    throw new IllegalArgumentException("Selling price cannot exceed MRP (Maximum Retail Price).");
+                }
                 product.setPrice(
                                 req.getPrice());
 
                 product.setMrp(
-                                req.getMrp() != null
-                                                ? req.getMrp()
-                                                : req.getPrice());
+                                req.getMrp());
 
                 product.setStockQty(
                                 req.getStockQty());

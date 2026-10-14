@@ -18,6 +18,10 @@ public class HotDealRequest {
 
     private Integer displayOrder;
 
+    private java.math.BigDecimal discountPercentage;
+
+    private java.math.BigDecimal dealPrice;
+
     @Builder.Default
     @JsonProperty("active")
     private Boolean active = true;

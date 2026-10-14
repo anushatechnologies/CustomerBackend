@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @Testcontainers
 @SpringBootTest
+@org.springframework.test.context.ActiveProfiles("dev")
 @EnabledIf("isDockerAvailable")
 public class Phase2RepositoryJpaValidationTest {
 
@@ -62,6 +63,12 @@ public class Phase2RepositoryJpaValidationTest {
         }
     }
 
+    @org.springframework.boot.test.mock.mockito.MockBean
+    private com.google.firebase.FirebaseApp firebaseApp;
+
+    @org.springframework.boot.test.mock.mockito.MockBean
+    private com.google.firebase.auth.FirebaseAuth firebaseAuth;
+
     @Autowired(required = false)
     private PaymentRepository paymentRepository;
 
@@ -83,6 +90,18 @@ public class Phase2RepositoryJpaValidationTest {
     @Autowired(required = false)
     private SellerRepository sellerRepository;
 
+    @Autowired(required = false)
+    private jakarta.persistence.EntityManager entityManager;
+
+    @Autowired
+    private org.springframework.core.env.Environment environment;
+
+    @org.junit.jupiter.api.BeforeEach
+    void logProperties() {
+        System.out.println(">>> EFFECTIVE spring.jpa.hibernate.ddl-auto: " + environment.getProperty("spring.jpa.hibernate.ddl-auto"));
+        System.out.println(">>> EFFECTIVE spring.flyway.enabled: " + environment.getProperty("spring.flyway.enabled"));
+    }
+
     @Test
     @Transactional
     @DisplayName("1. Repository @Query: claimRefundAtomic validates against Hibernate & updates row atomically")
@@ -100,6 +119,10 @@ public class Phase2RepositoryJpaValidationTest {
         int updated = paymentRepository.claimRefundAtomic(p.getPaymentId());
         assertThat(updated).isEqualTo(1);
 
+        if (entityManager != null) {
+            entityManager.clear();
+        }
+
         Payment reloaded = paymentRepository.findById(p.getPaymentId()).orElseThrow();
         assertThat(reloaded.getStatus()).isEqualTo("REFUND_IN_PROGRESS");
 
@@ -113,13 +136,15 @@ public class Phase2RepositoryJpaValidationTest {
     @DisplayName("2. Repository @Query: transitionInventoryState validates against Hibernate & ensures conditional transition")
     void testTransitionInventoryState() {
         Customer c = customerRepository.save(Customer.builder().name("Order Customer").phone("9999977777").build());
-        Store s = storeRepository.save(Store.builder().name("Test Store").slug("test-store-transition").status(StoreStatus.ACTIVE).build());
+        Seller seller = sellerRepository.save(Seller.builder().name("Store Seller").companyName("Store Co").email("seller_trans@test.com").phone("9999911111").build());
+        Store s = storeRepository.save(Store.builder().seller(seller).name("Test Store").slug("test-store-transition").status(StoreStatus.ACTIVE).build());
         Order o = orderRepository.save(Order.builder()
                 .customer(c)
                 .store(s)
                 .orderNumber("ORD-TRANS-001")
                 .orderStatus("PLACED")
                 .paymentStatus("PENDING")
+                .commissionRate(new BigDecimal("5.00"))
                 .inventoryState(OrderInventoryState.RESERVED)
                 .totalAmount(new BigDecimal("500.00"))
                 .build());
@@ -127,6 +152,10 @@ public class Phase2RepositoryJpaValidationTest {
         // Transition RESERVED -> COMMITTED
         int rows = orderRepository.transitionInventoryState(o.getOrderId(), OrderInventoryState.RESERVED, OrderInventoryState.COMMITTED);
         assertThat(rows).isEqualTo(1);
+
+        if (entityManager != null) {
+            entityManager.clear();
+        }
 
         Order reloaded = orderRepository.findById(o.getOrderId()).orElseThrow();
         assertThat(reloaded.getInventoryState()).isEqualTo(OrderInventoryState.COMMITTED);
@@ -140,9 +169,9 @@ public class Phase2RepositoryJpaValidationTest {
     @Transactional
     @DisplayName("3. Repository @Query: atomicReserve, atomicCommit, atomicRelease, atomicRestock, and availability SUM validate against Hibernate")
     void testConsignmentInventoryQueriesAndSum() {
-        Seller seller = sellerRepository.save(Seller.builder().companyName("Inventory Vendor").build());
+        Seller seller = sellerRepository.save(Seller.builder().name("Inv Seller").companyName("Inventory Vendor").email("seller_inv@test.com").phone("9999922222").build());
         Store vendorStore = storeRepository.save(Store.builder().seller(seller).name("Consignment Store").slug("consignment-store").status(StoreStatus.ACTIVE).build());
-        Product product = productRepository.save(Product.builder().store(vendorStore).title("Cement Bag").price(new BigDecimal("350.00")).active(true).build());
+        Product product = productRepository.save(Product.builder().store(vendorStore).title("Cement Bag").slug("cement-bag").unit("pcs").price(new BigDecimal("350.00")).active(true).build());
 
         HinchStoreVendorInventory inv = hinchStoreVendorInventoryRepository.save(HinchStoreVendorInventory.builder()
                 .product(product)
@@ -184,7 +213,7 @@ public class Phase2RepositoryJpaValidationTest {
     @Transactional
     @DisplayName("4. Repository @Query: findSellerOrders & findSellerOrdersByStatus validate against Hibernate")
     void testFindSellerOrdersQueries() {
-        Seller seller = sellerRepository.save(Seller.builder().companyName("Order Vendor").build());
+        Seller seller = sellerRepository.save(Seller.builder().name("Order Seller").companyName("Order Vendor").email("seller_order@test.com").phone("9999933333").build());
         Store store = storeRepository.save(Store.builder().seller(seller).name("Seller Store").slug("seller-store-orders").status(StoreStatus.ACTIVE).build());
         Customer c = customerRepository.save(Customer.builder().name("Buyer").phone("9999966666").build());
 
@@ -195,6 +224,7 @@ public class Phase2RepositoryJpaValidationTest {
                 .orderNumber("ORD-SELLER-001")
                 .orderStatus("CONFIRMED")
                 .paymentStatus("PAID")
+                .commissionRate(new BigDecimal("5.00"))
                 .totalAmount(new BigDecimal("1200.00"))
                 .build());
 
@@ -212,7 +242,8 @@ public class Phase2RepositoryJpaValidationTest {
     @Transactional
     @DisplayName("5. Repository @Query: findExpiredUnpaidHinchOrders validates against Hibernate")
     void testFindExpiredUnpaidHinchOrdersQuery() {
-        Store platformStore = storeRepository.save(Store.builder().name("HinchPlatform Central").slug("hinch-platform").status(StoreStatus.ACTIVE).build());
+        Seller seller = sellerRepository.save(Seller.builder().name("Platform Seller").companyName("Platform Co").email("seller_platform@test.com").phone("9999944444").build());
+        Store platformStore = storeRepository.save(Store.builder().seller(seller).name("HinchPlatform Central").slug("hinch-platform").status(StoreStatus.ACTIVE).build());
         Customer c = customerRepository.save(Customer.builder().name("Timeout Customer").phone("9999955555").build());
 
         Order expiredOrder = Order.builder()
@@ -221,6 +252,7 @@ public class Phase2RepositoryJpaValidationTest {
                 .orderNumber("ORD-EXPIRED-001")
                 .orderStatus("PLACED")
                 .paymentStatus("PENDING")
+                .commissionRate(new BigDecimal("5.00"))
                 .inventoryState(OrderInventoryState.RESERVED)
                 .totalAmount(new BigDecimal("800.00"))
                 .createdAt(LocalDateTime.now().minusMinutes(30))

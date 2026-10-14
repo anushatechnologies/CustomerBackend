@@ -18,6 +18,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -67,8 +69,11 @@ public class HotDealServiceImpl implements HotDealService {
                 .updatedAt(LocalDateTime.now())
                 .build();
 
+        applyFlexibleDiscount(hotDeal, product, request.getDiscountPercentage(), request.getDealPrice());
+
         HotDeal saved = hotDealRepository.save(hotDeal);
-        log.info("Added product '{}' (ID: {}) to Hot Deals at display order {}", product.getTitle(), productId, displayOrder);
+        log.info("Added product '{}' (ID: {}) to Hot Deals at display order {} with discountPct: {}, dealPrice: {}",
+                product.getTitle(), productId, displayOrder, saved.getDiscountPercentage(), saved.getDealPrice());
 
         return mapToResponse(saved);
     }
@@ -109,6 +114,10 @@ public class HotDealServiceImpl implements HotDealService {
 
         if (request.isActive() != null) {
             existing.setActive(request.isActive());
+        }
+
+        if (request.getDiscountPercentage() != null || request.getDealPrice() != null) {
+            applyFlexibleDiscount(existing, existing.getProduct(), request.getDiscountPercentage(), request.getDealPrice());
         }
 
         existing.setUpdatedAt(LocalDateTime.now());
@@ -170,8 +179,7 @@ public class HotDealServiceImpl implements HotDealService {
             Product p = deal.getProduct();
             // Ensure product is approved and active for public customer visibility
             if (Boolean.TRUE.equals(p.getActive()) && p.getApprovalStatus() == ApprovalStatus.APPROVED) {
-                ProductResponse resp = productService.mapToResponse(p);
-                resp.setDisplayOrder(deal.getDisplayOrder());
+                ProductResponse resp = enrichProductWithDeal(p, deal);
                 products.add(resp);
             }
         }
@@ -183,19 +191,65 @@ public class HotDealServiceImpl implements HotDealService {
                 .build();
     }
 
+    private void applyFlexibleDiscount(HotDeal deal, Product product, BigDecimal requestedDiscountPct, BigDecimal requestedDealPrice) {
+        BigDecimal basePrice = product.getPrice();
+        BigDecimal finalDiscountPct = requestedDiscountPct;
+        BigDecimal finalDealPrice = requestedDealPrice;
+
+        if (basePrice != null && basePrice.compareTo(BigDecimal.ZERO) > 0) {
+            if (finalDiscountPct != null && finalDealPrice == null) {
+                // Admin provided discount % -> flexibly calculate deal price
+                BigDecimal discountAmount = basePrice.multiply(finalDiscountPct)
+                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                finalDealPrice = basePrice.subtract(discountAmount);
+            } else if (finalDealPrice != null && finalDiscountPct == null) {
+                // Admin provided deal price -> flexibly calculate discount %
+                if (finalDealPrice.compareTo(basePrice) < 0) {
+                    finalDiscountPct = basePrice.subtract(finalDealPrice)
+                            .multiply(BigDecimal.valueOf(100))
+                            .divide(basePrice, 2, RoundingMode.HALF_UP);
+                }
+            }
+        }
+
+        deal.setDiscountPercentage(finalDiscountPct);
+        deal.setDealPrice(finalDealPrice);
+    }
+
+    private ProductResponse enrichProductWithDeal(Product p, HotDeal deal) {
+        ProductResponse resp = productService.mapToResponse(p);
+        resp.setDisplayOrder(deal.getDisplayOrder());
+
+        if (deal.getDiscountPercentage() != null) {
+            resp.setDiscountPercentage(deal.getDiscountPercentage());
+            if (deal.getDealPrice() != null) {
+                resp.setDealPrice(deal.getDealPrice());
+                resp.setSellingPrice(deal.getDealPrice());
+            }
+        } else if (p.getMrp() != null && p.getPrice() != null && p.getMrp().compareTo(p.getPrice()) > 0) {
+            // Flexible fallback: calculate authentic discount from actual MRP if available
+            BigDecimal diff = p.getMrp().subtract(p.getPrice());
+            BigDecimal calcPct = diff.multiply(BigDecimal.valueOf(100))
+                    .divide(p.getMrp(), 2, RoundingMode.HALF_UP);
+            resp.setDiscountPercentage(calcPct);
+        }
+        return resp;
+    }
+
     private HotDeal findHotDeal(Long id) {
         return hotDealRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Hot Deal not found with id: " + id));
     }
 
     private HotDealResponse mapToResponse(HotDeal hotDeal) {
-        ProductResponse productResp = productService.mapToResponse(hotDeal.getProduct());
-        productResp.setDisplayOrder(hotDeal.getDisplayOrder());
+        ProductResponse productResp = enrichProductWithDeal(hotDeal.getProduct(), hotDeal);
 
         return HotDealResponse.builder()
                 .id(hotDeal.getId())
                 .productId(hotDeal.getProduct().getProductId())
                 .displayOrder(hotDeal.getDisplayOrder())
+                .discountPercentage(hotDeal.getDiscountPercentage())
+                .dealPrice(hotDeal.getDealPrice())
                 .active(hotDeal.isActive())
                 .createdAt(hotDeal.getCreatedAt())
                 .updatedAt(hotDeal.getUpdatedAt())

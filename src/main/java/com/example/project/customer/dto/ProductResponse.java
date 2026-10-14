@@ -90,6 +90,10 @@ public class ProductResponse {
 
     private BigDecimal sellingPrice;
 
+    private BigDecimal dealPrice;
+
+    private BigDecimal discountPercentage;
+
     // Admin approval information
     private String approvalStatus;
 

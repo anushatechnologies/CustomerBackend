@@ -22,6 +22,10 @@ public class HotDealResponse {
 
     private Integer displayOrder;
 
+    private java.math.BigDecimal discountPercentage;
+
+    private java.math.BigDecimal dealPrice;
+
     @JsonProperty("active")
     private Boolean active;
 

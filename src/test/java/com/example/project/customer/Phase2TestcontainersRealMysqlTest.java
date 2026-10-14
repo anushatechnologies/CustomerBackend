@@ -1,6 +1,7 @@
 package com.example.project.customer;
 
 import org.flywaydb.core.Flyway;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
@@ -46,6 +47,36 @@ public class Phase2TestcontainersRealMysqlTest {
             .withUsername("testuser")
             .withPassword("testpass");
 
+    @BeforeAll
+    static void setUpDatabase() throws Exception {
+        String jdbcUrl = mysql.getJdbcUrl();
+        String user = mysql.getUsername();
+        String pass = mysql.getPassword();
+
+        Flyway flyway = Flyway.configure()
+                .dataSource(jdbcUrl, user, pass)
+                .locations("classpath:db/migration")
+                .load();
+        flyway.migrate();
+
+        try (Connection conn = DriverManager.getConnection(jdbcUrl, user, pass)) {
+            conn.createStatement().execute("SET FOREIGN_KEY_CHECKS = 0;");
+            conn.createStatement().execute("INSERT INTO sellers (seller_id, name, company_name, email, phone) " +
+                    "VALUES (1, 'Test Seller', 'Test Company', 'seller@test.com', '9999999999') " +
+                    "ON DUPLICATE KEY UPDATE name=name");
+            conn.createStatement().execute("INSERT INTO stores (store_id, seller_id, name, slug, status) " +
+                    "VALUES (1, 1, 'Test Store', 'test-store-p2', 'ACTIVE') " +
+                    "ON DUPLICATE KEY UPDATE name=name");
+            conn.createStatement().execute("INSERT INTO products (product_id, title, slug, price, unit, created_at) VALUES " +
+                    "(101, 'Product 101', 'p-101', 100.0, 'pcs', NOW()), " +
+                    "(201, 'Product 201', 'p-201', 200.0, 'pcs', NOW()), " +
+                    "(202, 'Product 202', 'p-202', 200.0, 'pcs', NOW()), " +
+                    "(301, 'Product 301', 'p-301', 300.0, 'pcs', NOW()) " +
+                    "ON DUPLICATE KEY UPDATE title=title");
+            conn.createStatement().execute("SET FOREIGN_KEY_CHECKS = 1;");
+        }
+    }
+
     @Test
     @DisplayName("1. Real MySQL: Flyway applies V1 through V27 cleanly on real MySQL 8")
     void testFlywayMigrations_V1toV27_AppliedCleanly() throws Exception {
@@ -57,7 +88,12 @@ public class Phase2TestcontainersRealMysqlTest {
                 .dataSource(jdbcUrl, user, pass)
                 .locations("classpath:db/migration")
                 .load();
-        flyway.migrate();
+
+        // Assert migration history: current version is applied and >= 27
+        assertThat(flyway.info().current()).isNotNull();
+        assertThat(flyway.info().current().getState().isApplied()).isTrue();
+        int currentVersion = Integer.parseInt(flyway.info().current().getVersion().getVersion().split("\\.")[0]);
+        assertThat(currentVersion).isGreaterThanOrEqualTo(27);
 
         // Verify V27 table hinch_store_vendor_inventory exists
         try (Connection conn = DriverManager.getConnection(jdbcUrl, user, pass);

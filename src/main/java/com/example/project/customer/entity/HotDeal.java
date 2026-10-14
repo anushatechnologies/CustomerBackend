@@ -41,6 +41,12 @@ public class HotDeal {
     @Builder.Default
     private Integer displayOrder = 0;
 
+    @Column(name = "discount_percentage", precision = 5, scale = 2)
+    private java.math.BigDecimal discountPercentage;
+
+    @Column(name = "deal_price", precision = 12, scale = 2)
+    private java.math.BigDecimal dealPrice;
+
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     @JsonProperty("active")

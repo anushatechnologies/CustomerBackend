@@ -203,7 +203,10 @@ public class SellerProductServiceImpl implements SellerProductService {
                 + "-" + System.currentTimeMillis();
 
         BigDecimal price = request.getEffectivePrice();
-        BigDecimal mrp = request.getMrp() != null ? request.getMrp() : price;
+        BigDecimal mrp = request.getMrp();
+        if (mrp != null && price != null && mrp.compareTo(price) < 0) {
+            throw new IllegalArgumentException("Selling price cannot exceed MRP (Maximum Retail Price).");
+        }
 
         Seller seller = sellerRepository.findById(sellerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Seller not found with id: " + sellerId));
@@ -295,6 +298,10 @@ public class SellerProductServiceImpl implements SellerProductService {
             product.setSellingPrice(request.getEffectivePrice());
         }
         if (request.getMrp() != null) {
+            BigDecimal effectivePrice = product.getPrice();
+            if (effectivePrice != null && request.getMrp().compareTo(effectivePrice) < 0) {
+                throw new IllegalArgumentException("Selling price cannot exceed MRP (Maximum Retail Price).");
+            }
             product.setMrp(request.getMrp());
         }
         if (request.getUnit() != null) {
@@ -344,6 +351,10 @@ public class SellerProductServiceImpl implements SellerProductService {
             product.setSellingPrice(request.getEffectiveSellingPrice());
         }
         if (request.getMrp() != null) {
+            BigDecimal effectivePrice = request.getEffectiveSellingPrice() != null ? request.getEffectiveSellingPrice() : product.getPrice();
+            if (effectivePrice != null && request.getMrp().compareTo(effectivePrice) < 0) {
+                throw new IllegalArgumentException("Selling price cannot exceed MRP (Maximum Retail Price).");
+            }
             product.setMrp(request.getMrp());
         }
         if (request.getBulkPricingTiers() != null) {
