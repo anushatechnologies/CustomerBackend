@@ -95,6 +95,8 @@ public class SecurityConfig {
 
                 // ── Public: Image downloads (product/banner images are public) ──────────
                 .requestMatchers(HttpMethod.GET, "/api/images/**").permitAll()
+                // ── Public: Payment Webhooks (verified via HMAC X-Razorpay-Signature) ───
+                .requestMatchers(HttpMethod.POST, "/api/payments/webhook").permitAll()
                 // ── Admin-only routes (defence-in-depth; controllers also use @PreAuthorize) ─
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
 

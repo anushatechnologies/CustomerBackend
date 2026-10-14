@@ -1194,40 +1194,46 @@ public class PaymentServiceImpl implements PaymentService {
     public int sweepCancelledOrderRefunds(int ageMinutes, int batchSize) {
         java.time.LocalDateTime cutoff = java.time.LocalDateTime.now().minusMinutes(ageMinutes);
         int effectiveBatchSize = batchSize > 0 ? batchSize : 50;
-        List<Payment> candidates = paymentRepository.findCapturedPaymentsForCancelledOrdersOlderThan(
-                cutoff, PageRequest.of(0, effectiveBatchSize));
 
-        if (candidates.isEmpty()) {
-            return 0;
+        int totalProcessed = 0;
+        Integer lastId = 0;
+
+        while (true) {
+            List<Payment> candidates = paymentRepository.findCapturedPaymentsForCancelledOrdersOlderThan(
+                    cutoff, lastId, PageRequest.of(0, effectiveBatchSize));
+
+            if (candidates.isEmpty()) {
+                break;
+            }
+
+            log.info("Cancelled-order refund sweep batch found {} candidate payments (lastId: {}, cutoff: {})",
+                    candidates.size(), lastId, cutoff);
+
+            for (Payment payment : candidates) {
+                lastId = payment.getPaymentId();
+                if (payment.getOrder() == null || payment.getOrder().getOrderId() == null) {
+                    continue;
+                }
+                Integer orderId = payment.getOrder().getOrderId();
+                try {
+                    PaymentStatusResponse resp;
+                    if (self != null) {
+                        resp = self.refundOrderPayment(orderId, "Cancelled-order background refund sweep");
+                    } else {
+                        resp = refundOrderPayment(orderId, "Cancelled-order background refund sweep");
+                    }
+                    if (resp != null && ("REFUNDED".equalsIgnoreCase(resp.getStatus()) || "REFUNDED_TO_WALLET".equalsIgnoreCase(resp.getStatus()))) {
+                        totalProcessed++;
+                    }
+                } catch (Exception e) {
+                    log.warn("Cancelled-order refund sweep: Refund failed for Order #{}, Payment #{}: {}",
+                            orderId, payment.getPaymentId(), e.getMessage());
+                    // One failure never stops the rest of the batch
+                }
+            }
         }
 
-        log.info("Cancelled-order refund sweep found {} candidate payments older than {} minutes (cutoff: {})",
-                candidates.size(), ageMinutes, cutoff);
-
-        int processedCount = 0;
-        for (Payment payment : candidates) {
-            if (payment.getOrder() == null || payment.getOrder().getOrderId() == null) {
-                continue;
-            }
-            Integer orderId = payment.getOrder().getOrderId();
-            try {
-                PaymentStatusResponse resp;
-                if (self != null) {
-                    resp = self.refundOrderPayment(orderId, "Cancelled-order background refund sweep");
-                } else {
-                    resp = refundOrderPayment(orderId, "Cancelled-order background refund sweep");
-                }
-                if (resp != null && ("REFUNDED".equalsIgnoreCase(resp.getStatus()) || "REFUNDED_TO_WALLET".equalsIgnoreCase(resp.getStatus()))) {
-                    processedCount++;
-                }
-            } catch (Exception e) {
-                log.warn("Cancelled-order refund sweep: Refund failed for Order #{}, Payment #{}: {}",
-                        orderId, payment.getPaymentId(), e.getMessage());
-                // One failure never stops the rest of the batch
-            }
-        }
-
-        log.info("Cancelled-order refund sweep completed. Processed {}/{} payments.", processedCount, candidates.size());
-        return processedCount;
+        log.info("Cancelled-order refund sweep completed. Total processed: {} payments.", totalProcessed);
+        return totalProcessed;
     }
 }

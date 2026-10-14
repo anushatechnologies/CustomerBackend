@@ -586,6 +586,8 @@ public class Phase3RefundSafetyRealMysqlTest {
                 .customer(c).order(o).amount(new BigDecimal("1500.00")).currency("INR").status("CAPTURED")
                 .razorpayPaymentId("pay_sweep_001").razorpayOrderId("order_sweep_001").build());
 
+        jdbcTemplate.update("UPDATE orders SET updated_at = ? WHERE order_id = ?",
+                java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(15)), o.getOrderId());
         jdbcTemplate.update("UPDATE payments SET created_at = ? WHERE payment_id = ?",
                 java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(15)), p.getPaymentId());
 
@@ -612,24 +614,28 @@ public class Phase3RefundSafetyRealMysqlTest {
         Customer c = createCustomer("9100000011");
         Store s = createStore("store-sweep-2");
 
-        // 1. Newer than threshold (created 2 mins ago, threshold is 10 mins)
+        // 1. Newer than threshold (cancelled 2 mins ago, threshold is 10 mins)
         Order o1 = orderRepository.save(Order.builder().customer(c).store(s).orderNumber("ORD-SWEEP-NEW").orderStatus("CANCELLED").paymentStatus("PAID").commissionRate(new BigDecimal("5.00")).totalAmount(new BigDecimal("100.00")).build());
         Payment p1 = paymentRepository.save(Payment.builder().customer(c).order(o1).amount(new BigDecimal("100.00")).currency("INR").status("CAPTURED").razorpayPaymentId("pay_swp_new").razorpayOrderId("ord_swp_new").build());
-        jdbcTemplate.update("UPDATE payments SET created_at = ? WHERE payment_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(2)), p1.getPaymentId());
+        jdbcTemplate.update("UPDATE orders SET updated_at = ? WHERE order_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(2)), o1.getOrderId());
+        jdbcTemplate.update("UPDATE payments SET created_at = ? WHERE payment_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(60)), p1.getPaymentId());
 
-        // 2. Already REFUNDED (older than 15 mins)
+        // 2. Already REFUNDED (cancelled 15 mins ago)
         Order o2 = orderRepository.save(Order.builder().customer(c).store(s).orderNumber("ORD-SWEEP-RFND").orderStatus("CANCELLED").paymentStatus("REFUNDED").commissionRate(new BigDecimal("5.00")).totalAmount(new BigDecimal("100.00")).build());
         Payment p2 = paymentRepository.save(Payment.builder().customer(c).order(o2).amount(new BigDecimal("100.00")).currency("INR").status("REFUNDED").razorpayPaymentId("pay_swp_rfnd").razorpayOrderId("ord_swp_rfnd").build());
+        jdbcTemplate.update("UPDATE orders SET updated_at = ? WHERE order_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(15)), o2.getOrderId());
         jdbcTemplate.update("UPDATE payments SET created_at = ? WHERE payment_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(15)), p2.getPaymentId());
 
-        // 3. Already REFUND_IN_PROGRESS (older than 15 mins)
+        // 3. Already REFUND_IN_PROGRESS (cancelled 15 mins ago)
         Order o3 = orderRepository.save(Order.builder().customer(c).store(s).orderNumber("ORD-SWEEP-INPROG").orderStatus("CANCELLED").paymentStatus("PAID").commissionRate(new BigDecimal("5.00")).totalAmount(new BigDecimal("100.00")).build());
         Payment p3 = paymentRepository.save(Payment.builder().customer(c).order(o3).amount(new BigDecimal("100.00")).currency("INR").status("REFUND_IN_PROGRESS").razorpayPaymentId("pay_swp_inprog").razorpayOrderId("ord_swp_inprog").build());
+        jdbcTemplate.update("UPDATE orders SET updated_at = ? WHERE order_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(15)), o3.getOrderId());
         jdbcTemplate.update("UPDATE payments SET created_at = ? WHERE payment_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(15)), p3.getPaymentId());
 
-        // 4. Already REFUND_PENDING (older than 15 mins)
+        // 4. Already REFUND_PENDING (cancelled 15 mins ago)
         Order o4 = orderRepository.save(Order.builder().customer(c).store(s).orderNumber("ORD-SWEEP-PEND").orderStatus("CANCELLED").paymentStatus("REFUND_PENDING").commissionRate(new BigDecimal("5.00")).totalAmount(new BigDecimal("100.00")).build());
         Payment p4 = paymentRepository.save(Payment.builder().customer(c).order(o4).amount(new BigDecimal("100.00")).currency("INR").status("REFUND_PENDING").razorpayPaymentId("pay_swp_pend").razorpayOrderId("ord_swp_pend").build());
+        jdbcTemplate.update("UPDATE orders SET updated_at = ? WHERE order_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(15)), o4.getOrderId());
         jdbcTemplate.update("UPDATE payments SET created_at = ? WHERE payment_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(15)), p4.getPaymentId());
 
         int swept = paymentService.sweepCancelledOrderRefunds(10, 50);
@@ -648,6 +654,7 @@ public class Phase3RefundSafetyRealMysqlTest {
         Store s = createStore("store-sweep-3");
         Order o = orderRepository.save(Order.builder().customer(c).store(s).orderNumber("ORD-SWEEP-CONC").orderStatus("CANCELLED").paymentStatus("PAID").commissionRate(new BigDecimal("5.00")).totalAmount(new BigDecimal("2000.00")).build());
         Payment p = paymentRepository.save(Payment.builder().customer(c).order(o).amount(new BigDecimal("2000.00")).currency("INR").status("CAPTURED").razorpayPaymentId("pay_swp_conc_001").razorpayOrderId("ord_swp_conc_001").build());
+        jdbcTemplate.update("UPDATE orders SET updated_at = ? WHERE order_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(20)), o.getOrderId());
         jdbcTemplate.update("UPDATE payments SET created_at = ? WHERE payment_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(20)), p.getPaymentId());
 
         Refund mockRefund = mock(Refund.class);
@@ -693,11 +700,13 @@ public class Phase3RefundSafetyRealMysqlTest {
         // Payment 1: Fails at gateway
         Order o1 = orderRepository.save(Order.builder().customer(c).store(s).orderNumber("ORD-SWP-FAIL1").orderStatus("CANCELLED").paymentStatus("PAID").commissionRate(new BigDecimal("5.00")).totalAmount(new BigDecimal("500.00")).build());
         Payment p1 = paymentRepository.save(Payment.builder().customer(c).order(o1).amount(new BigDecimal("500.00")).currency("INR").status("CAPTURED").razorpayPaymentId("pay_swp_fail_1").razorpayOrderId("ord_swp_fail_1").build());
+        jdbcTemplate.update("UPDATE orders SET updated_at = ? WHERE order_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(20)), o1.getOrderId());
         jdbcTemplate.update("UPDATE payments SET created_at = ? WHERE payment_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(20)), p1.getPaymentId());
 
         // Payment 2: Succeeds
         Order o2 = orderRepository.save(Order.builder().customer(c).store(s).orderNumber("ORD-SWP-SUCC2").orderStatus("CANCELLED").paymentStatus("PAID").commissionRate(new BigDecimal("5.00")).totalAmount(new BigDecimal("800.00")).build());
         Payment p2 = paymentRepository.save(Payment.builder().customer(c).order(o2).amount(new BigDecimal("800.00")).currency("INR").status("CAPTURED").razorpayPaymentId("pay_swp_succ_2").razorpayOrderId("ord_swp_succ_2").build());
+        jdbcTemplate.update("UPDATE orders SET updated_at = ? WHERE order_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(15)), o2.getOrderId());
         jdbcTemplate.update("UPDATE payments SET created_at = ? WHERE payment_id = ?", java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(15)), p2.getPaymentId());
 
         when(mockPaymentClient.refund(eq("pay_swp_fail_1"), any(JSONObject.class)))
@@ -767,5 +776,145 @@ public class Phase3RefundSafetyRealMysqlTest {
         } finally {
             SecurityContextHolder.clearContext();
         }
+    }
+
+    @Test
+    @DisplayName("13. Sweep: filters by order cancellation time (updatedAt), not payment createdAt")
+    void testSweep_FiltersByOrderCancellationTime_NotPaymentCreatedAt() throws Exception {
+        jdbcTemplate.update("DELETE FROM payments");
+        jdbcTemplate.update("DELETE FROM order_items");
+        jdbcTemplate.update("DELETE FROM orders");
+
+        Customer c = createCustomer("9100000015");
+        Store s = createStore("store-sweep-filter-test");
+
+        // Order 1: Created long ago (60 min ago), cancelled 1 minute ago -> MUST NOT be swept
+        Order o1 = orderRepository.save(Order.builder().customer(c).store(s).orderNumber("ORD-SWP-CANC-1M")
+                .orderStatus("CANCELLED").paymentStatus("PAID").commissionRate(new BigDecimal("5.00"))
+                .totalAmount(new BigDecimal("500.00")).build());
+        Payment p1 = paymentRepository.save(Payment.builder().customer(c).order(o1).amount(new BigDecimal("500.00"))
+                .currency("INR").status("CAPTURED").razorpayPaymentId("pay_swp_canc_1m").razorpayOrderId("ord_swp_canc_1m").build());
+        jdbcTemplate.update("UPDATE payments SET created_at = ? WHERE payment_id = ?",
+                java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(60)), p1.getPaymentId());
+        jdbcTemplate.update("UPDATE orders SET updated_at = ? WHERE order_id = ?",
+                java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(1)), o1.getOrderId());
+
+        // Order 2: Created long ago (60 min ago), cancelled 20 minutes ago -> MUST be swept
+        Order o2 = orderRepository.save(Order.builder().customer(c).store(s).orderNumber("ORD-SWP-CANC-20M")
+                .orderStatus("CANCELLED").paymentStatus("PAID").commissionRate(new BigDecimal("5.00"))
+                .totalAmount(new BigDecimal("800.00")).build());
+        Payment p2 = paymentRepository.save(Payment.builder().customer(c).order(o2).amount(new BigDecimal("800.00"))
+                .currency("INR").status("CAPTURED").razorpayPaymentId("pay_swp_canc_20m").razorpayOrderId("ord_swp_canc_20m").build());
+        jdbcTemplate.update("UPDATE payments SET created_at = ? WHERE payment_id = ?",
+                java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(60)), p2.getPaymentId());
+        jdbcTemplate.update("UPDATE orders SET updated_at = ? WHERE order_id = ?",
+                java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(20)), o2.getOrderId());
+
+        Refund mockRefund2 = mock(Refund.class);
+        when(mockRefund2.has("id")).thenReturn(true);
+        when(mockRefund2.get("id")).thenReturn("rfnd_swp_canc_20m");
+        when(mockPaymentClient.refund(eq("pay_swp_canc_20m"), any(JSONObject.class))).thenReturn(mockRefund2);
+
+        int swept = paymentService.sweepCancelledOrderRefunds(10, 50);
+        assertThat(swept).isEqualTo(1);
+
+        Payment reloaded1 = paymentRepository.findById(p1.getPaymentId()).orElseThrow();
+        assertThat(reloaded1.getStatus()).isEqualTo("CAPTURED"); // Not swept because order was cancelled only 1 min ago
+
+        Payment reloaded2 = paymentRepository.findById(p2.getPaymentId()).orElseThrow();
+        assertThat(reloaded2.getStatus()).isEqualTo("REFUNDED"); // Swept because order was cancelled 20 min ago
+        verify(mockPaymentClient, times(1)).refund(eq("pay_swp_canc_20m"), any(JSONObject.class));
+        verify(mockPaymentClient, never()).refund(eq("pay_swp_canc_1m"), any(JSONObject.class));
+    }
+
+    @Test
+    @DisplayName("14. claimRefundAtomic: only claims CAPTURED and REFUND_PENDING; rejects CREATED and FAILED")
+    void testClaimRefundAtomic_RejectsCreatedAndFailedPayments() {
+        Customer c = createCustomer("9100000016");
+        Store s = createStore("store-atomic-claim-test");
+
+        Order o = orderRepository.save(Order.builder().customer(c).store(s).orderNumber("ORD-CLAIM-TEST")
+                .orderStatus("PLACED").paymentStatus("PENDING").commissionRate(new BigDecimal("5.00"))
+                .totalAmount(new BigDecimal("100.00")).build());
+
+        // 1. CREATED payment -> cannot be claimed
+        Payment pCreated = paymentRepository.save(Payment.builder().customer(c).order(o).amount(new BigDecimal("100.00"))
+                .currency("INR").status("CREATED").razorpayPaymentId("pay_claim_created").razorpayOrderId("ord_claim_created").build());
+        int claimCreated = paymentRepository.claimRefundAtomic(pCreated.getPaymentId());
+        assertThat(claimCreated).isEqualTo(0);
+        String createdStatus = jdbcTemplate.queryForObject("SELECT status FROM payments WHERE payment_id = ?", String.class, pCreated.getPaymentId());
+        assertThat(createdStatus).isEqualTo("CREATED");
+
+        // 2. FAILED payment -> cannot be claimed
+        Payment pFailed = paymentRepository.save(Payment.builder().customer(c).order(o).amount(new BigDecimal("100.00"))
+                .currency("INR").status("FAILED").razorpayPaymentId("pay_claim_failed").razorpayOrderId("ord_claim_failed").build());
+        int claimFailed = paymentRepository.claimRefundAtomic(pFailed.getPaymentId());
+        assertThat(claimFailed).isEqualTo(0);
+        String failedStatus = jdbcTemplate.queryForObject("SELECT status FROM payments WHERE payment_id = ?", String.class, pFailed.getPaymentId());
+        assertThat(failedStatus).isEqualTo("FAILED");
+
+        // 3. CAPTURED payment -> CAN be claimed
+        Payment pCaptured = paymentRepository.save(Payment.builder().customer(c).order(o).amount(new BigDecimal("100.00"))
+                .currency("INR").status("CAPTURED").razorpayPaymentId("pay_claim_captured").razorpayOrderId("ord_claim_captured").build());
+        int claimCaptured = paymentRepository.claimRefundAtomic(pCaptured.getPaymentId());
+        assertThat(claimCaptured).isEqualTo(1);
+        String capturedStatus = jdbcTemplate.queryForObject("SELECT status FROM payments WHERE payment_id = ?", String.class, pCaptured.getPaymentId());
+        assertThat(capturedStatus).isEqualTo("REFUND_IN_PROGRESS");
+
+        // 4. REFUND_PENDING payment -> CAN be claimed (for admin retry)
+        Payment pPending = paymentRepository.save(Payment.builder().customer(c).order(o).amount(new BigDecimal("100.00"))
+                .currency("INR").status("REFUND_PENDING").razorpayPaymentId("pay_claim_pending").razorpayOrderId("ord_claim_pending").build());
+        int claimPending = paymentRepository.claimRefundAtomic(pPending.getPaymentId());
+        assertThat(claimPending).isEqualTo(1);
+        String pendingStatus = jdbcTemplate.queryForObject("SELECT status FROM payments WHERE payment_id = ?", String.class, pPending.getPaymentId());
+        assertThat(pendingStatus).isEqualTo("REFUND_IN_PROGRESS");
+    }
+
+    @Test
+    @DisplayName("15. Webhook: unsigned or badly signed webhook does nothing and leaves database unchanged")
+    void testHandleWebhook_UnsignedOrBadlySignedDoesNothing() {
+        Customer c = createCustomer("9100000017");
+        Store s = createStore("store-webhook-test");
+
+        Order o = orderRepository.save(Order.builder().customer(c).store(s).orderNumber("ORD-WH-SIG-TEST")
+                .orderStatus("PLACED").paymentStatus("PENDING").commissionRate(new BigDecimal("5.00"))
+                .totalAmount(new BigDecimal("999.00")).build());
+
+        Payment p = paymentRepository.save(Payment.builder().customer(c).order(o).amount(new BigDecimal("999.00"))
+                .currency("INR").status("CREATED").razorpayPaymentId("pay_wh_sig_test").razorpayOrderId("ord_wh_sig_test").build());
+
+        JSONObject webhookPayload = new JSONObject()
+                .put("event", "payment.captured")
+                .put("payload", new JSONObject()
+                        .put("payment", new JSONObject()
+                                .put("entity", new JSONObject()
+                                        .put("id", "pay_wh_sig_test")
+                                        .put("order_id", "ord_wh_sig_test")
+                                        .put("method", "netbanking"))));
+        String rawBody = webhookPayload.toString();
+
+        // 1. Unsigned call (missing signature header)
+        assertThatThrownBy(() -> paymentService.handleWebhook(rawBody, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Missing X-Razorpay-Signature");
+
+        // Assert nothing changed in DB
+        Payment pAfterUnsigned = paymentRepository.findById(p.getPaymentId()).orElseThrow();
+        assertThat(pAfterUnsigned.getStatus()).isEqualTo("CREATED");
+        Order oAfterUnsigned = orderRepository.findById(o.getOrderId()).orElseThrow();
+        assertThat(oAfterUnsigned.getOrderStatus()).isEqualTo("PLACED");
+        assertThat(oAfterUnsigned.getPaymentStatus()).isEqualTo("PENDING");
+
+        // 2. Badly signed call
+        assertThatThrownBy(() -> paymentService.handleWebhook(rawBody, "invalid_bad_signature_12345"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Invalid webhook signature");
+
+        // Assert nothing changed in DB
+        Payment pAfterBadSig = paymentRepository.findById(p.getPaymentId()).orElseThrow();
+        assertThat(pAfterBadSig.getStatus()).isEqualTo("CREATED");
+        Order oAfterBadSig = orderRepository.findById(o.getOrderId()).orElseThrow();
+        assertThat(oAfterBadSig.getOrderStatus()).isEqualTo("PLACED");
+        assertThat(oAfterBadSig.getPaymentStatus()).isEqualTo("PENDING");
     }
 }

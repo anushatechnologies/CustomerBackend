@@ -111,7 +111,7 @@ public class Phase2RepositoryJpaValidationTest {
                 .customer(c)
                 .amount(new BigDecimal("1500.00"))
                 .currency("INR")
-                .status("CREATED")
+                .status("CAPTURED")
                 .razorpayOrderId("order_test_claim_123")
                 .build());
 

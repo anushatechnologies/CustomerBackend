@@ -21,15 +21,21 @@ public interface PaymentRepository extends JpaRepository<Payment, Integer> {
     Optional<Payment> findFirstByOrder_OrderIdOrderByCreatedAtDesc(Integer orderId);
 
     @org.springframework.data.jpa.repository.Modifying
-    @org.springframework.data.jpa.repository.Query("UPDATE Payment p SET p.status = 'REFUND_IN_PROGRESS', p.updatedAt = CURRENT_TIMESTAMP WHERE p.paymentId = :paymentId AND p.status NOT IN ('REFUND_IN_PROGRESS', 'REFUNDED', 'REFUNDED_TO_WALLET')")
+    @org.springframework.transaction.annotation.Transactional
+    @org.springframework.data.jpa.repository.Query("UPDATE Payment p SET p.status = 'REFUND_IN_PROGRESS', p.updatedAt = CURRENT_TIMESTAMP WHERE p.paymentId = :paymentId AND p.status IN ('CAPTURED', 'REFUND_PENDING')")
     int claimRefundAtomic(@org.springframework.data.repository.query.Param("paymentId") Integer paymentId);
 
     List<Payment> findByStatusAndUpdatedAtBefore(String status, java.time.LocalDateTime cutoff);
 
     List<Payment> findByStatusOrderByUpdatedAtDesc(String status);
 
-    @org.springframework.data.jpa.repository.Query("SELECT p FROM Payment p WHERE p.order IS NOT NULL AND p.order.orderStatus = 'CANCELLED' AND p.status = 'CAPTURED' AND p.createdAt < :cutoff ORDER BY p.createdAt ASC")
+    @org.springframework.data.jpa.repository.Query("SELECT p FROM Payment p WHERE p.order IS NOT NULL AND p.order.orderStatus = 'CANCELLED' AND p.status = 'CAPTURED' AND p.order.updatedAt < :cutoff AND p.paymentId > :lastId ORDER BY p.paymentId ASC")
     List<Payment> findCapturedPaymentsForCancelledOrdersOlderThan(
             @org.springframework.data.repository.query.Param("cutoff") java.time.LocalDateTime cutoff,
+            @org.springframework.data.repository.query.Param("lastId") Integer lastId,
             org.springframework.data.domain.Pageable pageable);
+
+    default List<Payment> findCapturedPaymentsForCancelledOrdersOlderThan(java.time.LocalDateTime cutoff, org.springframework.data.domain.Pageable pageable) {
+        return findCapturedPaymentsForCancelledOrdersOlderThan(cutoff, 0, pageable);
+    }
 }
