@@ -771,16 +771,32 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
     }
 
     @Override
+    @Transactional
     public OrderResponse updateOrderStatus(Integer id, String status, String location, String description,
                                            String carrierName, String vehicleNumber, String driverName,
                                            String trackingNumber, String estimatedDelivery) {
-        Order order = findOrder(id);
+        Order order = orderRepository.findByIdForUpdate(id)
+                .or(() -> orderRepository.findById(id))
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + id));
         validateOrderStatusUpdateAccess(order);
         String upperStatus = status.trim().toUpperCase();
 
         if ("DELIVERED".equals(upperStatus)) {
             if (!SecurityUtils.isAdmin()) {
                 throw new ForbiddenException("Access denied: Only administrators can mark an order as DELIVERED.");
+            }
+
+            // Idempotency: Already DELIVERED returns success with no changes
+            if ("DELIVERED".equalsIgnoreCase(order.getOrderStatus())) {
+                log.info("Order #{} is already DELIVERED. Returning existing order response idempotently.", id);
+                return mapToOrderResponse(order);
+            }
+
+            // Allowed only from DISPATCHED or IN_TRANSIT
+            String currentStatus = order.getOrderStatus() != null ? order.getOrderStatus().trim().toUpperCase() : "";
+            if (!"DISPATCHED".equals(currentStatus) && !"IN_TRANSIT".equals(currentStatus)) {
+                throw new IllegalArgumentException("Order #" + id + " cannot be marked DELIVERED from status '" + currentStatus
+                        + "'. Allowed prior statuses are DISPATCHED or IN_TRANSIT.");
             }
         }
 
@@ -806,12 +822,21 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
             }
         }
 
+        String checkpointDesc = description != null && !description.isBlank() ? description : "Status updated to " + upperStatus;
+        if ("DELIVERED".equals(upperStatus)) {
+            String deliveredBy = driverName != null && !driverName.isBlank() ? driverName.trim()
+                    : (carrierName != null && !carrierName.isBlank() ? carrierName.trim() : null);
+            if (deliveredBy != null) {
+                checkpointDesc = checkpointDesc + " (Delivered by: " + deliveredBy + ")";
+            }
+        }
+
         TrackingCheckpoint cp = TrackingCheckpoint.builder()
                 .order(order)
                 .status(upperStatus)
                 .title(formatCheckpointTitle(upperStatus))
-                .location(location != null ? location : "In Transit Hub")
-                .description(description != null ? description : "Status updated to " + upperStatus)
+                .location(location != null ? location : ("DELIVERED".equals(upperStatus) ? "Customer Jobsite" : "In Transit Hub"))
+                .description(checkpointDesc)
                 .timestamp(LocalDateTime.now())
                 .build();
 
@@ -824,11 +849,13 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 sellerPayoutLedgerRepository.findByOrder_OrderId(order.getOrderId()).ifPresent(ledgers::add);
             }
             for (SellerPayoutLedger ledger : ledgers) {
-                // Set ledger ELIGIBLE with settlementDate = now + 7 days (idempotently)
                 if (ledger.getStatus() == PayoutLedgerStatus.PENDING) {
-                    ledger.setStatus(PayoutLedgerStatus.ELIGIBLE);
-                    ledger.setSettlementDate(LocalDateTime.now().plusDays(7));
-                    sellerPayoutLedgerRepository.save(ledger);
+                    if (ledger.getSettlementDate() == null) {
+                        ledger.setSettlementDate(LocalDateTime.now().plusDays(7));
+                        sellerPayoutLedgerRepository.save(ledger);
+                        log.info("Set T+7 settlementDate for PayoutLedger #{} (Order #{}): {}",
+                                ledger.getId(), order.getOrderId(), ledger.getSettlementDate());
+                    }
                 }
             }
         }
@@ -984,10 +1011,17 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
             sellerPayoutLedgerRepository.findByOrder_OrderId(orderId).ifPresent(ledgers::add);
         }
         for (SellerPayoutLedger ledger : ledgers) {
-            ledger.setStatus(PayoutLedgerStatus.REVERSED);
-            ledger.setClawbackReason(reason);
-            sellerPayoutLedgerRepository.save(ledger);
-            log.info("Payout ledger #{} for Order #{} marked as REVERSED", ledger.getId(), orderId);
+            if (ledger.getStatus() == PayoutLedgerStatus.PENDING) {
+                ledger.setStatus(PayoutLedgerStatus.REVERSED);
+                ledger.setClawbackReason(reason);
+                sellerPayoutLedgerRepository.save(ledger);
+                log.info("Payout ledger #{} for Order #{} marked as REVERSED (Reason: {})", ledger.getId(), orderId, reason);
+            } else if (ledger.getStatus() == PayoutLedgerStatus.ELIGIBLE || ledger.getStatus() == PayoutLedgerStatus.SETTLED) {
+                ledger.setClawbackReason(reason);
+                sellerPayoutLedgerRepository.save(ledger);
+                log.warn("ALERT: Order #{} cancelled/refunded but PayoutLedger #{} is already in state {} (settlementDate: {}). Status NOT overwritten; flagged with clawbackReason '{}' for manual clawback review.",
+                        orderId, ledger.getId(), ledger.getStatus(), ledger.getSettlementDate(), reason);
+            }
         }
     }
 

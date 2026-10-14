@@ -11,6 +11,10 @@ import java.util.Optional;
 
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Integer> {
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("SELECT o FROM Order o WHERE o.orderId = :orderId")
+    Optional<Order> findByIdForUpdate(@org.springframework.data.repository.query.Param("orderId") Integer orderId);
+
     Optional<Order> findByOrderNumber(String orderNumber);
     List<Order> findByCustomer_CustomerIdOrderByCreatedAtDesc(Integer userId);
     List<Order> findByCustomer_CustomerIdAndOrderStatusIgnoreCaseOrderByCreatedAtDesc(Integer userId, String orderStatus);

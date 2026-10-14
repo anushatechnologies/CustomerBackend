@@ -24,4 +24,17 @@ public interface SellerPayoutLedgerRepository extends JpaRepository<SellerPayout
     List<SellerPayoutLedger> findBySeller_SellerIdOrderByCreatedAtDesc(Integer sellerId);
 
     Page<SellerPayoutLedger> findByStatus(PayoutLedgerStatus status, Pageable pageable);
+
+    @org.springframework.data.jpa.repository.Query("SELECT l FROM SellerPayoutLedger l WHERE l.status = com.example.project.customer.entity.PayoutLedgerStatus.PENDING AND l.settlementDate IS NOT NULL AND l.settlementDate <= :cutoff AND l.clawbackReason IS NULL AND l.id > :lastId ORDER BY l.id ASC")
+    List<SellerPayoutLedger> findPendingLedgersEligibleForSettlement(
+            @org.springframework.data.repository.query.Param("cutoff") java.time.LocalDateTime cutoff,
+            @org.springframework.data.repository.query.Param("lastId") Integer lastId,
+            Pageable pageable);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @org.springframework.data.jpa.repository.Query("UPDATE SellerPayoutLedger l SET l.status = com.example.project.customer.entity.PayoutLedgerStatus.ELIGIBLE, l.updatedAt = CURRENT_TIMESTAMP WHERE l.id = :id AND l.status = com.example.project.customer.entity.PayoutLedgerStatus.PENDING AND l.settlementDate <= :cutoff AND l.clawbackReason IS NULL")
+    int markLedgerEligibleAtomic(
+            @org.springframework.data.repository.query.Param("id") Integer id,
+            @org.springframework.data.repository.query.Param("cutoff") java.time.LocalDateTime cutoff);
 }

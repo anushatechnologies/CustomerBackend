@@ -372,24 +372,24 @@ class OrderSettlementWorkflowTest {
     }
 
     @Test
-    @DisplayName("4. DELIVERED: PENDING ledger promotes to ELIGIBLE (T+7), idempotent on 2nd call, ON_HOLD is untouched")
+    @DisplayName("4. DELIVERED: PENDING ledger stays PENDING with T+7 settlement date, idempotent on 2nd call, ON_HOLD is untouched")
     void testDelivered_StatusPromotion_Idempotent_OnHoldUntouched() {
         authenticateAsAdmin();
         int orderId = 5001;
-        Order mockOrder = Order.builder().orderId(orderId).orderStatus("SHIPPED").checkpoints(new ArrayList<>()).build();
+        Order mockOrder = Order.builder().orderId(orderId).orderStatus("DISPATCHED").checkpoints(new ArrayList<>()).build();
         when(orderRepository.findById(orderId)).thenReturn(Optional.of(mockOrder));
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
 
         LocalDateTime originalSettlementDate = LocalDateTime.now().plusDays(7);
 
-        // Ledger 1: PENDING -> Should promote to ELIGIBLE
+        // Ledger 1: PENDING -> Stays PENDING with settlementDate = now + 7 days
         SellerPayoutLedger pendingLedger = SellerPayoutLedger.builder()
                 .id(101)
                 .order(mockOrder)
                 .status(PayoutLedgerStatus.PENDING)
                 .build();
 
-        // Ledger 2: ON_HOLD -> Must NOT be promoted
+        // Ledger 2: ON_HOLD -> Must NOT be modified
         SellerPayoutLedger onHoldLedger = SellerPayoutLedger.builder()
                 .id(102)
                 .order(mockOrder)
@@ -402,7 +402,7 @@ class OrderSettlementWorkflowTest {
         // First DELIVERED update
         orderService.updateOrderStatus(orderId, "DELIVERED", "Site", "Goods delivered");
 
-        assertThat(pendingLedger.getStatus()).isEqualTo(PayoutLedgerStatus.ELIGIBLE);
+        assertThat(pendingLedger.getStatus()).isEqualTo(PayoutLedgerStatus.PENDING);
         assertThat(pendingLedger.getSettlementDate()).isNotNull();
         LocalDateTime firstAssignedDate = pendingLedger.getSettlementDate();
 
@@ -413,7 +413,7 @@ class OrderSettlementWorkflowTest {
         // Second DELIVERED call: Idempotency check
         orderService.updateOrderStatus(orderId, "DELIVERED", "Site", "Duplicate callback");
 
-        assertThat(pendingLedger.getStatus()).isEqualTo(PayoutLedgerStatus.ELIGIBLE);
+        assertThat(pendingLedger.getStatus()).isEqualTo(PayoutLedgerStatus.PENDING);
         // Settlement date must not change on duplicate delivery callback
         assertThat(pendingLedger.getSettlementDate()).isEqualTo(firstAssignedDate);
         assertThat(onHoldLedger.getStatus()).isEqualTo(PayoutLedgerStatus.ON_HOLD);
@@ -527,7 +527,7 @@ class OrderSettlementWorkflowTest {
         int orderId = 6001;
         Order mockOrder = Order.builder()
                 .orderId(orderId)
-                .orderStatus("SHIPPED")
+                .orderStatus("DISPATCHED")
                 .store(vendorStore)
                 .checkpoints(new ArrayList<>())
                 .build();

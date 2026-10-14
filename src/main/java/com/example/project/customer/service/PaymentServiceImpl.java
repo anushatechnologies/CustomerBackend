@@ -79,6 +79,9 @@ public class PaymentServiceImpl implements PaymentService {
     @org.springframework.context.annotation.Lazy
     private PaymentService self;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.example.project.customer.repository.SellerPayoutLedgerRepository sellerPayoutLedgerRepository;
+
     private int doClaimRefundAtomic(Integer paymentId) {
         if (paymentRefundExecutionHelper != null) {
             return paymentRefundExecutionHelper.claimRefundAtomic(paymentId);
@@ -98,6 +101,32 @@ public class PaymentServiceImpl implements PaymentService {
             paymentRefundExecutionHelper.recordRefundStatus(payment.getPaymentId(), status, errorDescription);
         }
         paymentRepository.save(payment);
+        if (("REFUNDED".equals(status) || "REFUNDED_TO_WALLET".equals(status)) && payment.getOrder() != null) {
+            reverseOrderLedgers(payment.getOrder().getOrderId(), "Payment refunded: " + errorDescription);
+        }
+    }
+
+    private void reverseOrderLedgers(Integer orderId, String reason) {
+        if (sellerPayoutLedgerRepository == null || orderId == null) {
+            return;
+        }
+        List<com.example.project.customer.entity.SellerPayoutLedger> ledgers = sellerPayoutLedgerRepository.findAllByOrder_OrderId(orderId);
+        if (ledgers.isEmpty()) {
+            sellerPayoutLedgerRepository.findByOrder_OrderId(orderId).ifPresent(ledgers::add);
+        }
+        for (com.example.project.customer.entity.SellerPayoutLedger ledger : ledgers) {
+            if (ledger.getStatus() == com.example.project.customer.entity.PayoutLedgerStatus.PENDING) {
+                ledger.setStatus(com.example.project.customer.entity.PayoutLedgerStatus.REVERSED);
+                ledger.setClawbackReason(reason);
+                sellerPayoutLedgerRepository.save(ledger);
+                log.info("Payout ledger #{} for Order #{} marked as REVERSED (Reason: {})", ledger.getId(), orderId, reason);
+            } else if (ledger.getStatus() == com.example.project.customer.entity.PayoutLedgerStatus.ELIGIBLE || ledger.getStatus() == com.example.project.customer.entity.PayoutLedgerStatus.SETTLED) {
+                ledger.setClawbackReason(reason);
+                sellerPayoutLedgerRepository.save(ledger);
+                log.warn("ALERT: Order #{} refunded but PayoutLedger #{} is already in state {} (settlementDate: {}). Status NOT overwritten; flagged with clawbackReason '{}' for manual clawback review.",
+                        orderId, ledger.getId(), ledger.getStatus(), ledger.getSettlementDate(), reason);
+            }
+        }
     }
 
     @Value("${razorpay.key-id}")
