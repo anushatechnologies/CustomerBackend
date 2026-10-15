@@ -29,7 +29,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 import com.example.project.customer.dto.tax.TaxCalculationResult;
@@ -48,6 +51,12 @@ public class CartServiceImpl implements CartService {
     private final StoreRepository storeRepository;
     private final CouponService couponService;
     private final TaxCalculationService taxCalculationService;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private ProductAvailabilityService productAvailabilityService;
+
+    public void setProductAvailabilityService(ProductAvailabilityService productAvailabilityService) {
+        this.productAvailabilityService = productAvailabilityService;
+    }
 
     public CartServiceImpl(CartRepository cartRepository,
                            CartItemRepository cartItemRepository,
@@ -91,6 +100,15 @@ public class CartServiceImpl implements CartService {
         Store productStore = resolveProductStore(product);
         if (productStore.getStatus() != StoreStatus.ACTIVE) {
             throw new IllegalStateException("Store '" + productStore.getName() + "' is currently not accepting new orders (status: " + productStore.getStatus() + ").");
+        }
+
+        if (productAvailabilityService != null) {
+            com.example.project.customer.dto.ProductAvailability avail = productAvailabilityService.getAvailability(product);
+            int available = avail.getAvailableQty();
+            if (request.getQuantity() > available) {
+                throw new com.example.project.customer.exception.ResourceConflictException("Cannot add '" + product.getTitle() + "' to cart. Requested quantity ("
+                        + request.getQuantity() + ") exceeds available stock (available: " + available + ").");
+            }
         }
 
         Optional<Cart> activeCartOpt = cartRepository.findByCustomer_CustomerIdAndIsActiveTrue(uid);
@@ -224,6 +242,14 @@ public class CartServiceImpl implements CartService {
             }
             cartItemRepository.delete(item);
         } else {
+            if (productAvailabilityService != null) {
+                com.example.project.customer.dto.ProductAvailability avail = productAvailabilityService.getAvailability(item.getProduct());
+                int available = avail.getAvailableQty();
+                if (request.getQuantity() > available) {
+                    throw new com.example.project.customer.exception.ResourceConflictException("Cannot update quantity for '" + item.getProduct().getTitle() + "'. Requested quantity ("
+                            + request.getQuantity() + ") exceeds available stock (available: " + available + ").");
+                }
+            }
             item.setQuantity(request.getQuantity());
             cartItemRepository.save(item);
         }
@@ -435,6 +461,12 @@ public class CartServiceImpl implements CartService {
         if (product.getStore() != null) {
             return product.getStore();
         }
+        if (product.getSeller() != null && product.getSeller().getSellerId() != null) {
+            Optional<Store> sellerStore = storeRepository.findBySeller_SellerId(product.getSeller().getSellerId());
+            if (sellerStore.isPresent()) {
+                return sellerStore.get();
+            }
+        }
         return getDefaultStore();
     }
 
@@ -467,6 +499,11 @@ public class CartServiceImpl implements CartService {
     private CartResponse calculateCartResponse(Cart cart, boolean includeCoupon) {
         List<CartItem> items = cartItemRepository.findByCart_CartId(cart.getCartId());
         List<CartItemResponse> itemResponses = new ArrayList<>();
+
+        List<Product> cartProducts = items.stream().map(CartItem::getProduct).filter(Objects::nonNull).toList();
+        Map<Integer, com.example.project.customer.dto.ProductAvailability> availabilityMap = (productAvailabilityService != null)
+                ? productAvailabilityService.getAvailabilityBatch(cartProducts)
+                : Collections.emptyMap();
 
         BigDecimal subtotal = BigDecimal.ZERO;
 
@@ -515,6 +552,18 @@ public class CartServiceImpl implements CartService {
                     .gstRate(gstRate)
                     .build());
 
+            com.example.project.customer.dto.ProductAvailability avail = availabilityMap.get(p.getProductId());
+            int availableQty = avail != null ? avail.getAvailableQty() : (p.getStockQty() != null ? p.getStockQty() : 0);
+            boolean inStock = avail != null ? avail.isInStock() : (availableQty > 0 && p.isActive());
+            String reason = avail != null ? avail.getReason() : (availableQty <= 0 ? "OUT_OF_STOCK" : null);
+
+            if (qty > availableQty) {
+                inStock = false;
+                if (reason == null) {
+                    reason = "INSUFFICIENT_STOCK";
+                }
+            }
+
             responseBuilders.add(CartItemResponse.builder()
                     .cartItemId(item.getCartItemId())
                     .productId(p.getProductId())
@@ -527,7 +576,10 @@ public class CartServiceImpl implements CartService {
                     .appliedTier(appliedTier)
                     .gstRate(gstRate)
                     .lineTotal(lineTotal)
-                    .hsnCode(p.getHsnCode()));
+                    .hsnCode(p.getHsnCode())
+                    .availableQty(availableQty)
+                    .inStock(inStock)
+                    .reason(reason));
         }
 
         BigDecimal couponDiscount = BigDecimal.ZERO;
@@ -568,6 +620,9 @@ public class CartServiceImpl implements CartService {
 
         Store store = cart.getStore() != null ? cart.getStore() : getDefaultStore();
 
+        boolean canCheckout = itemResponses.stream().allMatch(ir -> Boolean.TRUE.equals(ir.getInStock()) && ir.getQuantity() <= ir.getAvailableQty());
+        String checkoutBlockReason = canCheckout ? null : "Cart contains unavailable or out-of-stock items.";
+
         return CartResponse.builder()
                 .cartId(cart.getCartId())
                 .storeId(store.getStoreId())
@@ -580,6 +635,8 @@ public class CartServiceImpl implements CartService {
                 .deliveryCharge(deliveryCharge)
                 .grandTotal(grandTotal)
                 .appliedCoupon(cart.getAppliedCoupon())
+                .canCheckout(canCheckout)
+                .checkoutBlockReason(checkoutBlockReason)
                 .build();
     }
 }

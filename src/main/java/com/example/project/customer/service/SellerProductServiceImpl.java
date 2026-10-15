@@ -328,6 +328,13 @@ public class SellerProductServiceImpl implements SellerProductService {
         if (request.getSpecifications() != null) {
             product.setSpecifications(cleanSpecifications(request.getSpecifications()));
         }
+
+        // When seller updates or re-submits a product:
+        if (product.getApprovalStatus() == ApprovalStatus.REJECTED) {
+            product.setApprovalStatus(ApprovalStatus.PENDING);    // 1. Reset status back to PENDING so Admin can review
+            product.setRejectionReason(null);                     // 2. Clear previous rejection remark
+            product.setActive(false);                             // 3. Keep inactive until Admin approves
+        }
         product.setUpdatedAt(LocalDateTime.now());
 
         Product saved = productRepository.save(product);

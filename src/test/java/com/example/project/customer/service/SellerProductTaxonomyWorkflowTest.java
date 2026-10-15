@@ -3,6 +3,7 @@ package com.example.project.customer.service;
 import com.example.project.customer.dto.ProductResponse;
 import com.example.project.customer.dto.SellerProductCreateRequest;
 import com.example.project.customer.dto.SellerProductUpdateRequest;
+import com.example.project.customer.entity.ApprovalStatus;
 import com.example.project.customer.entity.Brand;
 import com.example.project.customer.entity.Category;
 import com.example.project.customer.entity.Product;
@@ -177,5 +178,39 @@ class SellerProductTaxonomyWorkflowTest {
 
         assertThat(existingProduct.getSubcategory()).isEqualTo(subcategoryCctvCables);
         assertThat(response.getSubcategoryId()).isEqualTo(301);
+    }
+
+    @Test
+    @DisplayName("Seller updates REJECTED product: resets approvalStatus to PENDING, clears rejectionReason, keeps inactive")
+    void updateSellerProduct_WhenRejected_ResetsApprovalStatusToPending() {
+        Product rejectedProduct = Product.builder()
+                .productId(2050)
+                .seller(seller)
+                .store(store)
+                .brand(brandFinolex)
+                .subcategory(subcategoryPowerCables)
+                .title("Power Cable 2.5sqmm")
+                .approvalStatus(ApprovalStatus.REJECTED)
+                .rejectionReason("Images are blurry")
+                .active(false)
+                .build();
+
+        SellerProductUpdateRequest request = SellerProductUpdateRequest.builder()
+                .title("Power Cable 2.5sqmm (Clear Images)")
+                .description("Updated specifications and crystal clear images")
+                .build();
+
+        when(productRepository.findById(2050)).thenReturn(Optional.of(rejectedProduct));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ProductResponse response = sellerProductService.updateSellerProduct(101, 2050, request);
+
+        assertThat(rejectedProduct.getApprovalStatus()).isEqualTo(ApprovalStatus.PENDING);
+        assertThat(rejectedProduct.getRejectionReason()).isNull();
+        assertThat(rejectedProduct.getActive()).isFalse();
+        assertThat(response.getStatus()).isEqualTo("PENDING");
+        assertThat(response.getApprovalStatus()).isEqualTo("PENDING");
+        assertThat(response.getRejectionReason()).isNull();
+        assertThat(response.getTitle()).isEqualTo("Power Cable 2.5sqmm (Clear Images)");
     }
 }

@@ -37,19 +37,42 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
                                  @org.springframework.data.repository.query.Param("expectedState") com.example.project.customer.entity.OrderInventoryState expectedState,
                                  @org.springframework.data.repository.query.Param("newState") com.example.project.customer.entity.OrderInventoryState newState);
 
-    @org.springframework.data.jpa.repository.Query("SELECT o FROM Order o WHERE " +
-           "(o.fulfillmentStore.seller.sellerId = :sellerId OR " +
-           " o.store.seller.sellerId = :sellerId OR " +
-           " EXISTS (SELECT oi FROM OrderItem oi WHERE oi.order = o AND oi.seller.sellerId = :sellerId)) " +
-           "ORDER BY o.createdAt DESC")
+    @org.springframework.data.jpa.repository.Query(
+            value = "SELECT DISTINCT o FROM Order o " +
+                    "LEFT JOIN o.items oi " +
+                    "LEFT JOIN Product p ON p.productId = oi.productId " +
+                    "WHERE (o.fulfillmentStore.seller.sellerId = :sellerId OR " +
+                    "       o.store.seller.sellerId = :sellerId OR " +
+                    "       oi.seller.sellerId = :sellerId OR " +
+                    "       p.seller.sellerId = :sellerId) " +
+                    "ORDER BY o.createdAt DESC",
+            countQuery = "SELECT COUNT(DISTINCT o) FROM Order o " +
+                    "LEFT JOIN o.items oi " +
+                    "LEFT JOIN Product p ON p.productId = oi.productId " +
+                    "WHERE (o.fulfillmentStore.seller.sellerId = :sellerId OR " +
+                    "       o.store.seller.sellerId = :sellerId OR " +
+                    "       oi.seller.sellerId = :sellerId OR " +
+                    "       p.seller.sellerId = :sellerId)")
     Page<Order> findSellerOrders(@org.springframework.data.repository.query.Param("sellerId") Integer sellerId, Pageable pageable);
 
-    @org.springframework.data.jpa.repository.Query("SELECT o FROM Order o WHERE " +
-           "(o.fulfillmentStore.seller.sellerId = :sellerId OR " +
-           " o.store.seller.sellerId = :sellerId OR " +
-           " EXISTS (SELECT oi FROM OrderItem oi WHERE oi.order = o AND oi.seller.sellerId = :sellerId)) AND " +
-           "UPPER(o.orderStatus) = UPPER(:orderStatus) " +
-           "ORDER BY o.createdAt DESC")
+    @org.springframework.data.jpa.repository.Query(
+            value = "SELECT DISTINCT o FROM Order o " +
+                    "LEFT JOIN o.items oi " +
+                    "LEFT JOIN Product p ON p.productId = oi.productId " +
+                    "WHERE (o.fulfillmentStore.seller.sellerId = :sellerId OR " +
+                    "       o.store.seller.sellerId = :sellerId OR " +
+                    "       oi.seller.sellerId = :sellerId OR " +
+                    "       p.seller.sellerId = :sellerId) AND " +
+                    "UPPER(o.orderStatus) = UPPER(:orderStatus) " +
+                    "ORDER BY o.createdAt DESC",
+            countQuery = "SELECT COUNT(DISTINCT o) FROM Order o " +
+                    "LEFT JOIN o.items oi " +
+                    "LEFT JOIN Product p ON p.productId = oi.productId " +
+                    "WHERE (o.fulfillmentStore.seller.sellerId = :sellerId OR " +
+                    "       o.store.seller.sellerId = :sellerId OR " +
+                    "       oi.seller.sellerId = :sellerId OR " +
+                    "       p.seller.sellerId = :sellerId) AND " +
+                    "UPPER(o.orderStatus) = UPPER(:orderStatus)")
     Page<Order> findSellerOrdersByStatus(@org.springframework.data.repository.query.Param("sellerId") Integer sellerId,
                                          @org.springframework.data.repository.query.Param("orderStatus") String orderStatus,
                                          Pageable pageable);

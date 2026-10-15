@@ -95,6 +95,13 @@ public class ProductServiceImpl implements ProductService {
         @Autowired(required = false)
         private com.example.project.customer.config.PlatformMarketplaceProperties platformMarketplaceProperties;
 
+        @Autowired(required = false)
+        private ProductAvailabilityService productAvailabilityService;
+
+        public void setProductAvailabilityService(ProductAvailabilityService productAvailabilityService) {
+                this.productAvailabilityService = productAvailabilityService;
+        }
+
         @Override
         @CacheEvict(value = "brands", allEntries = true)
         public ProductResponse create(ProductRequest request) {
@@ -163,7 +170,13 @@ public class ProductServiceImpl implements ProductService {
                                                 "Product not found with id: " + id));
 
                 ProductResponse resp = mapToResponse(product);
-                if (hinchStoreVendorInventoryRepository != null && platformMarketplaceProperties != null
+                if (productAvailabilityService != null) {
+                        com.example.project.customer.dto.ProductAvailability avail = productAvailabilityService.getAvailability(product);
+                        resp.setStockQty(avail.getAvailableQty());
+                        resp.setAvailableQty(avail.getAvailableQty());
+                        resp.setInStock(avail.isInStock());
+                        resp.setAvailabilityReason(avail.getReason());
+                } else if (hinchStoreVendorInventoryRepository != null && platformMarketplaceProperties != null
                         && product.getStore() != null && platformMarketplaceProperties.isPlatformStore(product.getStore().getStoreId())) {
                         resp.setStockQty(hinchStoreVendorInventoryRepository.getAvailableStockForProduct(id));
                 }
@@ -329,7 +342,18 @@ public class ProductServiceImpl implements ProductService {
                                 .map(this::mapToResponse)
                                 .toList();
 
-                if (hinchStoreVendorInventoryRepository != null && platformMarketplaceProperties != null) {
+                if (productAvailabilityService != null) {
+                        Map<Integer, com.example.project.customer.dto.ProductAvailability> availMap = productAvailabilityService.getAvailabilityBatch(productPage.getContent());
+                        for (ProductResponse resp : data) {
+                                com.example.project.customer.dto.ProductAvailability avail = availMap.get(resp.getProductId());
+                                if (avail != null) {
+                                        resp.setStockQty(avail.getAvailableQty());
+                                        resp.setAvailableQty(avail.getAvailableQty());
+                                        resp.setInStock(avail.isInStock());
+                                        resp.setAvailabilityReason(avail.getReason());
+                                }
+                        }
+                } else if (hinchStoreVendorInventoryRepository != null && platformMarketplaceProperties != null) {
                         List<Integer> platformProductIds = productPage.getContent().stream()
                                         .filter(p -> p.getStore() != null && platformMarketplaceProperties.isPlatformStore(p.getStore().getStoreId()))
                                         .map(Product::getProductId)
@@ -945,6 +969,9 @@ public class ProductServiceImpl implements ProductService {
                                 .unit(p.getUnit())
                                 .moq(p.getMoq())
                                 .stockQty(p.getStockQty())
+                                .availableQty(p.getStockQty() != null ? p.getStockQty() : 0)
+                                .inStock(Boolean.TRUE.equals(p.getActive()) && p.getStockQty() != null && p.getStockQty() > 0)
+                                .availabilityReason(Boolean.FALSE.equals(p.getActive()) ? "PRODUCT_INACTIVE" : (p.getStockQty() == null || p.getStockQty() <= 0 ? "OUT_OF_STOCK" : null))
                                 .active(
                                                 Boolean.TRUE.equals(
                                                                 p.getActive()))

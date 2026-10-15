@@ -27,4 +27,6 @@ public interface OrderService {
     com.example.project.customer.dto.OrderMtcResponse getOrderMtc(Integer id);
     void commitHinchStoreReservation(Order order);
     void releaseOrRestockHinchStoreInventory(Order order);
+    com.example.project.customer.dto.SellerOrderPageData getSellerOrders(Integer sellerId, String status, int page, int limit);
+    com.example.project.customer.dto.SellerOrderDto getSellerOrderById(Integer id, Integer sellerId);
 }

@@ -30,6 +30,12 @@ public interface HinchStoreVendorInventoryRepository extends JpaRepository<Hinch
            "GROUP BY i.product.productId")
     List<Object[]> getAvailableStockForProducts(@Param("productIds") Collection<Integer> productIds);
 
+    @Query("SELECT i.product.productId, COALESCE(SUM(i.qty - i.reservedQty), 0), COUNT(i.id) " +
+           "FROM HinchStoreVendorInventory i " +
+           "WHERE i.product.productId IN :productIds AND i.isActive = true " +
+           "GROUP BY i.product.productId")
+    List<Object[]> getAvailableStockSummaryForProducts(@Param("productIds") Collection<Integer> productIds);
+
     @Query("SELECT COALESCE(SUM(i.qty - i.reservedQty), 0) " +
            "FROM HinchStoreVendorInventory i " +
            "WHERE i.product.productId = :productId AND i.isActive = true")

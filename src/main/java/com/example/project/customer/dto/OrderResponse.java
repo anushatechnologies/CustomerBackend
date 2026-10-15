@@ -70,6 +70,7 @@ public class OrderResponse {
     public static class OrderItemDto {
         private Integer orderItemId;
         private Integer productId;
+        private String sku;
         private String title;
         private String imageUrl;
         private Integer quantity;
@@ -81,5 +82,6 @@ public class OrderResponse {
         private BigDecimal gstRate;
         private BigDecimal lineTotal;
         private BigDecimal lineGst;
+        private Integer sellerId;
     }
 }

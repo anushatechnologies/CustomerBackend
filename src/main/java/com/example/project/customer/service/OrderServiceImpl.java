@@ -11,6 +11,8 @@ import com.example.project.customer.dto.OrderResponse;
 import com.example.project.customer.dto.OrderSummaryResponse;
 import com.example.project.customer.dto.OrderTrackingResponse;
 import com.example.project.customer.dto.PaginationMeta;
+import com.example.project.customer.dto.SellerOrderDto;
+import com.example.project.customer.dto.SellerOrderPageData;
 import com.example.project.customer.entity.Address;
 import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.Order;
@@ -52,6 +54,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -188,8 +192,12 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         if (store == null && !cart.getItems().isEmpty()) {
             Integer firstProductId = cart.getItems().get(0).getProductId();
             Product p = productRepository.findById(firstProductId).orElse(null);
-            if (p != null && p.getStore() != null) {
-                store = p.getStore();
+            if (p != null) {
+                if (p.getStore() != null) {
+                    store = p.getStore();
+                } else if (p.getSeller() != null && p.getSeller().getSellerId() != null) {
+                    store = storeRepository.findBySeller_SellerId(p.getSeller().getSellerId()).orElse(null);
+                }
             }
         }
         if (store == null) {
@@ -431,21 +439,19 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 }
             }
 
-            // Seller resolution: for HinchStore items, seller is derived from fulfillmentStore (null-guarded).
-            // For vendor items, derive strictly from product or store seller, throwing if missing.
+            // Seller resolution: derive from product or store seller, throwing if missing for vendor products.
             Seller itemSeller = null;
-            if (isHinchStoreOrder) {
-                itemSeller = null; // HinchStore platform items have NULL seller on OrderItem (Phase 1/2 rule)
-            } else {
-                if (p != null && p.getSeller() != null) {
-                    itemSeller = p.getSeller();
-                } else if (store != null && store.getSeller() != null) {
-                    itemSeller = store.getSeller();
-                }
-                if (itemSeller == null) {
-                    throw new IllegalStateException("Order item for product '" + (p != null ? p.getTitle() : ci.getTitle())
-                            + "' has no associated seller. Seller ID is required for vendor products.");
-                }
+            if (p != null && p.getSeller() != null) {
+                itemSeller = p.getSeller();
+            } else if (store != null && store.getSeller() != null) {
+                itemSeller = store.getSeller();
+            } else if (!isHinchStoreOrder && fulfillmentStore != null && fulfillmentStore.getSeller() != null) {
+                itemSeller = fulfillmentStore.getSeller();
+            }
+
+            if (!isHinchStoreOrder && itemSeller == null) {
+                throw new IllegalStateException("Order item for product '" + (p != null ? p.getTitle() : ci.getTitle())
+                        + "' has no associated seller. Seller ID is required for vendor products.");
             }
 
             ItemSettlementSnapshot settlement = null;
@@ -491,7 +497,7 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                     .lineGst(ci.getLineGst())
                     .seller(itemSeller)
                     .fulfillmentStore(fulfillmentStore)
-                    .isHinchStore(isHinchStoreOrder)
+                    .isHinchStore(isHinchStoreOrder && itemSeller == null)
                     .commissionRate(commissionRate)
                     .sellerPayable(sellerPayable)
                     .hinchKeeps(hinchKeeps)
@@ -521,8 +527,8 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                     : sellerPayable.multiply(BigDecimal.valueOf(0.01)).setScale(2, RoundingMode.HALF_UP);
             BigDecimal netPayout = sellerPayable.subtract(tcsAmount);
 
-            PayoutLedgerStatus initialStatus = isHinchStoreOrder
-                    ? (oi.getSeller() != null ? PayoutLedgerStatus.PENDING : PayoutLedgerStatus.ON_HOLD)
+            PayoutLedgerStatus initialStatus = (isHinchStoreOrder && oi.getSeller() == null)
+                    ? PayoutLedgerStatus.ON_HOLD
                     : PayoutLedgerStatus.PENDING;
 
             SellerPayoutLedger ledger = SellerPayoutLedger.builder()
@@ -1124,9 +1130,19 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         // 3. Any item seller
         if (order.getItems() != null) {
             return order.getItems().stream()
-                    .anyMatch(oi -> oi.getSeller() != null && sellerId.equals(oi.getSeller().getSellerId()));
+                    .anyMatch(oi -> (oi.getSeller() != null && sellerId.equals(oi.getSeller().getSellerId()))
+                            || isProductOwnedBySeller(oi.getProductId(), sellerId));
         }
         return false;
+    }
+
+    private boolean isProductOwnedBySeller(Integer productId, Integer sellerId) {
+        if (productId == null || sellerId == null) return false;
+        return productRepository.findById(productId)
+                .map(Product::getSeller)
+                .map(Seller::getSellerId)
+                .filter(sellerId::equals)
+                .isPresent();
     }
 
     private void validateOrderReadAccess(Order order) {
@@ -1182,16 +1198,14 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         if (SecurityUtils.isAdmin()) {
             return;
         }
-        if (SecurityUtils.isSeller()) {
-            Optional<Integer> currentSellerId = SecurityUtils.getCurrentSellerId();
-            if (currentSellerId.isEmpty()) {
-                try {
-                    currentSellerId = Optional.ofNullable(sellerContextUtil.getCurrentSellerId());
-                } catch (Exception ignored) {}
-            }
-            if (currentSellerId.isPresent() && isSellerAuthorizedForOrder(order, currentSellerId.get())) {
-                return;
-            }
+        Optional<Integer> currentSellerId = SecurityUtils.getCurrentSellerId();
+        if (currentSellerId.isEmpty()) {
+            try {
+                currentSellerId = Optional.ofNullable(sellerContextUtil.getCurrentSellerId());
+            } catch (Exception ignored) {}
+        }
+        if (currentSellerId.isPresent() && isSellerAuthorizedForOrder(order, currentSellerId.get())) {
+            return;
         }
         throw new ForbiddenException("Access denied: Only administrators or the fulfilling store owner can update order status.");
     }
@@ -1286,6 +1300,7 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                         .gstRate(i.getGstRate())
                         .lineTotal(i.getLineTotal())
                         .lineGst(i.getLineGst())
+                        .sellerId(i.getSeller() != null ? i.getSeller().getSellerId() : null)
                         .build())
                 .toList() : new ArrayList<>();
 
@@ -1344,6 +1359,200 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 .items(itemDtos)
                 .createdAt(o.getCreatedAt())
                 .estimatedDelivery(o.getEstimatedDelivery())
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SellerOrderPageData getSellerOrders(Integer sellerId, String status, int page, int limit) {
+        int pageNumber = page > 0 ? page : 1;
+        int pageSize = limit > 0 ? limit : 20;
+        Pageable pageable = PageRequest.of(pageNumber - 1, pageSize);
+
+        Page<Order> orderPage;
+        if (sellerId != null) {
+            orderPage = (status != null && !status.trim().isEmpty())
+                    ? orderRepository.findSellerOrdersByStatus(sellerId, status.trim().toUpperCase(), pageable)
+                    : orderRepository.findSellerOrders(sellerId, pageable);
+        } else if (SecurityUtils.isAdmin()) {
+            orderPage = (status != null && !status.trim().isEmpty())
+                    ? orderRepository.findByOrderStatusIgnoreCaseOrderByCreatedAtDesc(status.trim().toUpperCase(), pageable)
+                    : orderRepository.findAllByOrderByCreatedAtDesc(pageable);
+        } else {
+            Integer currentSellerId = SecurityUtils.getCurrentSellerId()
+                    .or(() -> {
+                        try {
+                            return Optional.ofNullable(sellerContextUtil.getCurrentSellerId());
+                        } catch (Exception e) {
+                            return Optional.empty();
+                        }
+                    })
+                    .orElseThrow(() -> new UnauthorizedException("Seller identity could not be resolved."));
+
+            orderPage = (status != null && !status.trim().isEmpty())
+                    ? orderRepository.findSellerOrdersByStatus(currentSellerId, status.trim().toUpperCase(), pageable)
+                    : orderRepository.findSellerOrders(currentSellerId, pageable);
+            sellerId = currentSellerId;
+        }
+
+        final Integer effectiveSellerId = sellerId;
+        List<SellerOrderDto> dtoList = orderPage.getContent().stream()
+                .map(o -> mapToSellerOrderDto(o, effectiveSellerId))
+                .toList();
+
+        return SellerOrderPageData.builder()
+                .content(dtoList)
+                .totalElements(orderPage.getTotalElements())
+                .totalPages(orderPage.getTotalPages())
+                .page(pageNumber)
+                .limit(pageSize)
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SellerOrderDto getSellerOrderById(Integer id, Integer sellerId) {
+        Order order = findOrder(id);
+        if (!SecurityUtils.isAdmin()) {
+            Integer effectiveSellerId = sellerId != null ? sellerId : SecurityUtils.getCurrentSellerId()
+                    .or(() -> {
+                        try {
+                            return Optional.ofNullable(sellerContextUtil.getCurrentSellerId());
+                        } catch (Exception e) {
+                            return Optional.empty();
+                        }
+                    })
+                    .orElseThrow(() -> new UnauthorizedException("Seller identity could not be resolved."));
+
+            if (!isSellerAuthorizedForOrder(order, effectiveSellerId)) {
+                throw new ForbiddenException("Access denied: You do not have permission to access Order #" + id);
+            }
+            sellerId = effectiveSellerId;
+        }
+        return mapToSellerOrderDto(order, sellerId);
+    }
+
+    private SellerOrderDto mapToSellerOrderDto(Order order, Integer sellerId) {
+        if (order == null) return null;
+
+        String formattedCreatedAt = null;
+        if (order.getCreatedAt() != null) {
+            formattedCreatedAt = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+                    .withZone(ZoneOffset.UTC)
+                    .format(order.getCreatedAt().atZone(ZoneId.systemDefault()));
+        }
+
+        Customer customer = order.getCustomer();
+        Address address = null;
+        if (order.getAddressId() != null) {
+            address = addressRepository.findById(order.getAddressId()).orElse(null);
+        }
+
+        String buyerName = (order.getRecipientName() != null && !order.getRecipientName().isBlank())
+                ? order.getRecipientName().trim()
+                : (customer != null && customer.getName() != null ? customer.getName().trim() : "Customer");
+        String buyerPhone = (order.getRecipientPhone() != null && !order.getRecipientPhone().isBlank())
+                ? order.getRecipientPhone().trim()
+                : (customer != null && customer.getPhone() != null ? customer.getPhone().trim() : "");
+        String buyerEmail = customer != null ? customer.getEmail() : null;
+        String company = (address != null && address.getSiteName() != null && !address.getSiteName().isBlank())
+                ? address.getSiteName().trim()
+                : (buyerName + " Enterprises");
+
+        SellerOrderDto.BuyerDto buyer = SellerOrderDto.BuyerDto.builder()
+                .name(buyerName)
+                .phone(buyerPhone)
+                .email(buyerEmail)
+                .company(company)
+                .build();
+
+        String completeAddr = order.getDeliveryLocation();
+        String city = address != null ? address.getCity() : null;
+        String state = address != null ? address.getState() : null;
+        String pincode = address != null ? address.getPincode() : null;
+
+        if (completeAddr == null && address != null) {
+            completeAddr = java.util.stream.Stream.of(
+                            address.getHouseFlatNo(), address.getAddressLine1(),
+                            address.getAddressLine2(), address.getAreaLocality(),
+                            address.getCity(), address.getState(), address.getPincode())
+                    .filter(s -> s != null && !s.isBlank())
+                    .collect(java.util.stream.Collectors.joining(", "));
+        }
+
+        SellerOrderDto.DeliveryAddressDto deliveryAddress = SellerOrderDto.DeliveryAddressDto.builder()
+                .completeAddress(completeAddr)
+                .city(city)
+                .state(state)
+                .pincode(pincode)
+                .build();
+
+        List<SellerOrderDto.SellerOrderItemDto> itemDtos = new ArrayList<>();
+        BigDecimal sellerSubtotal = BigDecimal.ZERO;
+        BigDecimal sellerGst = BigDecimal.ZERO;
+
+        if (order.getItems() != null) {
+            for (OrderItem oi : order.getItems()) {
+                Integer itemSellerId = oi.getSeller() != null ? oi.getSeller().getSellerId() : null;
+                Product product = null;
+                if (oi.getProductId() != null) {
+                    product = productRepository.findById(oi.getProductId()).orElse(null);
+                }
+                if (itemSellerId == null && product != null && product.getSeller() != null) {
+                    itemSellerId = product.getSeller().getSellerId();
+                }
+
+                boolean belongsToSeller = (sellerId == null) || (itemSellerId != null && itemSellerId.equals(sellerId))
+                        || (order.getStore() != null && order.getStore().getSeller() != null && sellerId.equals(order.getStore().getSeller().getSellerId()))
+                        || (order.getFulfillmentStore() != null && order.getFulfillmentStore().getSeller() != null && sellerId.equals(order.getFulfillmentStore().getSeller().getSellerId()));
+
+                if (belongsToSeller) {
+                    String sku = (product != null && product.getSku() != null && !product.getSku().isBlank())
+                            ? product.getSku() : "sku" + oi.getProductId();
+                    SellerOrderDto.SellerOrderItemDto itemDto = SellerOrderDto.SellerOrderItemDto.builder()
+                            .id(oi.getOrderItemId())
+                            .productId(oi.getProductId())
+                            .name(oi.getTitle())
+                            .sku(sku)
+                            .quantity(oi.getQuantity())
+                            .unit(oi.getUnit())
+                            .price(oi.getUnitPrice())
+                            .total(oi.getLineTotal())
+                            .imageUrl(oi.getImageUrl())
+                            .sellerId(itemSellerId)
+                            .build();
+                    itemDtos.add(itemDto);
+
+                    if (oi.getLineTotal() != null) {
+                        sellerSubtotal = sellerSubtotal.add(oi.getLineTotal());
+                    }
+                    if (oi.getLineGst() != null) {
+                        sellerGst = sellerGst.add(oi.getLineGst());
+                    }
+                }
+            }
+        }
+
+        BigDecimal subtotal = (sellerId != null && !itemDtos.isEmpty() && order.getItems() != null && itemDtos.size() < order.getItems().size())
+                ? sellerSubtotal : (order.getSubtotal() != null ? order.getSubtotal() : sellerSubtotal);
+        BigDecimal gstAmount = (sellerId != null && !itemDtos.isEmpty() && order.getItems() != null && itemDtos.size() < order.getItems().size())
+                ? sellerGst : (order.getTotalGst() != null ? order.getTotalGst() : sellerGst);
+        BigDecimal totalAmount = (sellerId != null && !itemDtos.isEmpty() && order.getItems() != null && itemDtos.size() < order.getItems().size())
+                ? sellerSubtotal.add(sellerGst) : (order.getTotalAmount() != null ? order.getTotalAmount() : sellerSubtotal.add(sellerGst));
+
+        return SellerOrderDto.builder()
+                .id(order.getOrderId())
+                .orderNumber(order.getOrderNumber())
+                .createdAt(formattedCreatedAt)
+                .orderStatus(order.getOrderStatus())
+                .paymentStatus(order.getPaymentStatus())
+                .totalAmount(totalAmount)
+                .subtotal(subtotal)
+                .gstAmount(gstAmount)
+                .paymentMethod(order.getPaymentMethod())
+                .buyer(buyer)
+                .deliveryAddress(deliveryAddress)
+                .items(itemDtos)
                 .build();
     }
 }

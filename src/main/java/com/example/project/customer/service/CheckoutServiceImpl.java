@@ -98,6 +98,22 @@ public class CheckoutServiceImpl implements CheckoutService {
                 craneUnloadingCharge
         );
 
+        List<CartItemResponse> cartItems = cart.getItems() != null ? cart.getItems() : new ArrayList<>();
+        boolean canPlaceOrder = true;
+        String orderBlockReason = null;
+
+        if (cartItems.isEmpty()) {
+            canPlaceOrder = false;
+            orderBlockReason = "Cannot place order with an empty cart.";
+        } else {
+            boolean hasUnavailable = cartItems.stream().anyMatch(ir ->
+                    !Boolean.TRUE.equals(ir.getInStock()) || (ir.getAvailableQty() != null && ir.getQuantity() > ir.getAvailableQty()));
+            if (hasUnavailable) {
+                canPlaceOrder = false;
+                orderBlockReason = "Order cannot be placed while any item is unavailable.";
+            }
+        }
+
         return CheckoutPreviewResponse.builder()
                 .subtotal(result.getSubtotal())
                 .discount(result.getDiscount())
@@ -109,6 +125,9 @@ public class CheckoutServiceImpl implements CheckoutService {
                 .freightCharge(result.getFreightCharge())
                 .craneUnloadingCharge(result.getCraneUnloadingCharge())
                 .grandTotal(result.getGrandTotal())
+                .items(cartItems)
+                .canPlaceOrder(canPlaceOrder)
+                .orderBlockReason(orderBlockReason)
                 .build();
     }
 }

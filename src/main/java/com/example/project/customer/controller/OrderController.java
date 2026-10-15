@@ -7,6 +7,7 @@ import com.example.project.customer.dto.OrderCreateRequest;
 import com.example.project.customer.dto.OrderResponse;
 import com.example.project.customer.dto.OrderSummaryResponse;
 import com.example.project.customer.dto.OrderTrackingResponse;
+import com.example.project.customer.dto.SellerOrderPageData;
 import com.example.project.customer.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -57,12 +58,19 @@ public class OrderController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<OrderSummaryResponse>>> getOrders(
+    public ResponseEntity<?> getOrders(
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) Integer sellerId,
             @RequestParam(required = false, defaultValue = "1") int page,
-            @RequestParam(required = false, defaultValue = "20") int limit) {
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) Integer size) {
+        int effectiveLimit = limit != null ? limit : (size != null ? size : 20);
+        if (sellerId != null) {
+            SellerOrderPageData response = orderService.getSellerOrders(sellerId, status, page, effectiveLimit);
+            return ResponseEntity.ok(ApiResponse.ok("Seller orders retrieved successfully", response));
+        }
         Integer userId = userContextUtil.getCurrentUserId();
-        ApiResponse<List<OrderSummaryResponse>> response = orderService.getOrders(userId, status, page, limit);
+        ApiResponse<List<OrderSummaryResponse>> response = orderService.getOrders(userId, status, page, effectiveLimit);
         return ResponseEntity.ok(response);
     }
 

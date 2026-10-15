@@ -59,6 +59,9 @@ public class ProductResponse {
     private Integer moq;
 
     private Integer stockQty;
+    private Integer availableQty;
+    private Boolean inStock;
+    private String availabilityReason;
 
     @JsonProperty("active")
     private boolean active;

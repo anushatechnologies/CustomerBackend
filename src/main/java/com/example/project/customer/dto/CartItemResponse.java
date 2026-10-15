@@ -27,4 +27,7 @@ public class CartItemResponse {
     private BigDecimal lineTotal;
     private BigDecimal lineGst;
     private String hsnCode;
+    private Integer availableQty;
+    private Boolean inStock;
+    private String reason;
 }

@@ -48,6 +48,12 @@ public class StoreServiceImpl implements StoreService {
     private final SellerRepository sellerRepository;
     private final ProductRepository productRepository;
     private final ProductService productService;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private ProductAvailabilityService productAvailabilityService;
+
+    public void setProductAvailabilityService(ProductAvailabilityService productAvailabilityService) {
+        this.productAvailabilityService = productAvailabilityService;
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -316,6 +322,19 @@ public class StoreServiceImpl implements StoreService {
         List<ProductResponse> products = pageResult.getContent().stream()
                 .map(productService::mapToResponse)
                 .toList();
+
+        if (productAvailabilityService != null) {
+            Map<Integer, com.example.project.customer.dto.ProductAvailability> availMap = productAvailabilityService.getAvailabilityBatch(pageResult.getContent());
+            for (ProductResponse resp : products) {
+                com.example.project.customer.dto.ProductAvailability avail = availMap.get(resp.getProductId());
+                if (avail != null) {
+                    resp.setStockQty(avail.getAvailableQty());
+                    resp.setAvailableQty(avail.getAvailableQty());
+                    resp.setInStock(avail.isInStock());
+                    resp.setAvailabilityReason(avail.getReason());
+                }
+            }
+        }
 
         PaginationMeta meta = PaginationMeta.of(pageNumber, pageSize, pageResult.getTotalElements());
         return ApiResponse.paginated("Store products retrieved successfully for " + store.getName(), products, meta);

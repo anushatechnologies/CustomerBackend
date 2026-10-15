@@ -547,4 +547,71 @@ class OrderSettlementWorkflowTest {
         OrderResponse adminResp = orderService.updateOrderStatus(orderId, "DELIVERED", "Site", "Delivered");
         assertThat(adminResp.getOrderStatus()).isEqualTo("DELIVERED");
     }
+
+    @Test
+    @DisplayName("8. When customer orders seller's product even if store resolves to HinchStore (storeId: 1), OrderItem seller_id is preserved")
+    void testCheckout_SellerProductUnderAdminStore_SellerIdPreservedOnOrderItem() {
+        int userId = 5;
+        platformMarketplaceProperties.setHinchStoreCheckoutEnabled(true);
+        CommissionRule rule = CommissionRule.builder()
+                .ruleId(1)
+                .rate(new BigDecimal("7.50"))
+                .isActive(true)
+                .build();
+        when(commissionRuleRepository.findActiveGlobalRules(any())).thenReturn(List.of(rule));
+        when(commissionRuleRepository.findApplicableRules(any(), any())).thenReturn(List.of(rule));
+        when(vendorSelectionService.getRankedCandidateVendors(any(), eq(deliveryAddress))).thenReturn(List.of(vendorStore));
+        when(hinchStoreVendorInventoryRepository.atomicReserve(eq(201), eq(vendorStore.getStoreId()), eq(2))).thenReturn(1);
+        CartItemResponse item = CartItemResponse.builder()
+                .cartItemId(1)
+                .productId(201)
+                .title("Vendor Cement 50kg")
+                .quantity(2)
+                .unit("Bag")
+                .unitPrice(new BigDecimal("400.00"))
+                .lineTotal(new BigDecimal("800.00"))
+                .lineGst(new BigDecimal("144.00"))
+                .build();
+        CartResponse cart = CartResponse.builder()
+                .cartId(1)
+                .storeId(1)
+                .items(List.of(item))
+                .build();
+
+        CheckoutPreviewResponse preview = CheckoutPreviewResponse.builder()
+                .subtotal(new BigDecimal("800.00"))
+                .discount(BigDecimal.ZERO)
+                .taxableAmount(new BigDecimal("800.00"))
+                .totalGst(new BigDecimal("144.00"))
+                .freightCharge(BigDecimal.ZERO)
+                .craneUnloadingCharge(BigDecimal.ZERO)
+                .grandTotal(new BigDecimal("944.00"))
+                .build();
+
+        when(cartService.getCart(userId)).thenReturn(cart);
+        when(storeRepository.findById(1)).thenReturn(Optional.of(hinchStore));
+        when(productRepository.findById(201)).thenReturn(Optional.of(vendorProduct1));
+        when(addressRepository.findByCustomer_CustomerIdAndId(userId, 99)).thenReturn(Optional.of(deliveryAddress));
+        when(customerRepository.findById(userId)).thenReturn(Optional.of(mockCustomer));
+        when(checkoutService.previewCheckout(eq(userId), any())).thenReturn(preview);
+        when(storeInvoiceSequenceService.generateNextInvoiceNumber(hinchStore)).thenReturn("INV-HINCH-002");
+
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            if (o.getOrderId() == null) o.setOrderId(1002);
+            return o;
+        });
+        when(orderItemRepository.save(any(OrderItem.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        OrderCreateRequest req = OrderCreateRequest.builder().addressId(99).build();
+        orderService.createOrder(userId, req);
+
+        ArgumentCaptor<OrderItem> itemCaptor = ArgumentCaptor.forClass(OrderItem.class);
+        verify(orderItemRepository).save(itemCaptor.capture());
+        OrderItem savedItem = itemCaptor.getValue();
+
+        assertThat(savedItem.getSeller()).isNotNull();
+        assertThat(savedItem.getSeller().getSellerId()).isEqualTo(42);
+        assertThat(savedItem.getIsHinchStore()).isFalse();
+    }
 }

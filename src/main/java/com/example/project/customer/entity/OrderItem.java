@@ -94,4 +94,8 @@ public class OrderItem {
     @Column(name = "hinch_keeps", precision = 14, scale = 2, nullable = false)
     @Builder.Default
     private BigDecimal hinchKeeps = BigDecimal.ZERO;
+
+    public Integer getSellerId() {
+        return seller != null ? seller.getSellerId() : null;
+    }
 }

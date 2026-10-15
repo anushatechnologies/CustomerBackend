@@ -30,4 +30,6 @@ public class CartResponse {
     private BigDecimal deliveryCharge;
     private BigDecimal grandTotal;
     private String appliedCoupon;
+    private Boolean canCheckout;
+    private String checkoutBlockReason;
 }
