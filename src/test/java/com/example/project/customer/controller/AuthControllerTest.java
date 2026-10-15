@@ -41,11 +41,15 @@ class AuthControllerTest {
     @Test
     @DisplayName("POST /api/auth/sync with valid Firebase token passes real values and saves successfully")
     void syncUser_withValidFirebaseToken_savesRealValues() throws Exception {
-        FirebaseToken mockToken = mock(FirebaseToken.class);
-        when(mockToken.getUid()).thenReturn("fb-uid-controller-1");
-        when(mockToken.getEmail()).thenReturn("controller@example.com");
-        when(mockToken.getName()).thenReturn("Controller User");
-        when(mockToken.getClaims()).thenReturn(Map.of("phone_number", "+919876543299"));
+        java.lang.reflect.Constructor<FirebaseToken> ctor = FirebaseToken.class.getDeclaredConstructor(Map.class);
+        ctor.setAccessible(true);
+        Map<String, Object> claims = new java.util.HashMap<>();
+        claims.put("sub", "fb-uid-controller-1");
+        claims.put("user_id", "fb-uid-controller-1");
+        claims.put("email", "controller@example.com");
+        claims.put("name", "Controller User");
+        claims.put("phone_number", "+919876543299");
+        FirebaseToken mockToken = ctor.newInstance(claims);
 
         when(firebaseAuthService.verifyIdToken("valid-id-token")).thenReturn(mockToken);
 
@@ -84,11 +88,13 @@ class AuthControllerTest {
     @Test
     @DisplayName("POST /api/auth/sync with missing name preserves null in response")
     void syncUser_withMissingName_keepsNull() throws Exception {
-        FirebaseToken mockToken = mock(FirebaseToken.class);
-        when(mockToken.getUid()).thenReturn("fb-uid-no-name");
-        when(mockToken.getEmail()).thenReturn("noname@example.com");
-        when(mockToken.getName()).thenReturn(null);
-        when(mockToken.getClaims()).thenReturn(Map.of());
+        java.lang.reflect.Constructor<FirebaseToken> ctor = FirebaseToken.class.getDeclaredConstructor(Map.class);
+        ctor.setAccessible(true);
+        Map<String, Object> claims = new java.util.HashMap<>();
+        claims.put("sub", "fb-uid-no-name");
+        claims.put("user_id", "fb-uid-no-name");
+        claims.put("email", "noname@example.com");
+        FirebaseToken mockToken = ctor.newInstance(claims);
 
         when(firebaseAuthService.verifyIdToken("token-no-name")).thenReturn(mockToken);
 

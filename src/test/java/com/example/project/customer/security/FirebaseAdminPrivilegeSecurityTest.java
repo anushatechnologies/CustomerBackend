@@ -139,10 +139,14 @@ class FirebaseAdminPrivilegeSecurityTest {
         AuthController authController = new AuthController(userService, firebaseAuthService, adminUserRepository);
         ReflectionTestUtils.setField(authController, "configuredAdminEmails", "admin@hinchmart.com");
 
-        FirebaseToken mockToken = mock(FirebaseToken.class);
-        when(mockToken.getUid()).thenReturn("buyer-uid-123");
-        when(mockToken.getEmail()).thenReturn("admin_buyer@gmail.com");
-        when(mockToken.getName()).thenReturn("Admin Buyer");
+        java.lang.reflect.Constructor<FirebaseToken> ctor = FirebaseToken.class.getDeclaredConstructor(Map.class);
+        ctor.setAccessible(true);
+        Map<String, Object> claims = new java.util.HashMap<>();
+        claims.put("sub", "buyer-uid-123");
+        claims.put("user_id", "buyer-uid-123");
+        claims.put("email", "admin_buyer@gmail.com");
+        claims.put("name", "Admin Buyer");
+        FirebaseToken mockToken = ctor.newInstance(claims);
         when(firebaseAuthService.verifyIdToken("fake-token")).thenReturn(mockToken);
 
         assertThrows(ForbiddenException.class, () -> authController.claimAdminRole("Bearer fake-token"),

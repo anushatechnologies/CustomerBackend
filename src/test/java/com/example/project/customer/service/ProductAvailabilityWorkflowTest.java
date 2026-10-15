@@ -190,6 +190,41 @@ class ProductAvailabilityWorkflowTest {
     }
 
     @Test
+    @DisplayName("Cart add/update errors show the real reason: CHECKOUT_DISABLED or UNAVAILABLE_NO_VENDOR_STOCK")
+    void testCartAddAndUpdateErrorsShowRealReason() {
+        // 1. HinchStore product with no inventory rows -> UNAVAILABLE_NO_VENDOR_STOCK
+        when(hinchStoreVendorInventoryRepository.getAvailableStockSummaryForProducts(List.of(202)))
+                .thenReturn(Collections.emptyList());
+
+        CartItemRequest noRowsReq = CartItemRequest.builder().productId(202).quantity(1).build();
+        assertThatThrownBy(() -> cartService.addItem(999, noRowsReq))
+                .isInstanceOf(ResourceConflictException.class)
+                .hasMessageContaining("UNAVAILABLE_NO_VENDOR_STOCK");
+
+        // 2. HinchStore product with stock, but checkout disabled -> CHECKOUT_DISABLED
+        List<Object[]> rows = Collections.singletonList(new Object[]{201, 65, 1L});
+        when(hinchStoreVendorInventoryRepository.getAvailableStockSummaryForProducts(List.of(201)))
+                .thenReturn(rows);
+        platformMarketplaceProperties.setHinchStoreCheckoutEnabled(false);
+
+        CartItemRequest checkoutDisabledReq = CartItemRequest.builder().productId(201).quantity(2).build();
+        assertThatThrownBy(() -> cartService.addItem(999, checkoutDisabledReq))
+                .isInstanceOf(ResourceConflictException.class)
+                .hasMessageContaining("CHECKOUT_DISABLED");
+
+        // 3. Cart update item with UNAVAILABLE_NO_VENDOR_STOCK
+        Cart cart = Cart.builder().cartId(1).store(platformStore).build();
+        CartItem item = CartItem.builder().cartItemId(10).cart(cart).product(hinchProductNoRows).quantity(1).build();
+        when(cartRepository.findByCustomer_CustomerIdAndIsActiveTrue(999)).thenReturn(Optional.of(cart));
+        when(cartItemRepository.findByCart_CartIdAndCartItemId(1, 10)).thenReturn(Optional.of(item));
+
+        com.example.project.customer.dto.CartItemUpdateRequest updateReq = com.example.project.customer.dto.CartItemUpdateRequest.builder().quantity(5).build();
+        assertThatThrownBy(() -> cartService.updateItem(999, 10, updateReq))
+                .isInstanceOf(ResourceConflictException.class)
+                .hasMessageContaining("UNAVAILABLE_NO_VENDOR_STOCK");
+    }
+
+    @Test
     @DisplayName("Cart view and preview flag unavailable items without deleting them; preview states order cannot be placed")
     void testCartViewAndPreviewFlagUnavailableItemsWithoutDeleting() {
         Cart cart = Cart.builder().cartId(5).store(platformStore).build();

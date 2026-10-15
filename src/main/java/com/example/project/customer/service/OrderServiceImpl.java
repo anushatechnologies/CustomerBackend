@@ -113,6 +113,13 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         this.vendorSelectionService = vendorSelectionService;
     }
 
+    private ProductAvailabilityService productAvailabilityService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setProductAvailabilityService(ProductAvailabilityService productAvailabilityService) {
+        this.productAvailabilityService = productAvailabilityService;
+    }
+
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setHinchStoreVendorInventoryRepository(com.example.project.customer.repository.HinchStoreVendorInventoryRepository hinchStoreVendorInventoryRepository) {
         this.hinchStoreVendorInventoryRepository = hinchStoreVendorInventoryRepository;
@@ -231,7 +238,9 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 throw new IllegalStateException("Product '" + p.getTitle() + "' is no longer active in the catalog.");
             }
             if (!isHinchStoreOrder) {
-                int availableStock = p.getStockQty() != null ? p.getStockQty() : 0;
+                int availableStock = (productAvailabilityService != null)
+                        ? productAvailabilityService.getAvailability(p).getAvailableQty()
+                        : (p.getStockQty() != null ? p.getStockQty() : 0);
                 if (availableStock < ci.getQuantity()) {
                     throw new ResourceConflictException("Insufficient stock for '" + p.getTitle() + "'. Requested: " + ci.getQuantity() + ", Available: " + availableStock);
                 }

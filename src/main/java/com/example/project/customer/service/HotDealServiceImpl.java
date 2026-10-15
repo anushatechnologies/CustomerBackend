@@ -37,6 +37,13 @@ public class HotDealServiceImpl implements HotDealService {
     private final ProductRepository productRepository;
     private final ProductService productService;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private ProductAvailabilityService productAvailabilityService;
+
+    public void setProductAvailabilityService(ProductAvailabilityService productAvailabilityService) {
+        this.productAvailabilityService = productAvailabilityService;
+    }
+
     @Override
     public HotDealResponse addHotDeal(HotDealRequest request) {
         if (request == null || request.getProductId() == null) {
@@ -174,12 +181,28 @@ public class HotDealServiceImpl implements HotDealService {
     public HomeHotDealsResponse getActiveHotDealsForHome() {
         List<HotDeal> activeDeals = hotDealRepository.findByActiveTrueOrderByDisplayOrderAsc();
 
+        List<Product> productsToBatch = activeDeals.stream()
+                .map(HotDeal::getProduct)
+                .filter(p -> p != null && Boolean.TRUE.equals(p.getActive()) && p.getApprovalStatus() == ApprovalStatus.APPROVED)
+                .toList();
+
+        Map<Integer, com.example.project.customer.dto.ProductAvailability> availMap = (productAvailabilityService != null)
+                ? productAvailabilityService.getAvailabilityBatch(productsToBatch)
+                : java.util.Collections.emptyMap();
+
         List<ProductResponse> products = new ArrayList<>();
         for (HotDeal deal : activeDeals) {
             Product p = deal.getProduct();
             // Ensure product is approved and active for public customer visibility
             if (Boolean.TRUE.equals(p.getActive()) && p.getApprovalStatus() == ApprovalStatus.APPROVED) {
                 ProductResponse resp = enrichProductWithDeal(p, deal);
+                if (availMap.containsKey(p.getProductId())) {
+                    com.example.project.customer.dto.ProductAvailability avail = availMap.get(p.getProductId());
+                    resp.setStockQty(avail.getAvailableQty());
+                    resp.setAvailableQty(avail.getAvailableQty());
+                    resp.setInStock(avail.isInStock());
+                    resp.setAvailabilityReason(avail.getReason());
+                }
                 products.add(resp);
             }
         }
@@ -218,6 +241,13 @@ public class HotDealServiceImpl implements HotDealService {
 
     private ProductResponse enrichProductWithDeal(Product p, HotDeal deal) {
         ProductResponse resp = productService.mapToResponse(p);
+        if (productAvailabilityService != null && p != null) {
+            com.example.project.customer.dto.ProductAvailability avail = productAvailabilityService.getAvailability(p);
+            resp.setStockQty(avail.getAvailableQty());
+            resp.setAvailableQty(avail.getAvailableQty());
+            resp.setInStock(avail.isInStock());
+            resp.setAvailabilityReason(avail.getReason());
+        }
         resp.setDisplayOrder(deal.getDisplayOrder());
 
         if (deal.getDiscountPercentage() != null) {

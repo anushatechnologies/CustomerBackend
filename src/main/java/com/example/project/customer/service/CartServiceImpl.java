@@ -105,7 +105,17 @@ public class CartServiceImpl implements CartService {
         if (productAvailabilityService != null) {
             com.example.project.customer.dto.ProductAvailability avail = productAvailabilityService.getAvailability(product);
             int available = avail.getAvailableQty();
+            String reason = avail.getReason();
+            if ("CHECKOUT_DISABLED".equals(reason)) {
+                throw new com.example.project.customer.exception.ResourceConflictException("Cannot add '" + product.getTitle() + "' to cart: CHECKOUT_DISABLED");
+            }
+            if ("UNAVAILABLE_NO_VENDOR_STOCK".equals(reason)) {
+                throw new com.example.project.customer.exception.ResourceConflictException("Cannot add '" + product.getTitle() + "' to cart: UNAVAILABLE_NO_VENDOR_STOCK");
+            }
             if (request.getQuantity() > available) {
+                if (reason != null && !reason.isBlank() && available == 0) {
+                    throw new com.example.project.customer.exception.ResourceConflictException("Cannot add '" + product.getTitle() + "' to cart: " + reason);
+                }
                 throw new com.example.project.customer.exception.ResourceConflictException("Cannot add '" + product.getTitle() + "' to cart. Requested quantity ("
                         + request.getQuantity() + ") exceeds available stock (available: " + available + ").");
             }
@@ -245,7 +255,17 @@ public class CartServiceImpl implements CartService {
             if (productAvailabilityService != null) {
                 com.example.project.customer.dto.ProductAvailability avail = productAvailabilityService.getAvailability(item.getProduct());
                 int available = avail.getAvailableQty();
+                String reason = avail.getReason();
+                if ("CHECKOUT_DISABLED".equals(reason)) {
+                    throw new com.example.project.customer.exception.ResourceConflictException("Cannot update quantity for '" + item.getProduct().getTitle() + "': CHECKOUT_DISABLED");
+                }
+                if ("UNAVAILABLE_NO_VENDOR_STOCK".equals(reason)) {
+                    throw new com.example.project.customer.exception.ResourceConflictException("Cannot update quantity for '" + item.getProduct().getTitle() + "': UNAVAILABLE_NO_VENDOR_STOCK");
+                }
                 if (request.getQuantity() > available) {
+                    if (reason != null && !reason.isBlank() && available == 0) {
+                        throw new com.example.project.customer.exception.ResourceConflictException("Cannot update quantity for '" + item.getProduct().getTitle() + "': " + reason);
+                    }
                     throw new com.example.project.customer.exception.ResourceConflictException("Cannot update quantity for '" + item.getProduct().getTitle() + "'. Requested quantity ("
                             + request.getQuantity() + ") exceeds available stock (available: " + available + ").");
                 }

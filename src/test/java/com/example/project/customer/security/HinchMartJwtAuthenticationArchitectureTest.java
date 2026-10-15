@@ -346,11 +346,15 @@ class HinchMartJwtAuthenticationArchitectureTest {
     @Test
     @DisplayName("13. /api/auth/sync flow: receives Firebase ID token, verifies it, syncs customer")
     void test13_authSyncFirebaseAuthenticationFlow() throws Exception {
-        FirebaseToken mockFirebaseToken = mock(FirebaseToken.class);
-        when(mockFirebaseToken.getUid()).thenReturn("fb-uid-sync-test");
-        when(mockFirebaseToken.getEmail()).thenReturn("sync.test@example.com");
-        when(mockFirebaseToken.getName()).thenReturn("Sync User");
-        when(mockFirebaseToken.getClaims()).thenReturn(Map.of("phone_number", "+919951949353"));
+        java.lang.reflect.Constructor<FirebaseToken> ctor = FirebaseToken.class.getDeclaredConstructor(Map.class);
+        ctor.setAccessible(true);
+        Map<String, Object> claims1 = new java.util.HashMap<>();
+        claims1.put("sub", "fb-uid-sync-test");
+        claims1.put("user_id", "fb-uid-sync-test");
+        claims1.put("email", "sync.test@example.com");
+        claims1.put("name", "Sync User");
+        claims1.put("phone_number", "+919951949353");
+        FirebaseToken mockFirebaseToken = ctor.newInstance(claims1);
 
         when(firebaseAuthService.verifyIdToken("firebase-id-token-abc")).thenReturn(mockFirebaseToken);
 
@@ -387,11 +391,15 @@ class HinchMartJwtAuthenticationArchitectureTest {
     @Test
     @DisplayName("14. JWT returned after sync: returns accessToken, tokenType=Bearer, expiresIn, customer object")
     void test14_jwtReturnedAfterSync() throws Exception {
-        FirebaseToken mockFirebaseToken = mock(FirebaseToken.class);
-        when(mockFirebaseToken.getUid()).thenReturn("fb-uid-500");
-        when(mockFirebaseToken.getEmail()).thenReturn("customer@hinchmart.com");
-        when(mockFirebaseToken.getName()).thenReturn("Rishi Customer");
-        when(mockFirebaseToken.getClaims()).thenReturn(Map.of("phone_number", "+919951949353"));
+        java.lang.reflect.Constructor<FirebaseToken> ctor = FirebaseToken.class.getDeclaredConstructor(Map.class);
+        ctor.setAccessible(true);
+        Map<String, Object> claims2 = new java.util.HashMap<>();
+        claims2.put("sub", "fb-uid-500");
+        claims2.put("user_id", "fb-uid-500");
+        claims2.put("email", "customer@hinchmart.com");
+        claims2.put("name", "Rishi Customer");
+        claims2.put("phone_number", "+919951949353");
+        FirebaseToken mockFirebaseToken = ctor.newInstance(claims2);
 
         when(firebaseAuthService.verifyIdToken("valid-fb-token")).thenReturn(mockFirebaseToken);
         when(userService.syncUserWithFirebase(any(), any(), any(), any(), any())).thenReturn(customerUser);
