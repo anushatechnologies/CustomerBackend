@@ -15,18 +15,29 @@ import com.example.project.customer.entity.Product;
 import com.example.project.customer.entity.Seller;
 import com.example.project.customer.entity.Store;
 import com.example.project.customer.entity.StoreStatus;
+import com.example.project.customer.dto.ApiResponse;
+import com.example.project.customer.dto.HomeHotDealsResponse;
+import com.example.project.customer.dto.ProductResponse;
+import com.example.project.customer.entity.Category;
+import com.example.project.customer.entity.HotDeal;
+import com.example.project.customer.entity.Subcategory;
 import com.example.project.customer.exception.ResourceConflictException;
 import com.example.project.customer.repository.AddressRepository;
 import com.example.project.customer.repository.CartItemRepository;
 import com.example.project.customer.repository.CartRepository;
+import com.example.project.customer.repository.CategoryRepository;
 import com.example.project.customer.repository.CustomerRepository;
 import com.example.project.customer.repository.HinchStoreVendorInventoryRepository;
+import com.example.project.customer.repository.HotDealRepository;
 import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.repository.SellerRepository;
 import com.example.project.customer.repository.StoreRepository;
+import com.example.project.customer.repository.SubcategoryRepository;
 import com.example.project.customer.service.CartService;
 import com.example.project.customer.service.CheckoutService;
+import com.example.project.customer.service.HotDealService;
 import com.example.project.customer.service.ProductAvailabilityService;
+import com.example.project.customer.service.ProductService;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
@@ -149,6 +160,21 @@ public class Phase3ProductAvailabilityRealMysqlTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private ProductService productService;
+
+    @Autowired
+    private HotDealService hotDealService;
+
+    @Autowired
+    private HotDealRepository hotDealRepository;
+
+    @Autowired
+    private CategoryRepository categoryRepository;
+
+    @Autowired
+    private SubcategoryRepository subcategoryRepository;
+
     private Store platformStore;
     private Store vendorStore1;
     private Store vendorStore2;
@@ -161,10 +187,13 @@ public class Phase3ProductAvailabilityRealMysqlTest {
     @BeforeEach
     void setUp() {
         jdbcTemplate.execute("SET FOREIGN_KEY_CHECKS = 0;");
+        jdbcTemplate.execute("DELETE FROM hot_deals;");
         jdbcTemplate.execute("DELETE FROM cart_items;");
         jdbcTemplate.execute("DELETE FROM carts;");
         jdbcTemplate.execute("DELETE FROM hinch_store_vendor_inventory;");
         jdbcTemplate.execute("DELETE FROM products;");
+        jdbcTemplate.execute("DELETE FROM subcategories;");
+        jdbcTemplate.execute("DELETE FROM categories;");
         jdbcTemplate.execute("DELETE FROM stores;");
         jdbcTemplate.execute("DELETE FROM sellers;");
         jdbcTemplate.execute("DELETE FROM user_addresses;");
@@ -173,7 +202,6 @@ public class Phase3ProductAvailabilityRealMysqlTest {
 
         // 1. Sellers
         Seller seller1 = sellerRepository.save(Seller.builder()
-                .sellerId(10)
                 .name("Vendor One")
                 .companyName("Vendor Co 1")
                 .email("vendor1@hinchmart.com")
@@ -181,7 +209,6 @@ public class Phase3ProductAvailabilityRealMysqlTest {
                 .build());
 
         Seller seller2 = sellerRepository.save(Seller.builder()
-                .sellerId(20)
                 .name("Vendor Two")
                 .companyName("Vendor Co 2")
                 .email("vendor2@hinchmart.com")
@@ -189,7 +216,6 @@ public class Phase3ProductAvailabilityRealMysqlTest {
                 .build());
 
         Seller platformSeller = sellerRepository.save(Seller.builder()
-                .sellerId(1)
                 .name("Platform Admin Seller")
                 .companyName("HinchMart Platform")
                 .email("platform@hinchmart.com")
@@ -206,7 +232,6 @@ public class Phase3ProductAvailabilityRealMysqlTest {
         platformMarketplaceProperties.setPlatformStoreId(platformStore.getStoreId());
 
         vendorStore1 = storeRepository.save(Store.builder()
-                .storeId(10)
                 .seller(seller1)
                 .name("Vendor Store 1")
                 .slug("vendor-store-1")
@@ -214,7 +239,6 @@ public class Phase3ProductAvailabilityRealMysqlTest {
                 .build());
 
         vendorStore2 = storeRepository.save(Store.builder()
-                .storeId(20)
                 .seller(seller2)
                 .name("Vendor Store 2")
                 .slug("vendor-store-2")
@@ -461,5 +485,177 @@ public class Phase3ProductAvailabilityRealMysqlTest {
         assertThat(statementsExecuted)
                 .withFailMessage("Expected exactly 1 query to fetch stock for 20 platform products, but got " + statementsExecuted)
                 .isLessThanOrEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("Product list query count stays flat (batched stock) for 20 platform products")
+    void testProductListEndpointQueryCountStaysFlat() {
+        for (int i = 1; i <= 20; i++) {
+            Product p = productRepository.save(Product.builder()
+                    .productId(2000 + i)
+                    .store(platformStore)
+                    .title("List Product #" + i)
+                    .slug("list-product-" + i)
+                    .price(new BigDecimal("120.00"))
+                    .unit("pcs")
+                    .stockQty(10)
+                    .active(true)
+                    .approvalStatus(ApprovalStatus.APPROVED)
+                    .build());
+            jdbcTemplate.update("INSERT INTO hinch_store_vendor_inventory (product_id, vendor_store_id, qty, reserved_qty, is_active) VALUES (?, ?, ?, ?, ?)",
+                    p.getProductId(), vendorStore1.getStoreId(), 50, 10, true);
+        }
+
+        SessionFactory sessionFactory = entityManagerFactory.unwrap(SessionFactory.class);
+        Statistics statistics = sessionFactory.getStatistics();
+        statistics.setStatisticsEnabled(true);
+        statistics.clear();
+
+        long prepBefore = statistics.getPrepareStatementCount();
+        ApiResponse<List<ProductResponse>> response = productService.getAll(null, null, null, null, null, null, null, "newest", 1, 20);
+        long prepAfter = statistics.getPrepareStatementCount();
+
+        assertThat(response.getData()).hasSize(20);
+        assertThat(response.getData().get(0).getStockQty()).isEqualTo(40);
+
+        long statementsExecuted = prepAfter - prepBefore;
+        // 1 count query + 1 select products page query + 1 batched availability query (<= 5 queries max, strictly flat O(1), no N+1)
+        assertThat(statementsExecuted)
+                .withFailMessage("Expected flat query count (<= 5 queries) for 20 products in list, but got " + statementsExecuted)
+                .isLessThanOrEqualTo(5);
+    }
+
+    @Test
+    @DisplayName("Product category query count stays flat (batched stock) for 20 platform products")
+    void testProductCategoryEndpointQueryCountStaysFlat() {
+        Category cat = categoryRepository.save(Category.builder()
+                .name("Steel Category")
+                .slug("steel-category")
+                .active(true)
+                .build());
+        Subcategory subcat = subcategoryRepository.save(Subcategory.builder()
+                .category(cat)
+                .name("Steel Subcategory")
+                .slug("steel-subcategory")
+                .active(true)
+                .build());
+
+        for (int i = 1; i <= 20; i++) {
+            Product p = productRepository.save(Product.builder()
+                    .productId(3000 + i)
+                    .store(platformStore)
+                    .subcategory(subcat)
+                    .title("Cat Product #" + i)
+                    .slug("cat-product-" + i)
+                    .price(new BigDecimal("150.00"))
+                    .unit("pcs")
+                    .stockQty(10)
+                    .active(true)
+                    .approvalStatus(ApprovalStatus.APPROVED)
+                    .build());
+            jdbcTemplate.update("INSERT INTO hinch_store_vendor_inventory (product_id, vendor_store_id, qty, reserved_qty, is_active) VALUES (?, ?, ?, ?, ?)",
+                    p.getProductId(), vendorStore1.getStoreId(), 60, 10, true);
+        }
+
+        SessionFactory sessionFactory = entityManagerFactory.unwrap(SessionFactory.class);
+        Statistics statistics = sessionFactory.getStatistics();
+        statistics.setStatisticsEnabled(true);
+        statistics.clear();
+
+        long prepBefore = statistics.getPrepareStatementCount();
+        ApiResponse<List<ProductResponse>> response = productService.getAll(cat.getCategoryId(), null, null, null, null, null, null, "newest", 1, 20);
+        long prepAfter = statistics.getPrepareStatementCount();
+
+        assertThat(response.getData()).hasSize(20);
+        assertThat(response.getData().get(0).getStockQty()).isEqualTo(50);
+
+        long statementsExecuted = prepAfter - prepBefore;
+        // 1 count query + 1 select products page query + 1 batched availability query = 3 queries max (no N+1)
+        assertThat(statementsExecuted)
+                .withFailMessage("Expected flat query count (<= 3 queries) for 20 products in category, but got " + statementsExecuted)
+                .isLessThanOrEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("Product search query count stays flat (batched stock) for 20 platform products")
+    void testProductSearchEndpointQueryCountStaysFlat() {
+        for (int i = 1; i <= 20; i++) {
+            Product p = productRepository.save(Product.builder()
+                    .productId(4000 + i)
+                    .store(platformStore)
+                    .title("Searchable Cement Bag #" + i)
+                    .slug("searchable-cement-" + i)
+                    .price(new BigDecimal("200.00"))
+                    .unit("bag")
+                    .stockQty(10)
+                    .active(true)
+                    .approvalStatus(ApprovalStatus.APPROVED)
+                    .build());
+            jdbcTemplate.update("INSERT INTO hinch_store_vendor_inventory (product_id, vendor_store_id, qty, reserved_qty, is_active) VALUES (?, ?, ?, ?, ?)",
+                    p.getProductId(), vendorStore1.getStoreId(), 70, 20, true);
+        }
+
+        SessionFactory sessionFactory = entityManagerFactory.unwrap(SessionFactory.class);
+        Statistics statistics = sessionFactory.getStatistics();
+        statistics.setStatisticsEnabled(true);
+        statistics.clear();
+
+        long prepBefore = statistics.getPrepareStatementCount();
+        ApiResponse<List<ProductResponse>> response = productService.getAll(null, null, "Searchable Cement", null, null, null, null, "newest", 1, 20);
+        long prepAfter = statistics.getPrepareStatementCount();
+
+        assertThat(response.getData()).hasSize(20);
+        assertThat(response.getData().get(0).getStockQty()).isEqualTo(50);
+
+        long statementsExecuted = prepAfter - prepBefore;
+        // 1 count query + 1 select products page query + 1 batched availability query = 3 queries max (no N+1)
+        assertThat(statementsExecuted)
+                .withFailMessage("Expected flat query count (<= 3 queries) for 20 products in search, but got " + statementsExecuted)
+                .isLessThanOrEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("Hot-deals endpoint query count stays flat (batched stock) with no N+1 for 20 deals")
+    void testHotDealsEndpointQueryCountStaysFlat() {
+        for (int i = 1; i <= 20; i++) {
+            Product p = productRepository.save(Product.builder()
+                    .productId(5000 + i)
+                    .store(platformStore)
+                    .title("Hot Deal Platform Product #" + i)
+                    .slug("hot-deal-prod-" + i)
+                    .price(new BigDecimal("300.00"))
+                    .unit("pcs")
+                    .stockQty(10)
+                    .active(true)
+                    .approvalStatus(ApprovalStatus.APPROVED)
+                    .build());
+
+            jdbcTemplate.update("INSERT INTO hinch_store_vendor_inventory (product_id, vendor_store_id, qty, reserved_qty, is_active) VALUES (?, ?, ?, ?, ?)",
+                    p.getProductId(), vendorStore1.getStoreId(), 80, 30, true);
+
+            hotDealRepository.save(HotDeal.builder()
+                    .product(p)
+                    .displayOrder(i)
+                    .active(true)
+                    .build());
+        }
+
+        SessionFactory sessionFactory = entityManagerFactory.unwrap(SessionFactory.class);
+        Statistics statistics = sessionFactory.getStatistics();
+        statistics.setStatisticsEnabled(true);
+        statistics.clear();
+
+        long prepBefore = statistics.getPrepareStatementCount();
+        HomeHotDealsResponse response = hotDealService.getActiveHotDealsForHome();
+        long prepAfter = statistics.getPrepareStatementCount();
+
+        assertThat(response.getProducts()).hasSize(20);
+        assertThat(response.getProducts().get(0).getStockQty()).isEqualTo(50);
+
+        long statementsExecuted = prepAfter - prepBefore;
+        // 1 hot deals query + 1 batched inventory query = 2 queries max (strictly NO N+1)
+        assertThat(statementsExecuted)
+                .withFailMessage("Expected flat query count (<= 2 queries) for 20 hot deals, but got " + statementsExecuted)
+                .isLessThanOrEqualTo(2);
     }
 }

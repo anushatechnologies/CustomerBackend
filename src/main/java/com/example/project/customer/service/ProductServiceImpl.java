@@ -294,7 +294,7 @@ public class ProductServiceImpl implements ProductService {
                                                 pattern);
 
                                 Predicate brandPredicate = cb.like(
-                                                cb.lower(root.get("brand").get("name")),
+                                                cb.lower(brandJoin.get("name")),
                                                 pattern);
 
                                 Predicate descriptionPredicate = cb.like(

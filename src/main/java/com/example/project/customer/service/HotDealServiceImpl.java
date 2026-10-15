@@ -195,14 +195,8 @@ public class HotDealServiceImpl implements HotDealService {
             Product p = deal.getProduct();
             // Ensure product is approved and active for public customer visibility
             if (Boolean.TRUE.equals(p.getActive()) && p.getApprovalStatus() == ApprovalStatus.APPROVED) {
-                ProductResponse resp = enrichProductWithDeal(p, deal);
-                if (availMap.containsKey(p.getProductId())) {
-                    com.example.project.customer.dto.ProductAvailability avail = availMap.get(p.getProductId());
-                    resp.setStockQty(avail.getAvailableQty());
-                    resp.setAvailableQty(avail.getAvailableQty());
-                    resp.setInStock(avail.isInStock());
-                    resp.setAvailabilityReason(avail.getReason());
-                }
+                com.example.project.customer.dto.ProductAvailability avail = (p != null) ? availMap.get(p.getProductId()) : null;
+                ProductResponse resp = enrichProductWithDeal(p, deal, avail);
                 products.add(resp);
             }
         }
@@ -240,9 +234,16 @@ public class HotDealServiceImpl implements HotDealService {
     }
 
     private ProductResponse enrichProductWithDeal(Product p, HotDeal deal) {
+        return enrichProductWithDeal(p, deal, null);
+    }
+
+    private ProductResponse enrichProductWithDeal(Product p, HotDeal deal, com.example.project.customer.dto.ProductAvailability providedAvail) {
         ProductResponse resp = productService.mapToResponse(p);
-        if (productAvailabilityService != null && p != null) {
-            com.example.project.customer.dto.ProductAvailability avail = productAvailabilityService.getAvailability(p);
+        com.example.project.customer.dto.ProductAvailability avail = providedAvail;
+        if (avail == null && productAvailabilityService != null && p != null) {
+            avail = productAvailabilityService.getAvailability(p);
+        }
+        if (avail != null) {
             resp.setStockQty(avail.getAvailableQty());
             resp.setAvailableQty(avail.getAvailableQty());
             resp.setInStock(avail.isInStock());
