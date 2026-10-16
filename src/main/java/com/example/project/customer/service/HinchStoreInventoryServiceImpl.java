@@ -5,7 +5,10 @@ import com.example.project.customer.dto.consignment.HinchStoreInventoryRequest;
 import com.example.project.customer.dto.consignment.HinchStoreInventoryResponse;
 import com.example.project.customer.entity.HinchStoreVendorInventory;
 import com.example.project.customer.entity.Product;
+import com.example.project.customer.entity.Seller;
 import com.example.project.customer.entity.Store;
+import com.example.project.customer.entity.StoreStatus;
+import com.example.project.customer.entity.VerificationStatus;
 import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.repository.HinchStoreVendorInventoryRepository;
 import com.example.project.customer.repository.ProductRepository;
@@ -40,10 +43,25 @@ public class HinchStoreInventoryServiceImpl implements HinchStoreInventoryServic
         Store vendorStore = storeRepository.findById(request.getVendorStoreId())
                 .orElseThrow(() -> new ResourceNotFoundException("Vendor store not found with id: " + request.getVendorStoreId()));
 
-        if (platformMarketplaceProperties.isPlatformStore(vendorStore.getStoreId())) {
+        if (platformMarketplaceProperties.isPlatformStore(vendorStore.getStoreId())
+                || Integer.valueOf(1).equals(vendorStore.getStoreId())) {
             throw new IllegalArgumentException("Vendor store cannot be the platform store.");
         }
 
+        if (vendorStore.getStatus() != StoreStatus.ACTIVE) {
+            throw new IllegalArgumentException("Vendor store must be active to map consignment inventory.");
+        }
+
+        Seller seller = vendorStore.getSeller();
+        if (seller == null) {
+            throw new IllegalArgumentException("Vendor store must have an associated seller.");
+        }
+        if (seller.isDeleted()) {
+            throw new IllegalArgumentException("Vendor seller is soft-deleted and cannot hold consignment inventory.");
+        }
+        if (seller.getVerificationStatus() != VerificationStatus.VERIFIED) {
+            throw new IllegalArgumentException("Vendor seller must be verified to hold consignment inventory.");
+        }
         HinchStoreVendorInventory inv = inventoryRepository
                 .findByProduct_ProductIdAndVendorStore_StoreId(request.getProductId(), request.getVendorStoreId())
                 .orElseGet(() -> HinchStoreVendorInventory.builder()

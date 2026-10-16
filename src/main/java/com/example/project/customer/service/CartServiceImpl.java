@@ -640,7 +640,11 @@ public class CartServiceImpl implements CartService {
 
         Store store = cart.getStore() != null ? cart.getStore() : getDefaultStore();
 
-        boolean canCheckout = itemResponses.stream().allMatch(ir -> Boolean.TRUE.equals(ir.getInStock()) && ir.getQuantity() <= ir.getAvailableQty());
+        boolean canCheckout = itemResponses.stream().allMatch(ir ->
+                Boolean.TRUE.equals(ir.getInStock())
+                && ir.getQuantity() <= ir.getAvailableQty()
+                && !"CHECKOUT_DISABLED".equals(ir.getReason())
+                && !"UNAVAILABLE_NO_VENDOR_STOCK".equals(ir.getReason()));
         String checkoutBlockReason = canCheckout ? null : "Cart contains unavailable or out-of-stock items.";
 
         return CartResponse.builder()

@@ -310,8 +310,8 @@ class OrderSettlementWorkflowTest {
         when(addressRepository.findByCustomer_CustomerIdAndId(userId, 99)).thenReturn(Optional.of(deliveryAddress));
         when(customerRepository.findById(userId)).thenReturn(Optional.of(mockCustomer));
         when(checkoutService.previewCheckout(eq(userId), any())).thenReturn(preview);
-        when(storeInvoiceSequenceService.generateNextInvoiceNumber(hinchStore)).thenReturn("INV-HINCH-001");
-        when(vendorSelectionService.getRankedCandidateVendors(any(), eq(deliveryAddress))).thenReturn(List.of(vendorStore));
+        Store vendorStoreWithoutSeller = Store.builder().storeId(10).seller(null).name("Vendor Steel Depot").status(StoreStatus.ACTIVE).build();
+        when(vendorSelectionService.getRankedCandidateVendors(any(), eq(deliveryAddress))).thenReturn(List.of(vendorStoreWithoutSeller));
         when(hinchStoreVendorInventoryRepository.atomicReserve(eq(301), eq(vendorStore.getStoreId()), eq(1))).thenReturn(1);
 
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {

@@ -225,7 +225,8 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                 ? platformMarketplaceProperties.isPlatformStore(store.getStoreId())
                 : (store.getStoreId() != null && store.getStoreId().equals(1));
 
-        if (isHinchStoreOrder && platformMarketplaceProperties != null && !platformMarketplaceProperties.isHinchStoreCheckoutEnabled()) {
+        boolean checkoutEnabled = (platformMarketplaceProperties != null) && platformMarketplaceProperties.isHinchStoreCheckoutEnabled();
+        if (isHinchStoreOrder && !checkoutEnabled) {
             throw new IllegalStateException("HinchStore checkout is temporarily disabled pending Phase 2 vendor consignment rollout.");
         }
 
@@ -450,12 +451,22 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
 
             // Seller resolution: derive from product or store seller, throwing if missing for vendor products.
             Seller itemSeller = null;
-            if (p != null && p.getSeller() != null) {
-                itemSeller = p.getSeller();
-            } else if (store != null && store.getSeller() != null) {
-                itemSeller = store.getSeller();
-            } else if (!isHinchStoreOrder && fulfillmentStore != null && fulfillmentStore.getSeller() != null) {
-                itemSeller = fulfillmentStore.getSeller();
+            if (isHinchStoreOrder) {
+                // For HinchStore consignment orders, payout goes to the fulfillment vendor who holds and ships the physical stock
+                if (fulfillmentStore != null && fulfillmentStore.getSeller() != null) {
+                    itemSeller = fulfillmentStore.getSeller();
+                } else if (p != null && p.getSeller() != null) {
+                    itemSeller = p.getSeller();
+                }
+            } else {
+                // Ordinary marketplace orders: product seller, then store seller, then fulfillment store seller
+                if (p != null && p.getSeller() != null) {
+                    itemSeller = p.getSeller();
+                } else if (store != null && store.getSeller() != null) {
+                    itemSeller = store.getSeller();
+                } else if (fulfillmentStore != null && fulfillmentStore.getSeller() != null) {
+                    itemSeller = fulfillmentStore.getSeller();
+                }
             }
 
             if (!isHinchStoreOrder && itemSeller == null) {
@@ -531,7 +542,7 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         // 5. Create SellerPayoutLedger entries per-item (Gross = seller_payable, excluding GST and delivery fees)
         for (OrderItem oi : orderItems) {
             BigDecimal sellerPayable = oi.getSellerPayable();
-            BigDecimal tcsAmount = oi.getIsHinchStore()
+            BigDecimal tcsAmount = (isHinchStoreOrder || Boolean.TRUE.equals(oi.getIsHinchStore()))
                     ? BigDecimal.ZERO
                     : sellerPayable.multiply(BigDecimal.valueOf(0.01)).setScale(2, RoundingMode.HALF_UP);
             BigDecimal netPayout = sellerPayable.subtract(tcsAmount);

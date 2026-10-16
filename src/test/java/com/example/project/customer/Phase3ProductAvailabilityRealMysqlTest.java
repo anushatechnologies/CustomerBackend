@@ -15,6 +15,7 @@ import com.example.project.customer.entity.Product;
 import com.example.project.customer.entity.Seller;
 import com.example.project.customer.entity.Store;
 import com.example.project.customer.entity.StoreStatus;
+import com.example.project.customer.entity.VerificationStatus;
 import com.example.project.customer.dto.ApiResponse;
 import com.example.project.customer.dto.HomeHotDealsResponse;
 import com.example.project.customer.dto.ProductResponse;
@@ -206,6 +207,8 @@ public class Phase3ProductAvailabilityRealMysqlTest {
                 .companyName("Vendor Co 1")
                 .email("vendor1@hinchmart.com")
                 .phone("+919000000001")
+                .verificationStatus(VerificationStatus.VERIFIED)
+                .isDeleted(false)
                 .build());
 
         Seller seller2 = sellerRepository.save(Seller.builder()
@@ -213,6 +216,8 @@ public class Phase3ProductAvailabilityRealMysqlTest {
                 .companyName("Vendor Co 2")
                 .email("vendor2@hinchmart.com")
                 .phone("+919000000002")
+                .verificationStatus(VerificationStatus.VERIFIED)
+                .isDeleted(false)
                 .build());
 
         Seller platformSeller = sellerRepository.save(Seller.builder()
@@ -220,6 +225,8 @@ public class Phase3ProductAvailabilityRealMysqlTest {
                 .companyName("HinchMart Platform")
                 .email("platform@hinchmart.com")
                 .phone("+919000000000")
+                .verificationStatus(VerificationStatus.VERIFIED)
+                .isDeleted(false)
                 .build());
 
         // 2. Stores
@@ -345,7 +352,7 @@ public class Phase3ProductAvailabilityRealMysqlTest {
         platformMarketplaceProperties.setHinchStoreCheckoutEnabled(false);
         ProductAvailability availDisabled = productAvailabilityService.getAvailability(platformProductWithStock);
         assertThat(availDisabled.getAvailableQty()).isEqualTo(65);
-        assertThat(availDisabled.isInStock()).isFalse();
+        assertThat(availDisabled.isInStock()).isTrue();
         assertThat(availDisabled.getReason()).isEqualTo("CHECKOUT_DISABLED");
     }
 

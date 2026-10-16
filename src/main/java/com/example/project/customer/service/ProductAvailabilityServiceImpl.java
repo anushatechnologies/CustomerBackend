@@ -140,19 +140,15 @@ public class ProductAvailabilityServiceImpl implements ProductAvailabilityServic
                     finalAvailableQty = 0;
                     finalInStock = false;
                     finalReason = "UNAVAILABLE_NO_VENDOR_STOCK";
-                } else if (!checkoutEnabled) {
-                    // Feature flag is off: clear reason CHECKOUT_DISABLED, separate from out of stock
-                    finalAvailableQty = availableStock;
-                    finalInStock = false;
-                    finalReason = "CHECKOUT_DISABLED";
                 } else if (availableStock <= 0) {
                     finalAvailableQty = 0;
                     finalInStock = false;
                     finalReason = "OUT_OF_STOCK";
                 } else {
+                    // Positive eligible inventory: inStock is true; if checkout is disabled, retain CHECKOUT_DISABLED reason
                     finalAvailableQty = availableStock;
                     finalInStock = true;
-                    finalReason = null;
+                    finalReason = checkoutEnabled ? null : "CHECKOUT_DISABLED";
                 }
 
                 resultMap.put(pId, ProductAvailability.builder()

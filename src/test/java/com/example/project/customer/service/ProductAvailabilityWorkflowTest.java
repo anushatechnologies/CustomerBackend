@@ -165,7 +165,7 @@ class ProductAvailabilityWorkflowTest {
         platformMarketplaceProperties.setHinchStoreCheckoutEnabled(false);
         ProductAvailability availFlagOff = availabilityService.getAvailability(hinchProductWithStock);
         assertThat(availFlagOff.getAvailableQty()).isEqualTo(65);
-        assertThat(availFlagOff.isInStock()).isFalse();
+        assertThat(availFlagOff.isInStock()).isTrue();
         assertThat(availFlagOff.getReason()).isEqualTo("CHECKOUT_DISABLED");
 
         // 2. With checkout flag enabled:

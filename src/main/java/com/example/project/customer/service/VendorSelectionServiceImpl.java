@@ -17,16 +17,47 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import com.example.project.customer.config.PlatformMarketplaceProperties;
+import com.example.project.customer.entity.Seller;
+import com.example.project.customer.entity.VerificationStatus;
+import org.springframework.beans.factory.annotation.Autowired;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 @Transactional(readOnly = true)
-@RequiredArgsConstructor
 public class VendorSelectionServiceImpl implements VendorSelectionService {
 
     private final HinchStoreVendorInventoryRepository inventoryRepository;
+    private final PlatformMarketplaceProperties platformMarketplaceProperties;
+
+    public VendorSelectionServiceImpl(HinchStoreVendorInventoryRepository inventoryRepository) {
+        this(inventoryRepository, new PlatformMarketplaceProperties());
+    }
+
+    @Autowired
+    public VendorSelectionServiceImpl(HinchStoreVendorInventoryRepository inventoryRepository,
+                                      PlatformMarketplaceProperties platformMarketplaceProperties) {
+        this.inventoryRepository = inventoryRepository;
+        this.platformMarketplaceProperties = platformMarketplaceProperties != null ? platformMarketplaceProperties : new PlatformMarketplaceProperties();
+    }
+
+    public boolean isEligibleVendor(Store store) {
+        if (store == null || store.getStoreId() == null) {
+            return false;
+        }
+        // Store must be ACTIVE
+        if (store.getStatus() != StoreStatus.ACTIVE) {
+            return false;
+        }
+        // Seller verification, onboarding, and soft-delete guards
+        Seller seller = store.getSeller();
+        if (seller == null || seller.isDeleted() || seller.getVerificationStatus() != VerificationStatus.VERIFIED) {
+            return false;
+        }
+        return true;
+    }
 
     private static class CandidateEvaluation {
         Store store;
@@ -52,13 +83,13 @@ public class VendorSelectionServiceImpl implements VendorSelectionService {
 
         List<HinchStoreVendorInventory> inventoryList = inventoryRepository.findByProduct_ProductIdInAndIsActiveTrue(productIds);
 
-        // Group inventory by vendor store ID
+        // Group inventory by vendor store ID, strictly admitting only eligible vendors
         Map<Integer, List<HinchStoreVendorInventory>> storeInventoryMap = new HashMap<>();
         Map<Integer, Store> storeMap = new HashMap<>();
 
         for (HinchStoreVendorInventory inv : inventoryList) {
             Store store = inv.getVendorStore();
-            if (store != null && store.getStatus() == StoreStatus.ACTIVE) {
+            if (isEligibleVendor(store)) {
                 storeInventoryMap.computeIfAbsent(store.getStoreId(), k -> new ArrayList<>()).add(inv);
                 storeMap.put(store.getStoreId(), store);
             }

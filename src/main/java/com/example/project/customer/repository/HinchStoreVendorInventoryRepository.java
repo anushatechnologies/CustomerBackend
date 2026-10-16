@@ -26,19 +26,31 @@ public interface HinchStoreVendorInventoryRepository extends JpaRepository<Hinch
 
     @Query("SELECT i.product.productId, COALESCE(SUM(i.qty - i.reservedQty), 0) " +
            "FROM HinchStoreVendorInventory i " +
-           "WHERE i.product.productId IN :productIds AND i.isActive = true " +
+           "WHERE i.product.productId IN :productIds " +
+           "  AND i.isActive = true " +
+           "  AND i.vendorStore.status = com.example.project.customer.entity.StoreStatus.ACTIVE " +
+           "  AND i.vendorStore.seller.isDeleted = false " +
+           "  AND i.vendorStore.seller.verificationStatus = com.example.project.customer.entity.VerificationStatus.VERIFIED " +
            "GROUP BY i.product.productId")
     List<Object[]> getAvailableStockForProducts(@Param("productIds") Collection<Integer> productIds);
 
     @Query("SELECT i.product.productId, COALESCE(SUM(i.qty - i.reservedQty), 0), COUNT(i.id) " +
            "FROM HinchStoreVendorInventory i " +
-           "WHERE i.product.productId IN :productIds AND i.isActive = true " +
+           "WHERE i.product.productId IN :productIds " +
+           "  AND i.isActive = true " +
+           "  AND i.vendorStore.status = com.example.project.customer.entity.StoreStatus.ACTIVE " +
+           "  AND i.vendorStore.seller.isDeleted = false " +
+           "  AND i.vendorStore.seller.verificationStatus = com.example.project.customer.entity.VerificationStatus.VERIFIED " +
            "GROUP BY i.product.productId")
     List<Object[]> getAvailableStockSummaryForProducts(@Param("productIds") Collection<Integer> productIds);
 
     @Query("SELECT COALESCE(SUM(i.qty - i.reservedQty), 0) " +
            "FROM HinchStoreVendorInventory i " +
-           "WHERE i.product.productId = :productId AND i.isActive = true")
+           "WHERE i.product.productId = :productId " +
+           "  AND i.isActive = true " +
+           "  AND i.vendorStore.status = com.example.project.customer.entity.StoreStatus.ACTIVE " +
+           "  AND i.vendorStore.seller.isDeleted = false " +
+           "  AND i.vendorStore.seller.verificationStatus = com.example.project.customer.entity.VerificationStatus.VERIFIED")
     int getAvailableStockForProduct(@Param("productId") Integer productId);
 
     @Modifying

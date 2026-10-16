@@ -89,13 +89,18 @@ class CartSynchronizationServiceTest {
 
         testCustomer = Customer.builder().customerId(101).email("customer@example.com").build();
         testStore = Store.builder().storeId(1).name("HinchMart Main Store").slug("main-store").status(StoreStatus.ACTIVE).build();
+        Store testFulfillmentStore = Store.builder().storeId(10).name("Vendor Store").slug("vendor-store").status(StoreStatus.ACTIVE).build();
 
         VendorSelectionService mockVendorSelection = org.mockito.Mockito.mock(VendorSelectionService.class);
         HinchStoreVendorInventoryRepository mockHsvi = org.mockito.Mockito.mock(HinchStoreVendorInventoryRepository.class);
+        com.example.project.customer.config.PlatformMarketplaceProperties props = new com.example.project.customer.config.PlatformMarketplaceProperties();
+        props.setPlatformStoreId(1);
+        props.setHinchStoreCheckoutEnabled(true);
+        orderService.setPlatformMarketplaceProperties(props);
         orderService.setVendorSelectionService(mockVendorSelection);
         orderService.setHinchStoreVendorInventoryRepository(mockHsvi);
         org.mockito.Mockito.lenient().when(mockVendorSelection.getRankedCandidateVendors(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
-                .thenAnswer(inv -> List.of(testStore));
+                .thenAnswer(inv -> List.of(testFulfillmentStore));
         org.mockito.Mockito.lenient().when(mockHsvi.atomicReserve(org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt()))
                 .thenReturn(1);
 

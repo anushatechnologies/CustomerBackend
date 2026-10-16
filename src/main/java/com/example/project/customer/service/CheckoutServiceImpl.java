@@ -107,7 +107,10 @@ public class CheckoutServiceImpl implements CheckoutService {
             orderBlockReason = "Cannot place order with an empty cart.";
         } else {
             boolean hasUnavailable = cartItems.stream().anyMatch(ir ->
-                    !Boolean.TRUE.equals(ir.getInStock()) || (ir.getAvailableQty() != null && ir.getQuantity() > ir.getAvailableQty()));
+                    !Boolean.TRUE.equals(ir.getInStock())
+                    || (ir.getAvailableQty() != null && ir.getQuantity() > ir.getAvailableQty())
+                    || "CHECKOUT_DISABLED".equals(ir.getReason())
+                    || "UNAVAILABLE_NO_VENDOR_STOCK".equals(ir.getReason()));
             if (hasUnavailable) {
                 canPlaceOrder = false;
                 orderBlockReason = "Order cannot be placed while any item is unavailable.";

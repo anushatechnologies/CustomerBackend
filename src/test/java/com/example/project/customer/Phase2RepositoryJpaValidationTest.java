@@ -169,7 +169,8 @@ public class Phase2RepositoryJpaValidationTest {
     @Transactional
     @DisplayName("3. Repository @Query: atomicReserve, atomicCommit, atomicRelease, atomicRestock, and availability SUM validate against Hibernate")
     void testConsignmentInventoryQueriesAndSum() {
-        Seller seller = sellerRepository.save(Seller.builder().name("Inv Seller").companyName("Inventory Vendor").email("seller_inv@test.com").phone("9999922222").build());
+        Seller seller = sellerRepository.save(Seller.builder().name("Inv Seller").companyName("Inventory Vendor").email("seller_inv@test.com").phone("9999922222")
+                .verificationStatus(VerificationStatus.VERIFIED).isDeleted(false).build());
         Store vendorStore = storeRepository.save(Store.builder().seller(seller).name("Consignment Store").slug("consignment-store").status(StoreStatus.ACTIVE).build());
         Product product = productRepository.save(Product.builder().store(vendorStore).title("Cement Bag").slug("cement-bag").unit("pcs").price(new BigDecimal("350.00")).active(true).build());
 

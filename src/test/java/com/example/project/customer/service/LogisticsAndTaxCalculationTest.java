@@ -78,9 +78,13 @@ class LogisticsAndTaxCalculationTest {
 
         VendorSelectionService mockVendorSelection = org.mockito.Mockito.mock(VendorSelectionService.class);
         HinchStoreVendorInventoryRepository mockHsvi = org.mockito.Mockito.mock(HinchStoreVendorInventoryRepository.class);
+        com.example.project.customer.config.PlatformMarketplaceProperties props = new com.example.project.customer.config.PlatformMarketplaceProperties();
+        props.setPlatformStoreId(1);
+        props.setHinchStoreCheckoutEnabled(true);
+        orderService.setPlatformMarketplaceProperties(props);
         orderService.setVendorSelectionService(mockVendorSelection);
         orderService.setHinchStoreVendorInventoryRepository(mockHsvi);
-        Store mockFulfillmentStore = Store.builder().storeId(1).name("HinchStore").status(StoreStatus.ACTIVE).build();
+        Store mockFulfillmentStore = Store.builder().storeId(10).name("Vendor Store").status(StoreStatus.ACTIVE).build();
         org.mockito.Mockito.lenient().when(mockVendorSelection.getRankedCandidateVendors(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
                 .thenAnswer(inv -> List.of(mockFulfillmentStore));
         org.mockito.Mockito.lenient().when(mockHsvi.atomicReserve(org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt()))
