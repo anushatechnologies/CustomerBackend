@@ -28,6 +28,10 @@ public class SellerContextUtil {
     private final StoreRepository storeRepository;
     private final com.example.project.customer.repository.CustomerRepository customerRepository;
 
+    public SellerContextUtil() {
+        this(null, null, null);
+    }
+
     public SellerContextUtil(
             SellerRepository sellerRepository,
             StoreRepository storeRepository
@@ -35,6 +39,7 @@ public class SellerContextUtil {
         this(sellerRepository, storeRepository, null);
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
     public SellerContextUtil(
             @org.springframework.beans.factory.annotation.Autowired(required = false) SellerRepository sellerRepository,
             @org.springframework.beans.factory.annotation.Autowired(required = false) StoreRepository storeRepository,
