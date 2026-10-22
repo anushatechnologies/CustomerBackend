@@ -121,6 +121,9 @@ public interface ProductRepository
             String brandName
     );
 
+    @Query("SELECT p FROM Product p WHERE p.approvalStatus = com.example.project.customer.entity.ApprovalStatus.APPROVED AND p.active = true AND (LOWER(p.title) LIKE LOWER(CONCAT('%', :query, '%')) OR (p.brand IS NOT NULL AND LOWER(p.brand.name) LIKE LOWER(CONCAT('%', :query, '%'))))")
+    List<Product> findTop5ApprovedActiveSuggestions(@Param("query") String query, Pageable pageable);
+
     @Query("SELECT p FROM Product p WHERE p.imageUrl LIKE CONCAT('%', :key, '%')")
     List<Product> findByImageUrlContainingKey(@Param("key") String key);
 

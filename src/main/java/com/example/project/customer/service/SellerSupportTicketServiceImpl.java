@@ -37,6 +37,8 @@ public class SellerSupportTicketServiceImpl implements SellerSupportTicketServic
     private final SellerSupportTicketRepository ticketRepository;
     private final SellerTicketMessageRepository messageRepository;
     private final SellerRepository sellerRepository;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.example.project.customer.repository.OrderRepository orderRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -225,16 +227,34 @@ public class SellerSupportTicketServiceImpl implements SellerSupportTicketServic
                 ? t.getMessages().stream().map(this::mapToMessageResponse).toList()
                 : List.of();
 
+        com.example.project.customer.entity.Seller s = t.getSeller();
+        String sellerName = s != null ? s.getName() : null;
+        String sellerEmail = s != null ? s.getEmail() : null;
+        String sellerPhone = s != null ? s.getPhone() : null;
+        String sellerCompanyName = s != null ? s.getCompanyName() : null;
+        String orderNumber = null;
+
+        if (t.getOrderId() != null && orderRepository != null) {
+            java.util.Optional<com.example.project.customer.entity.Order> orderOpt = orderRepository.findById(t.getOrderId());
+            if (orderOpt.isPresent()) {
+                orderNumber = orderOpt.get().getOrderNumber();
+            }
+        }
+
         return SellerSupportTicketResponse.builder()
                 .ticketId(t.getTicketId())
                 .ticketNumber(t.getTicketNumber())
-                .sellerId(t.getSeller() != null ? t.getSeller().getSellerId() : null)
-                .sellerName(t.getSeller() != null ? t.getSeller().getName() : null)
+                .sellerId(s != null ? s.getSellerId() : null)
+                .sellerName(sellerName)
+                .sellerEmail(sellerEmail)
+                .sellerPhone(sellerPhone)
+                .sellerCompanyName(sellerCompanyName)
                 .subject(t.getSubject())
                 .category(t.getCategory())
                 .priority(t.getPriority())
                 .status(t.getStatus())
                 .orderId(t.getOrderId())
+                .orderNumber(orderNumber)
                 .messages(msgs)
                 .createdAt(t.getCreatedAt())
                 .updatedAt(t.getUpdatedAt())

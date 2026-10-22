@@ -14,6 +14,7 @@ import com.example.project.customer.entity.Category;
 import com.example.project.customer.entity.Product;
 import com.example.project.customer.entity.Seller;
 import com.example.project.customer.entity.Subcategory;
+import com.example.project.customer.entity.Store;
 import com.example.project.customer.entity.StoreStatus;
 import com.example.project.customer.exception.ResourceConflictException;
 import com.example.project.customer.exception.ResourceNotFoundException;
@@ -98,8 +99,19 @@ public class ProductServiceImpl implements ProductService {
         @Autowired(required = false)
         private ProductAvailabilityService productAvailabilityService;
 
+        @Autowired(required = false)
+        private com.example.project.customer.repository.SellerRepository sellerRepository;
+
         public void setProductAvailabilityService(ProductAvailabilityService productAvailabilityService) {
                 this.productAvailabilityService = productAvailabilityService;
+        }
+
+        public void setHinchStoreVendorInventoryRepository(com.example.project.customer.repository.HinchStoreVendorInventoryRepository hinchStoreVendorInventoryRepository) {
+                this.hinchStoreVendorInventoryRepository = hinchStoreVendorInventoryRepository;
+        }
+
+        public void setPlatformMarketplaceProperties(com.example.project.customer.config.PlatformMarketplaceProperties platformMarketplaceProperties) {
+                this.platformMarketplaceProperties = platformMarketplaceProperties;
         }
 
         @Override
@@ -155,7 +167,8 @@ public class ProductServiceImpl implements ProductService {
                 product.setActive(false);
                 product.setRejectionReason(null);
 
-                return mapToResponse(repository.save(product));
+                Product saved = repository.save(product);
+                return enrichAvailability(mapToResponse(saved), saved);
         }
 
         @Override
@@ -169,18 +182,7 @@ public class ProductServiceImpl implements ProductService {
                                 .orElseThrow(() -> new ResourceNotFoundException(
                                                 "Product not found with id: " + id));
 
-                ProductResponse resp = mapToResponse(product);
-                if (productAvailabilityService != null) {
-                        com.example.project.customer.dto.ProductAvailability avail = productAvailabilityService.getAvailability(product);
-                        resp.setStockQty(avail.getAvailableQty());
-                        resp.setAvailableQty(avail.getAvailableQty());
-                        resp.setInStock(avail.isInStock());
-                        resp.setAvailabilityReason(avail.getReason());
-                } else if (hinchStoreVendorInventoryRepository != null && platformMarketplaceProperties != null
-                        && product.getStore() != null && platformMarketplaceProperties.isPlatformStore(product.getStore().getStoreId())) {
-                        resp.setStockQty(hinchStoreVendorInventoryRepository.getAvailableStockForProduct(id));
-                }
-                return resp;
+                return enrichAvailability(mapToResponse(product), product);
         }
 
         @Override
@@ -459,7 +461,7 @@ public class ProductServiceImpl implements ProductService {
                         }
                 }
 
-                return mapToResponse(saved);
+                return enrichAvailability(mapToResponse(saved), saved);
         }
 
         @Override
@@ -471,10 +473,12 @@ public class ProductServiceImpl implements ProductService {
 
                 int currentStock = product.getStockQty() != null ? product.getStockQty() : 0;
                 int incomingStock = request.getStockQty() != null ? request.getStockQty() : 0;
+                int newTotal = Math.max(0, currentStock + incomingStock);
 
-                product.setStockQty(currentStock + incomingStock);
+                product.setStockQty(newTotal);
+                Product saved = repository.save(product);
 
-                return mapToResponse(repository.save(product));
+                return enrichAvailability(mapToResponse(saved), saved);
         }
 
         @Override
@@ -540,14 +544,11 @@ public class ProductServiceImpl implements ProductService {
                 }
 
                 List<Product> products = repository
-                                .findTop5ByTitleContainingIgnoreCaseOrBrand_NameContainingIgnoreCase(
+                                .findTop5ApprovedActiveSuggestions(
                                                 trimmed,
-                                                trimmed);
+                                                PageRequest.of(0, 5));
 
                 List<SearchSuggestionResponse.ProductSuggestion> productSuggestions = products.stream()
-                                .filter(product -> product.getApprovalStatus() == ApprovalStatus.APPROVED
-                                                && Boolean.TRUE.equals(
-                                                                product.getActive()))
                                 .map(product -> SearchSuggestionResponse.ProductSuggestion
                                                 .builder()
                                                 .productId(product.getProductId())
@@ -614,9 +615,9 @@ public class ProductServiceImpl implements ProductService {
                 }
 
                 product.setActive(true);
+                Product saved = repository.save(product);
 
-                return mapToResponse(
-                                repository.save(product));
+                return enrichAvailability(mapToResponse(saved), saved);
         }
 
         @Override
@@ -626,26 +627,39 @@ public class ProductServiceImpl implements ProductService {
                 Product product = findProduct(id);
 
                 product.setActive(false);
+                Product saved = repository.save(product);
 
-                return mapToResponse(
-                                repository.save(product));
+                return enrichAvailability(mapToResponse(saved), saved);
         }
 
         @Override
         @Transactional(readOnly = true)
         public ProductListResponse getPending() {
 
-                List<ProductResponse> products = repository
+                List<Product> products = repository
                                 .findByApprovalStatus(
-                                                ApprovalStatus.PENDING)
-                                .stream()
-                                .filter(p -> p.getSeller() == null || isSellerApproved(p.getSeller()))
+                                                ApprovalStatus.PENDING);
+
+                List<ProductResponse> responses = products.stream()
                                 .map(this::mapToResponse)
                                 .toList();
 
+                if (productAvailabilityService != null && !products.isEmpty()) {
+                        Map<Integer, com.example.project.customer.dto.ProductAvailability> availMap = productAvailabilityService.getAvailabilityBatch(products);
+                        for (ProductResponse resp : responses) {
+                                com.example.project.customer.dto.ProductAvailability pa = availMap.get(resp.getProductId());
+                                if (pa != null) {
+                                        resp.setStockQty(pa.getAvailableQty());
+                                        resp.setAvailableQty(pa.getAvailableQty());
+                                        resp.setInStock(pa.isInStock());
+                                        resp.setAvailabilityReason(pa.getReason());
+                                }
+                        }
+                }
+
                 return new ProductListResponse(
-                                products,
-                                products.size());
+                                responses,
+                                responses.size());
         }
 
         private boolean isSellerApproved(Seller seller) {
@@ -658,23 +672,34 @@ public class ProductServiceImpl implements ProductService {
         @Transactional(readOnly = true)
         public ProductListResponse getAdminAll() {
 
-                List<ProductResponse> products = repository
-                                .findAll()
-                                .stream()
+                List<Product> products = repository.findAll();
+                List<ProductResponse> responses = products.stream()
                                 .map(this::mapToResponse)
                                 .toList();
 
+                if (productAvailabilityService != null && !products.isEmpty()) {
+                        Map<Integer, com.example.project.customer.dto.ProductAvailability> availMap = productAvailabilityService.getAvailabilityBatch(products);
+                        for (ProductResponse resp : responses) {
+                                com.example.project.customer.dto.ProductAvailability pa = availMap.get(resp.getProductId());
+                                if (pa != null) {
+                                        resp.setStockQty(pa.getAvailableQty());
+                                        resp.setAvailableQty(pa.getAvailableQty());
+                                        resp.setInStock(pa.isInStock());
+                                        resp.setAvailabilityReason(pa.getReason());
+                                }
+                        }
+                }
+
                 return new ProductListResponse(
-                                products,
-                                products.size());
+                                responses,
+                                responses.size());
         }
 
         @Override
         @Transactional(readOnly = true)
         public ProductResponse getAdminById(Integer id) {
-
-                return mapToResponse(
-                                findProduct(id));
+                Product product = findProduct(id);
+                return enrichAvailability(mapToResponse(product), product);
         }
 
         @Override
@@ -700,8 +725,9 @@ public class ProductServiceImpl implements ProductService {
                 // Approval makes the product visible to customers.
                 product.setActive(true);
 
-                return mapToResponse(
-                                repository.save(product));
+                Product saved = repository.save(product);
+
+                return enrichAvailability(mapToResponse(saved), saved);
         }
 
         @Override
@@ -1005,5 +1031,29 @@ public class ProductServiceImpl implements ProductService {
                         return providedSlug.trim().toLowerCase().replaceAll("[^a-z0-9-]+", "-");
                 }
                 return name.trim().toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
+        }
+
+        private boolean isPlatformProduct(Product product) {
+                if (product == null || product.getStore() == null) {
+                        return false;
+                }
+                if (platformMarketplaceProperties == null) {
+                        return Integer.valueOf(1).equals(product.getStore().getStoreId());
+                }
+                return platformMarketplaceProperties.isPlatformStore(product.getStore().getStoreId());
+        }
+
+        private ProductResponse enrichAvailability(ProductResponse resp, Product product) {
+                if (resp == null || product == null) {
+                        return resp;
+                }
+                if (productAvailabilityService != null) {
+                        com.example.project.customer.dto.ProductAvailability avail = productAvailabilityService.getAvailability(product);
+                        resp.setStockQty(avail.getAvailableQty());
+                        resp.setAvailableQty(avail.getAvailableQty());
+                        resp.setInStock(avail.isInStock());
+                        resp.setAvailabilityReason(avail.getReason());
+                }
+                return resp;
         }
 }

@@ -2,6 +2,7 @@ package com.example.project.customer.service;
 
 import com.example.project.customer.dto.ProductResponse;
 import com.example.project.customer.dto.WishlistResponse;
+import com.example.project.customer.entity.ApprovalStatus;
 import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.Product;
 import com.example.project.customer.entity.WishlistItem;
@@ -47,6 +48,10 @@ public class WishlistServiceImpl implements WishlistService {
         int uid = userId;
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
+
+        if (product.getApprovalStatus() != ApprovalStatus.APPROVED || !Boolean.TRUE.equals(product.getActive())) {
+            throw new ResourceNotFoundException("Product not found with id: " + productId);
+        }
 
         Optional<WishlistItem> existing = wishlistRepository.findByCustomer_CustomerIdAndProduct_ProductId(uid, productId);
         if (existing.isPresent()) {

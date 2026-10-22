@@ -151,12 +151,13 @@ public class UserServiceImpl implements UserService {
             // Role update
             String currentRole = customer.getRole();
             String effectiveEmail = customer.getEmail() != null ? customer.getEmail() : cleanEmail;
+            String effectivePhone = customer.getPhone() != null ? customer.getPhone() : cleanPhone;
             if (isAdminEmail(effectiveEmail)) {
                 if (!Role.ADMIN.name().equalsIgnoreCase(currentRole)) {
                     customer.setRole(Role.ADMIN.name());
                     updated = true;
                 }
-            } else if ("SELLER".equalsIgnoreCase(requestedRole) || (effectiveEmail != null && sellerRepository.findFirstByEmailIgnoreCase(effectiveEmail).isPresent())) {
+            } else if ("SELLER".equalsIgnoreCase(requestedRole) || isSellerRecordPresent(effectiveEmail, effectivePhone)) {
                 if (!Role.ADMIN.name().equalsIgnoreCase(currentRole) && !Role.SELLER.name().equalsIgnoreCase(currentRole)) {
                     customer.setRole(Role.SELLER.name());
                     updated = true;
@@ -228,7 +229,7 @@ public class UserServiceImpl implements UserService {
                         customer.setRole(Role.ADMIN.name());
                         updated = true;
                     }
-                } else if ("SELLER".equalsIgnoreCase(requestedRole) || (effectiveEmail != null && sellerRepository.findFirstByEmailIgnoreCase(effectiveEmail).isPresent())) {
+                } else if ("SELLER".equalsIgnoreCase(requestedRole) || isSellerRecordPresent(effectiveEmail, customer.getPhone())) {
                     if (!Role.ADMIN.name().equalsIgnoreCase(currentRole) && !Role.SELLER.name().equalsIgnoreCase(currentRole)) {
                         customer.setRole(Role.SELLER.name());
                         updated = true;
@@ -273,7 +274,7 @@ public class UserServiceImpl implements UserService {
                         customer.setRole(Role.ADMIN.name());
                         updated = true;
                     }
-                } else if ("SELLER".equalsIgnoreCase(requestedRole) || sellerRepository.findFirstByEmailIgnoreCase(cleanEmail).isPresent()) {
+                } else if ("SELLER".equalsIgnoreCase(requestedRole) || isSellerRecordPresent(cleanEmail, customer.getPhone())) {
                     if (!Role.ADMIN.name().equalsIgnoreCase(currentRole) && !Role.SELLER.name().equalsIgnoreCase(currentRole)) {
                         customer.setRole(Role.SELLER.name());
                         updated = true;
@@ -290,7 +291,7 @@ public class UserServiceImpl implements UserService {
         String resolvedRole = Role.CUSTOMER.name();
         if (isAdminEmail(cleanEmail)) {
             resolvedRole = Role.ADMIN.name();
-        } else if ("SELLER".equalsIgnoreCase(requestedRole) || (cleanEmail != null && sellerRepository.findFirstByEmailIgnoreCase(cleanEmail).isPresent())) {
+        } else if ("SELLER".equalsIgnoreCase(requestedRole) || isSellerRecordPresent(cleanEmail, cleanPhone)) {
             resolvedRole = Role.SELLER.name();
         } else if (requestedRole != null && !requestedRole.isBlank()) {
             Role parsed = Role.fromString(requestedRole);
@@ -440,14 +441,52 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional(readOnly = true)
     public Integer resolveSellerIdForUser(Customer customer) {
-        if (customer == null || customer.getEmail() == null) {
+        if (customer == null) {
             return null;
         }
         if ("ADMIN".equalsIgnoreCase(customer.getRole())) {
             return null;
         }
-        Optional<Seller> seller = sellerRepository.findFirstByEmailIgnoreCase(customer.getEmail());
-        return seller.map(Seller::getSellerId).orElse(null);
+        if (customer.getEmail() != null && !customer.getEmail().isBlank()) {
+            Optional<Seller> seller = sellerRepository.findFirstByEmailIgnoreCase(customer.getEmail().trim());
+            if (seller.isPresent()) {
+                return seller.get().getSellerId();
+            }
+        }
+        if (customer.getPhone() != null && !customer.getPhone().isBlank()) {
+            String cleanPhone = customer.getPhone().trim();
+            List<Seller> byPhone = sellerRepository.findAllByPhone(cleanPhone);
+            if (!byPhone.isEmpty()) {
+                return byPhone.get(0).getSellerId();
+            }
+            String digits = normalizePhoneDigits(cleanPhone);
+            if (!digits.isBlank()) {
+                List<Seller> byDigits = sellerRepository.findAllByPhone(digits);
+                if (!byDigits.isEmpty()) {
+                    return byDigits.get(0).getSellerId();
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean isSellerRecordPresent(String email, String phone) {
+        if (email != null && !email.isBlank()) {
+            if (sellerRepository.findFirstByEmailIgnoreCase(email.trim()).isPresent()) {
+                return true;
+            }
+        }
+        if (phone != null && !phone.isBlank()) {
+            String cleanPhone = phone.trim();
+            if (!sellerRepository.findAllByPhone(cleanPhone).isEmpty()) {
+                return true;
+            }
+            String digits = normalizePhoneDigits(cleanPhone);
+            if (!digits.isBlank() && !sellerRepository.findAllByPhone(digits).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override

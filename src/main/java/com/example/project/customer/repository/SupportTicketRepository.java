@@ -13,4 +13,6 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, In
     Optional<SupportTicket> findByTicketNumber(String ticketNumber);
     Page<SupportTicket> findByCustomer_CustomerIdOrderByCreatedAtDesc(Integer userId, Pageable pageable);
     Page<SupportTicket> findByCustomer_CustomerIdAndStatusOrderByCreatedAtDesc(Integer userId, String status, Pageable pageable);
+    Page<SupportTicket> findAllByOrderByCreatedAtDesc(Pageable pageable);
+    Page<SupportTicket> findByStatusOrderByCreatedAtDesc(String status, Pageable pageable);
 }

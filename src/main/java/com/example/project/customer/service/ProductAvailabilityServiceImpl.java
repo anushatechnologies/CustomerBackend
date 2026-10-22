@@ -2,6 +2,7 @@ package com.example.project.customer.service;
 
 import com.example.project.customer.config.PlatformMarketplaceProperties;
 import com.example.project.customer.dto.ProductAvailability;
+import com.example.project.customer.entity.ApprovalStatus;
 import com.example.project.customer.entity.Product;
 import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.repository.HinchStoreVendorInventoryRepository;
@@ -87,14 +88,24 @@ public class ProductAvailabilityServiceImpl implements ProductAvailabilityServic
             if (isPlatformStore) {
                 platformProductIds.add(p.getProductId());
             } else {
-                // Vendor-own product: exactly as before, reads products.stock_qty
+                // Vendor-own product: reads products.stock_qty, requiring admin approval
                 int rawStock = p.getStockQty() != null ? p.getStockQty() : 0;
-                boolean inStock = rawStock > 0 && p.isActive();
-                String reason = !p.isActive() ? "PRODUCT_INACTIVE" : (rawStock <= 0 ? "OUT_OF_STOCK" : null);
+                boolean isApproved = p.getApprovalStatus() == ApprovalStatus.APPROVED;
+                boolean inStock = isApproved && rawStock > 0 && Boolean.TRUE.equals(p.getActive());
+                String reason;
+                if (!isApproved) {
+                    reason = (p.getApprovalStatus() == ApprovalStatus.REJECTED) ? "PRODUCT_REJECTED" : "PENDING_APPROVAL";
+                } else if (!Boolean.TRUE.equals(p.getActive())) {
+                    reason = "PRODUCT_INACTIVE";
+                } else if (rawStock <= 0) {
+                    reason = "OUT_OF_STOCK";
+                } else {
+                    reason = null;
+                }
 
                 resultMap.put(p.getProductId(), ProductAvailability.builder()
                         .productId(p.getProductId())
-                        .availableQty(Math.max(0, rawStock))
+                        .availableQty(isApproved ? Math.max(0, rawStock) : 0)
                         .inStock(inStock)
                         .reason(reason)
                         .build());

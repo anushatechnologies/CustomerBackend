@@ -46,13 +46,13 @@ public class AdminProductController {
         return ResponseEntity.ok(ApiResponse.ok("Product retrieved successfully", service.getAdminById(id)));
     }
 
-    @PatchMapping("/{id}/approve")
+    @RequestMapping(value = "/{id}/approve", method = {org.springframework.web.bind.annotation.RequestMethod.PATCH, org.springframework.web.bind.annotation.RequestMethod.PUT})
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<ProductResponse>> approve(@PathVariable Integer id) {
         return ResponseEntity.ok(ApiResponse.ok("Product approved successfully", service.approve(id)));
     }
 
-    @PatchMapping("/{id}/reject")
+    @RequestMapping(value = "/{id}/reject", method = {org.springframework.web.bind.annotation.RequestMethod.PATCH, org.springframework.web.bind.annotation.RequestMethod.PUT})
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<ProductResponse>> reject(
             @PathVariable Integer id,

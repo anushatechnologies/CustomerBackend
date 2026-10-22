@@ -8,6 +8,7 @@ import com.example.project.customer.dto.StoreResponse;
 import com.example.project.customer.dto.StoreStatusUpdateRequest;
 import com.example.project.customer.dto.StoreUpdateRequest;
 import com.example.project.customer.dto.SubcategoryResponse;
+import com.example.project.customer.entity.ApprovalStatus;
 import com.example.project.customer.entity.Brand;
 import com.example.project.customer.entity.Category;
 import com.example.project.customer.entity.Product;
@@ -194,7 +195,8 @@ public class StoreServiceImpl implements StoreService {
 
         List<Product> products = productRepository.findAll((root, query, cb) -> cb.and(
                 cb.equal(root.get("store").get("storeId"), storeId),
-                cb.equal(root.get("active"), true)
+                cb.equal(root.get("active"), true),
+                cb.equal(root.get("approvalStatus"), ApprovalStatus.APPROVED)
         ));
 
         Map<Integer, Category> categoryMap = new LinkedHashMap<>();
@@ -281,6 +283,7 @@ public class StoreServiceImpl implements StoreService {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("store").get("storeId"), targetStoreId));
             predicates.add(cb.equal(root.get("active"), true));
+            predicates.add(cb.equal(root.get("approvalStatus"), ApprovalStatus.APPROVED));
 
             jakarta.persistence.criteria.Join<Product, Subcategory> subJoin = root.join("subcategory", jakarta.persistence.criteria.JoinType.LEFT);
             jakarta.persistence.criteria.Join<Subcategory, Category> subCatJoin = subJoin.join("category", jakarta.persistence.criteria.JoinType.LEFT);

@@ -56,6 +56,10 @@ public class HotDealServiceImpl implements HotDealService {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
 
+        if (product.getApprovalStatus() != ApprovalStatus.APPROVED || !Boolean.TRUE.equals(product.getActive())) {
+            throw new IllegalArgumentException("Cannot create a Hot Deal for an unapproved or inactive product.");
+        }
+
         // 2. Prevent duplicate product in Hot Deals
         if (hotDealRepository.existsByProduct_ProductId(productId)) {
             throw new ResourceConflictException("Product ID " + productId + " already exists in Hot Deals");
@@ -108,6 +112,10 @@ public class HotDealServiceImpl implements HotDealService {
             Integer newProductId = request.getProductId();
             Product newProduct = productRepository.findById(newProductId)
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + newProductId));
+
+            if (newProduct.getApprovalStatus() != ApprovalStatus.APPROVED || !Boolean.TRUE.equals(newProduct.getActive())) {
+                throw new IllegalArgumentException("Cannot update Hot Deal with an unapproved or inactive product.");
+            }
 
             if (hotDealRepository.existsByProduct_ProductId(newProductId)) {
                 throw new ResourceConflictException("Product ID " + newProductId + " already exists in Hot Deals");

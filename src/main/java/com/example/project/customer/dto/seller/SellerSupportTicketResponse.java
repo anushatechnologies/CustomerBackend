@@ -20,11 +20,15 @@ public class SellerSupportTicketResponse {
     private String ticketNumber;
     private Integer sellerId;
     private String sellerName;
+    private String sellerEmail;
+    private String sellerPhone;
+    private String sellerCompanyName;
     private String subject;
     private String category;
     private String priority;
     private String status;
     private Integer orderId;
+    private String orderNumber;
     private List<TicketMessageResponse> messages;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

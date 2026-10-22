@@ -7,6 +7,7 @@ import com.example.project.customer.dto.CartResponse;
 import com.example.project.customer.dto.CartSyncRequest;
 import com.example.project.customer.dto.CouponResponse;
 import com.example.project.customer.dto.SwitchStoreRequest;
+import com.example.project.customer.entity.ApprovalStatus;
 import com.example.project.customer.entity.BulkPricingTier;
 import com.example.project.customer.entity.Cart;
 import com.example.project.customer.entity.CartItem;
@@ -96,6 +97,13 @@ public class CartServiceImpl implements CartService {
         int uid = userId;
         Product product = productRepository.findById(request.getProductId())
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + request.getProductId()));
+
+        if (product.getApprovalStatus() != ApprovalStatus.APPROVED) {
+            throw new com.example.project.customer.exception.ResourceConflictException("Cannot add '" + product.getTitle() + "' to cart: Product is pending admin approval.");
+        }
+        if (!product.isActive()) {
+            throw new com.example.project.customer.exception.ResourceConflictException("Cannot add '" + product.getTitle() + "' to cart: Product is inactive.");
+        }
 
         Store productStore = resolveProductStore(product);
         if (productStore.getStatus() != StoreStatus.ACTIVE) {
@@ -209,6 +217,10 @@ public class CartServiceImpl implements CartService {
         if (request.getPendingProductId() != null) {
             Product pendingProduct = productRepository.findById(request.getPendingProductId())
                     .orElseThrow(() -> new ResourceNotFoundException("Pending product not found with id: " + request.getPendingProductId()));
+
+            if (pendingProduct.getApprovalStatus() != ApprovalStatus.APPROVED || !pendingProduct.isActive()) {
+                throw new com.example.project.customer.exception.ResourceConflictException("Cannot add '" + pendingProduct.getTitle() + "' to cart: Product is not available.");
+            }
 
             int qty = (request.getPendingQuantity() != null && request.getPendingQuantity() > 0) ? request.getPendingQuantity() : 1;
             Optional<CartItem> existing = cartItemRepository.findByCart_CartIdAndProduct_ProductId(targetCart.getCartId(), pendingProduct.getProductId());
@@ -350,7 +362,7 @@ public class CartServiceImpl implements CartService {
             Product product = productRepository.findById(itemReq.getProductId())
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + itemReq.getProductId()));
 
-            if (!product.isActive()) {
+            if (!product.isActive() || product.getApprovalStatus() != ApprovalStatus.APPROVED) {
                 continue;
             }
 
@@ -573,9 +585,10 @@ public class CartServiceImpl implements CartService {
                     .build());
 
             com.example.project.customer.dto.ProductAvailability avail = availabilityMap.get(p.getProductId());
-            int availableQty = avail != null ? avail.getAvailableQty() : (p.getStockQty() != null ? p.getStockQty() : 0);
-            boolean inStock = avail != null ? avail.isInStock() : (availableQty > 0 && p.isActive());
-            String reason = avail != null ? avail.getReason() : (availableQty <= 0 ? "OUT_OF_STOCK" : null);
+            boolean isApproved = p.getApprovalStatus() == ApprovalStatus.APPROVED;
+            int availableQty = avail != null ? avail.getAvailableQty() : (isApproved && p.getStockQty() != null ? p.getStockQty() : 0);
+            boolean inStock = avail != null ? avail.isInStock() : (isApproved && availableQty > 0 && p.isActive());
+            String reason = avail != null ? avail.getReason() : (!isApproved ? (p.getApprovalStatus() == ApprovalStatus.REJECTED ? "PRODUCT_REJECTED" : "PENDING_APPROVAL") : (availableQty <= 0 ? "OUT_OF_STOCK" : (!p.isActive() ? "PRODUCT_INACTIVE" : null)));
 
             if (qty > availableQty) {
                 inStock = false;

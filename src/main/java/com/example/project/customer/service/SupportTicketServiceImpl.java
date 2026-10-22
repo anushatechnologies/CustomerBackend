@@ -22,9 +22,14 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.example.project.customer.dto.TicketStatusUpdateRequest;
+import com.example.project.customer.entity.Order;
+import com.example.project.customer.repository.OrderRepository;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -36,11 +41,16 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     private final SupportTicketRepository ticketRepository;
     private final TicketMessageRepository messageRepository;
     private final CustomerRepository customerRepository;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private OrderRepository orderRepository;
 
     @Override
     @Transactional(readOnly = true)
     public ApiResponse<List<SupportTicketResponse>> getTickets(Integer userId, String status, int page, int limit) {
         if (userId == null) {
+            if (com.example.project.customer.security.SecurityUtils.isAdmin()) {
+                return getTicketsForAdmin(null, status, page, limit);
+            }
             throw new UnauthorizedException("Authentication required: User ID must not be null.");
         }
         int uid = userId;
@@ -152,6 +162,51 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         return mapToMessageResponse(saved);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public ApiResponse<List<SupportTicketResponse>> getTicketsForAdmin(Integer userId, String status, int page, int limit) {
+        int pageNumber = page > 0 ? page : 1;
+        int pageSize = limit > 0 ? limit : 20;
+        Pageable pageable = PageRequest.of(pageNumber - 1, pageSize);
+
+        Page<SupportTicket> pageResult;
+        if (userId != null) {
+            if (status != null && !status.isBlank()) {
+                pageResult = ticketRepository.findByCustomer_CustomerIdAndStatusOrderByCreatedAtDesc(userId, status.trim().toUpperCase(), pageable);
+            } else {
+                pageResult = ticketRepository.findByCustomer_CustomerIdOrderByCreatedAtDesc(userId, pageable);
+            }
+        } else {
+            if (status != null && !status.isBlank()) {
+                pageResult = ticketRepository.findByStatusOrderByCreatedAtDesc(status.trim().toUpperCase(), pageable);
+            } else {
+                pageResult = ticketRepository.findAllByOrderByCreatedAtDesc(pageable);
+            }
+        }
+
+        List<SupportTicketResponse> data = pageResult.getContent().stream()
+                .map(this::mapToResponse)
+                .toList();
+
+        PaginationMeta meta = PaginationMeta.of(pageNumber, pageSize, pageResult.getTotalElements());
+        return ApiResponse.paginated("Admin customer support tickets retrieved successfully", data, meta);
+    }
+
+    @Override
+    public SupportTicketResponse updateTicketStatus(Integer ticketId, TicketStatusUpdateRequest request) {
+        SupportTicket ticket = findTicket(ticketId);
+        if (request != null) {
+            if (request.getStatus() != null && !request.getStatus().isBlank()) {
+                ticket.setStatus(request.getStatus().trim().toUpperCase());
+            }
+            if (request.getPriority() != null && !request.getPriority().isBlank()) {
+                ticket.setPriority(request.getPriority().trim().toUpperCase());
+            }
+        }
+        SupportTicket saved = ticketRepository.save(ticket);
+        return mapToResponse(saved);
+    }
+
     private SupportTicket findTicket(Integer id) {
         return ticketRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Support ticket not found with id: " + id));
@@ -162,15 +217,39 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                 ? t.getMessages().stream().map(this::mapToMessageResponse).toList()
                 : List.of();
 
+        Customer c = t.getCustomer();
+        String userName = c != null ? c.getName() : null;
+        String userEmail = c != null ? c.getEmail() : null;
+        String userPhone = c != null ? c.getPhone() : null;
+        String orderNumber = null;
+
+        if (t.getOrderId() != null && orderRepository != null) {
+            Optional<Order> orderOpt = orderRepository.findById(t.getOrderId());
+            if (orderOpt.isPresent()) {
+                Order o = orderOpt.get();
+                orderNumber = o.getOrderNumber();
+                if ((userPhone == null || userPhone.isBlank()) && o.getRecipientPhone() != null) {
+                    userPhone = o.getRecipientPhone();
+                }
+                if ((userName == null || userName.isBlank()) && o.getRecipientName() != null) {
+                    userName = o.getRecipientName();
+                }
+            }
+        }
+
         return SupportTicketResponse.builder()
                 .ticketId(t.getTicketId())
                 .ticketNumber(t.getTicketNumber())
-                .userId(t.getCustomer() != null ? t.getCustomer().getCustomerId() : null)
+                .userId(c != null ? c.getCustomerId() : null)
+                .userName(userName)
+                .userEmail(userEmail)
+                .userPhone(userPhone)
+                .orderId(t.getOrderId())
+                .orderNumber(orderNumber)
                 .subject(t.getSubject())
                 .category(t.getCategory())
                 .priority(t.getPriority())
                 .status(t.getStatus())
-                .orderId(t.getOrderId())
                 .messages(msgs)
                 .createdAt(t.getCreatedAt())
                 .updatedAt(t.getUpdatedAt())

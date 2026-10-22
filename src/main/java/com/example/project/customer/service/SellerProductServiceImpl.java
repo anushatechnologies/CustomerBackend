@@ -212,7 +212,33 @@ public class SellerProductServiceImpl implements SellerProductService {
                 .orElseThrow(() -> new ResourceNotFoundException("Seller not found with id: " + sellerId));
 
         Store store = storeRepository.findBySellerSellerId(sellerId)
-                .orElseThrow(() -> new ResourceNotFoundException("No active store found for seller id: " + sellerId));
+                .orElseGet(() -> {
+                    String storeName = seller.getCompanyName() != null && !seller.getCompanyName().isBlank()
+                            ? seller.getCompanyName().trim()
+                            : (seller.getName() != null && !seller.getName().isBlank() ? seller.getName().trim() : "Seller " + seller.getSellerId());
+                    String baseSlug = storeName.toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
+                    if (baseSlug.isBlank()) baseSlug = "store-" + seller.getSellerId();
+                    String uniqueSlug = baseSlug;
+                    int counter = 1;
+                    while (storeRepository.existsBySlugIgnoreCase(uniqueSlug)) {
+                        uniqueSlug = baseSlug + "-" + counter++;
+                    }
+                    Store newStore = Store.builder()
+                            .seller(seller)
+                            .name(storeName)
+                            .slug(uniqueSlug)
+                            .status(com.example.project.customer.entity.StoreStatus.ACTIVE)
+                            .commissionRate(BigDecimal.ZERO)
+                            .description("Official Store of " + storeName)
+                            .rating(4.8)
+                            .reviewCount(0)
+                            .serviceRadiusKm(50)
+                            .minOrderValue(BigDecimal.ZERO)
+                            .build();
+                    Store savedStore = storeRepository.save(newStore);
+                    log.info("Auto-created store #{} for seller #{}", savedStore.getStoreId(), seller.getSellerId());
+                    return savedStore;
+                });
 
         ApprovalStatus initialStatus = com.example.project.customer.security.SecurityUtils.isAdmin()
                 ? ApprovalStatus.APPROVED
@@ -251,7 +277,7 @@ public class SellerProductServiceImpl implements SellerProductService {
                         request.getBulkPricingTiers() != null ? request.getBulkPricingTiers() : new ArrayList<>())
                 .specifications(normalizedSpecs)
                 .approvalStatus(initialStatus)
-                .active(true)
+                .active(initialStatus == ApprovalStatus.APPROVED)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();

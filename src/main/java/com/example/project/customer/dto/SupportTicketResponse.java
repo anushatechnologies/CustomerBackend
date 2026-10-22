@@ -18,11 +18,15 @@ public class SupportTicketResponse {
     private Integer ticketId;
     private String ticketNumber;
     private Integer userId;
+    private String userName;
+    private String userEmail;
+    private String userPhone;
     private String subject;
     private String category;
     private String priority;
     private String status;
     private Integer orderId;
+    private String orderNumber;
     private List<TicketMessageResponse> messages;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

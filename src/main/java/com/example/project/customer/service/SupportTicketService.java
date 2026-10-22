@@ -13,4 +13,7 @@ public interface SupportTicketService {
     SupportTicketResponse getTicketById(Integer ticketId);
     SupportTicketResponse createTicket(Integer userId, SupportTicketRequest request);
     TicketMessageResponse addMessage(Integer ticketId, Integer senderId, String senderRole, String senderName, TicketMessageRequest request);
+
+    ApiResponse<List<SupportTicketResponse>> getTicketsForAdmin(Integer userId, String status, int page, int limit);
+    SupportTicketResponse updateTicketStatus(Integer ticketId, com.example.project.customer.dto.TicketStatusUpdateRequest request);
 }

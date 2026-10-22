@@ -14,6 +14,7 @@ import com.example.project.customer.dto.PaginationMeta;
 import com.example.project.customer.dto.SellerOrderDto;
 import com.example.project.customer.dto.SellerOrderPageData;
 import com.example.project.customer.entity.Address;
+import com.example.project.customer.entity.ApprovalStatus;
 import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.Order;
 import com.example.project.customer.entity.OrderInventoryState;
@@ -235,6 +236,9 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
             Product p = productRepository.findById(ci.getProductId())
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found: " + ci.getTitle() + " (ID: " + ci.getProductId() + ")"));
 
+            if (p.getApprovalStatus() != ApprovalStatus.APPROVED) {
+                throw new IllegalStateException("Product '" + p.getTitle() + "' cannot be ordered because it is not approved by admin (status: " + p.getApprovalStatus() + ").");
+            }
             if (!p.isActive()) {
                 throw new IllegalStateException("Product '" + p.getTitle() + "' is no longer active in the catalog.");
             }

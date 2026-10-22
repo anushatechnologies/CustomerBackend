@@ -9,6 +9,7 @@ import com.example.project.customer.dto.CheckoutPreviewResponse;
 import com.example.project.customer.dto.OrderCreateRequest;
 import com.example.project.customer.dto.OrderResponse;
 import com.example.project.customer.entity.Address;
+import com.example.project.customer.entity.ApprovalStatus;
 import com.example.project.customer.entity.Brand;
 import com.example.project.customer.entity.Category;
 import com.example.project.customer.entity.CommissionRule;
@@ -133,6 +134,7 @@ class OrderSettlementWorkflowTest {
                 .store(vendorStore)
                 .stockQty(100)
                 .active(true)
+                .approvalStatus(ApprovalStatus.APPROVED)
                 .price(new BigDecimal("400.00"))
                 .build();
 
@@ -143,6 +145,7 @@ class OrderSettlementWorkflowTest {
                 .store(vendorStore)
                 .stockQty(50)
                 .active(true)
+                .approvalStatus(ApprovalStatus.APPROVED)
                 .price(new BigDecimal("600.00"))
                 .build();
 
@@ -158,6 +161,7 @@ class OrderSettlementWorkflowTest {
                 .store(hinchStore)
                 .stockQty(200)
                 .active(true)
+                .approvalStatus(ApprovalStatus.APPROVED)
                 .price(new BigDecimal("1000.00"))
                 .subcategory(mockSubcategory)
                 .build();
