@@ -46,6 +46,10 @@ public class SellerProductServiceImpl implements SellerProductService {
     private final StoreRepository storeRepository;
     private final ProductTaxonomyService productTaxonomyService;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @lombok.Setter
+    private InventorySynchronizationService inventorySynchronizationService;
+
     public SellerProductServiceImpl(
             ProductRepository productRepository,
             BrandRepository brandRepository,
@@ -283,6 +287,9 @@ public class SellerProductServiceImpl implements SellerProductService {
                 .build();
 
         Product saved = productRepository.save(product);
+        if (inventorySynchronizationService != null) {
+            inventorySynchronizationService.syncProductInventory(saved, request.getStockQty(), sellerId);
+        }
         log.info("Created new seller product id={} for sellerId={} in storeId={} (status={})", saved.getProductId(),
                 sellerId, store != null ? store.getStoreId() : null, initialStatus);
         return mapToResponse(saved);
@@ -364,15 +371,23 @@ public class SellerProductServiceImpl implements SellerProductService {
         product.setUpdatedAt(LocalDateTime.now());
 
         Product saved = productRepository.save(product);
+        if (request.getStockQty() != null && inventorySynchronizationService != null) {
+            inventorySynchronizationService.syncProductInventory(saved, request.getStockQty(), sellerId);
+        }
         return mapToResponse(saved);
     }
 
     @Override
     public ProductResponse updateSellerStock(Integer sellerId, Integer productId, Integer stockQty) {
         Product product = findSellerProduct(sellerId, productId);
-        product.setStockQty(stockQty != null ? stockQty : 0);
+        int targetStock = stockQty != null ? stockQty : 0;
+        product.setStockQty(targetStock);
         product.setUpdatedAt(LocalDateTime.now());
-        return mapToResponse(productRepository.save(product));
+        Product saved = productRepository.save(product);
+        if (inventorySynchronizationService != null) {
+            inventorySynchronizationService.syncProductInventory(saved, targetStock, sellerId);
+        }
+        return mapToResponse(saved);
     }
 
     @Override

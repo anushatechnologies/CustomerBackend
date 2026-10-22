@@ -9,6 +9,7 @@ import com.example.project.customer.dto.OrderCreateRequest;
 import com.example.project.customer.dto.OrderResponse;
 import com.example.project.customer.dto.event.OrderConfirmedEvent;
 import com.example.project.customer.entity.Address;
+import com.example.project.customer.entity.ApprovalStatus;
 import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.Order;
 import com.example.project.customer.entity.OrderItem;
@@ -184,6 +185,7 @@ public class HichExpressIntegrationTest {
                 .price(BigDecimal.valueOf(380.00))
                 .stockQty(500)
                 .active(true)
+                .approvalStatus(ApprovalStatus.APPROVED)
                 .weightKg(BigDecimal.valueOf(50.000))
                 .build();
 
@@ -195,6 +197,7 @@ public class HichExpressIntegrationTest {
                 .price(BigDecimal.valueOf(650.00))
                 .stockQty(200)
                 .active(true)
+                .approvalStatus(ApprovalStatus.APPROVED)
                 .weightKg(BigDecimal.valueOf(10.500))
                 .build();
     }

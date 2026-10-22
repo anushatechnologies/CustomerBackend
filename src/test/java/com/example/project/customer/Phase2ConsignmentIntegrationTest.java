@@ -9,6 +9,7 @@ import com.example.project.customer.dto.OrderResponse;
 import com.example.project.customer.dto.PaymentVerifyRequest;
 import com.example.project.customer.dto.event.OrderConfirmedEvent;
 import com.example.project.customer.entity.Address;
+import com.example.project.customer.entity.ApprovalStatus;
 import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.HinchStoreVendorInventory;
 import com.example.project.customer.entity.Order;
@@ -184,10 +185,10 @@ public class Phase2ConsignmentIntegrationTest {
                 .latitude(17.40).longitude(78.40).status(StoreStatus.ACTIVE).build();
 
         platformProduct = Product.builder().productId(501).title("Consignment Cement 50kg")
-                .store(platformStore).active(true).build();
+                .store(platformStore).active(true).approvalStatus(ApprovalStatus.APPROVED).build();
 
         vendorProduct = Product.builder().productId(601).title("Vendor TMT Bar")
-                .store(vendorStore1).seller(vendorSeller1).stockQty(50).active(true).build();
+                .store(vendorStore1).seller(vendorSeller1).stockQty(50).active(true).approvalStatus(ApprovalStatus.APPROVED).build();
 
         testCustomer = Customer.builder().customerId(999).name("Test Builder").phone("9876543210").build();
         testAddress = Address.builder().id(88).customer(testCustomer).addressLine1("Site #42, Madhapur")

@@ -9,6 +9,7 @@ import com.example.project.customer.dto.CheckoutPreviewResponse;
 import com.example.project.customer.dto.OrderCreateRequest;
 import com.example.project.customer.dto.OrderResponse;
 import com.example.project.customer.entity.Address;
+import com.example.project.customer.entity.ApprovalStatus;
 import com.example.project.customer.entity.Cart;
 import com.example.project.customer.entity.CartItem;
 import com.example.project.customer.entity.Customer;
@@ -120,6 +121,7 @@ class CartSynchronizationServiceTest {
                 .store(testStore)
                 .stockQty(100)
                 .active(true)
+                .approvalStatus(ApprovalStatus.APPROVED)
                 .unit("Piece")
                 .build();
 
@@ -350,7 +352,7 @@ class CartSynchronizationServiceTest {
     @DisplayName("syncCart: auto-switches active store when targetStoreId is null but items belong to another store")
     void testSyncCart_InfersStoreAndSwitchesWhenTargetStoreIdNull() {
         Store store2 = Store.builder().storeId(2).name("Store 2").status(StoreStatus.ACTIVE).build();
-        Product product2 = Product.builder().productId(202).store(store2).stockQty(50).active(true).build();
+        Product product2 = Product.builder().productId(202).store(store2).stockQty(50).active(true).approvalStatus(ApprovalStatus.APPROVED).build();
         Cart store2Cart = Cart.builder().cartId(52).customer(testCustomer).store(store2).isActive(true).items(new ArrayList<>()).build();
 
         when(productRepository.findById(202)).thenReturn(Optional.of(product2));

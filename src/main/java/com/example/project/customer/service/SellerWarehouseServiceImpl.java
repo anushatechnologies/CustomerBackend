@@ -29,6 +29,10 @@ public class SellerWarehouseServiceImpl implements SellerWarehouseService {
     private final ProductRepository productRepository;
     private final InventoryAdjustmentRepository inventoryAdjustmentRepository;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @lombok.Setter
+    private InventorySynchronizationService inventorySynchronizationService;
+
     @Override
     public List<Warehouse> getWarehouses(Integer sellerId) {
         List<Warehouse> warehouses = warehouseRepository.findBySellerId(sellerId);
@@ -94,6 +98,11 @@ public class SellerWarehouseServiceImpl implements SellerWarehouseService {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
 
+        if (product.getSeller() != null && product.getSeller().getSellerId() != null
+                && !product.getSeller().getSellerId().equals(sellerId)) {
+            throw new ResourceNotFoundException("Product not found or not owned by seller: " + productId);
+        }
+
         int prevStock = product.getStockQty() != null ? product.getStockQty() : 0;
         int qty = request.getQuantity() != null ? request.getQuantity() : 0;
         int newStock = prevStock;
@@ -123,7 +132,10 @@ public class SellerWarehouseServiceImpl implements SellerWarehouseService {
 
         product.setStockQty(newStock);
         product.setUpdatedAt(LocalDateTime.now());
-        productRepository.save(product);
+        Product saved = productRepository.save(product);
+        if (inventorySynchronizationService != null) {
+            inventorySynchronizationService.syncProductInventory(saved, newStock, sellerId);
+        }
 
         InventoryAdjustment logEntry = InventoryAdjustment.builder()
                 .sellerId(sellerId)

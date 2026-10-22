@@ -7,6 +7,7 @@ import com.example.project.customer.dto.CheckoutPreviewResponse;
 import com.example.project.customer.dto.OrderCreateRequest;
 import com.example.project.customer.dto.OrderResponse;
 import com.example.project.customer.entity.Address;
+import com.example.project.customer.entity.ApprovalStatus;
 import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.Order;
 import com.example.project.customer.entity.Product;
@@ -188,7 +189,7 @@ class OrderAddressIntegrationTest {
 
         when(checkoutService.previewCheckout(eq(101), any(CheckoutPreviewRequest.class))).thenReturn(preview);
 
-        Product product = Product.builder().productId(1).seller(mockSeller).store(mockStore).title("Steel Rebar").stockQty(100).build();
+        Product product = Product.builder().productId(1).seller(mockSeller).store(mockStore).title("Steel Rebar").stockQty(100).approvalStatus(ApprovalStatus.APPROVED).build();
         when(productRepository.findById(1)).thenReturn(Optional.of(product));
         when(productRepository.findByIdForStockUpdate(1)).thenReturn(Optional.of(product));
 
@@ -252,7 +253,7 @@ class OrderAddressIntegrationTest {
                 .build();
         when(checkoutService.previewCheckout(eq(101), any(CheckoutPreviewRequest.class))).thenReturn(preview);
 
-        Product product = Product.builder().productId(1).seller(mockSeller).store(mockStore).title("Steel Rebar").stockQty(100).build();
+        Product product = Product.builder().productId(1).seller(mockSeller).store(mockStore).title("Steel Rebar").stockQty(100).approvalStatus(ApprovalStatus.APPROVED).build();
         when(productRepository.findById(1)).thenReturn(Optional.of(product));
         when(productRepository.findByIdForStockUpdate(1)).thenReturn(Optional.of(product));
 
@@ -295,7 +296,7 @@ class OrderAddressIntegrationTest {
         CartItemResponse item = CartItemResponse.builder().productId(1).title("Steel Rebar").quantity(2).build();
         CartResponse cart = CartResponse.builder().storeId(10).items(List.of(item)).build();
 
-        Product product = Product.builder().productId(1).seller(mockSeller).store(mockStore).title("Steel Rebar").stockQty(100).build();
+        Product product = Product.builder().productId(1).seller(mockSeller).store(mockStore).title("Steel Rebar").stockQty(100).approvalStatus(ApprovalStatus.APPROVED).build();
         when(productRepository.findById(1)).thenReturn(Optional.of(product));
 
         when(cartService.getCart(101)).thenReturn(cart);

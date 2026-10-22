@@ -375,6 +375,7 @@ class LogisticsAndTaxCalculationTest {
                 .title("Steel Bar")
                 .price(new BigDecimal("100.00"))
                 .stockQty(50)
+                .approvalStatus(ApprovalStatus.APPROVED)
                 .gstRate(new BigDecimal("18.00"))
                 .hsnCode("721420")
                 .build();

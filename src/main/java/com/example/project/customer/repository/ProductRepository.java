@@ -50,6 +50,8 @@ public interface ProductRepository
     @Query("SELECT p FROM Product p WHERE p.seller.sellerId = :sellerId AND p.brand.subcategory.category.categoryId = :categoryId")
     List<Product> findBySellerIdAndBrand_Subcategory_Category_CategoryId(@Param("sellerId") Integer sellerId, @Param("categoryId") Integer categoryId);
 
+    List<Product> findByStore_StoreId(Integer storeId);
+
     // Product approval workflow
     List<Product> findByApprovalStatusAndActive(
             ApprovalStatus approvalStatus,

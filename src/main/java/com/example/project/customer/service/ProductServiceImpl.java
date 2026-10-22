@@ -110,6 +110,13 @@ public class ProductServiceImpl implements ProductService {
                 this.hinchStoreVendorInventoryRepository = hinchStoreVendorInventoryRepository;
         }
 
+        @Autowired(required = false)
+        private InventorySynchronizationService inventorySynchronizationService;
+
+        public void setInventorySynchronizationService(InventorySynchronizationService inventorySynchronizationService) {
+                this.inventorySynchronizationService = inventorySynchronizationService;
+        }
+
         public void setPlatformMarketplaceProperties(com.example.project.customer.config.PlatformMarketplaceProperties platformMarketplaceProperties) {
                 this.platformMarketplaceProperties = platformMarketplaceProperties;
         }
@@ -168,6 +175,9 @@ public class ProductServiceImpl implements ProductService {
                 product.setRejectionReason(null);
 
                 Product saved = repository.save(product);
+                if (inventorySynchronizationService != null) {
+                        inventorySynchronizationService.syncProductInventory(saved, request.getStockQty(), null);
+                }
                 return enrichAvailability(mapToResponse(saved), saved);
         }
 
@@ -443,6 +453,9 @@ public class ProductServiceImpl implements ProductService {
                 }
 
                 Product saved = repository.save(product);
+                if (request.getStockQty() != null && inventorySynchronizationService != null) {
+                        inventorySynchronizationService.syncProductInventory(saved, request.getStockQty(), null);
+                }
 
                 // Clean up old main image if replaced and no longer in use
                 String newMainImage = saved.getImageUrl();
@@ -477,6 +490,9 @@ public class ProductServiceImpl implements ProductService {
 
                 product.setStockQty(newTotal);
                 Product saved = repository.save(product);
+                if (inventorySynchronizationService != null) {
+                        inventorySynchronizationService.syncProductInventory(saved, newTotal, null);
+                }
 
                 return enrichAvailability(mapToResponse(saved), saved);
         }
@@ -726,6 +742,9 @@ public class ProductServiceImpl implements ProductService {
                 product.setActive(true);
 
                 Product saved = repository.save(product);
+                if (inventorySynchronizationService != null && saved.getStockQty() != null && saved.getStockQty() > 0) {
+                        inventorySynchronizationService.syncProductInventory(saved, saved.getStockQty(), saved.getSeller() != null ? saved.getSeller().getSellerId() : null);
+                }
 
                 return enrichAvailability(mapToResponse(saved), saved);
         }
