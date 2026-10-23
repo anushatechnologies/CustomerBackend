@@ -9,7 +9,10 @@ import java.util.List;
 public interface CouponService {
     CouponValidationResult validateAndCalculateDiscount(String code, Customer customer, BigDecimal cartSubtotal);
     List<EligibleCouponResponse> getEligibleCouponsForCart(Customer customer, BigDecimal cartSubtotal);
-    void recordCouponUsage(String code, Customer customer, Order order, BigDecimal discount);
+    default void recordCouponUsage(String code, Customer customer, Order order, BigDecimal discount) {
+        recordCouponUsage(code, customer, null, order, discount);
+    }
+    void recordCouponUsage(String code, Customer customer, OrderGroup orderGroup, Order order, BigDecimal discount);
     CouponAdminResponse create(CouponAdminRequest request);
     CouponAdminResponse getById(Long id);
     CouponAdminResponse update(Long id, CouponAdminRequest request);

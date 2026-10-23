@@ -39,6 +39,10 @@ public class Payment {
     private Order order;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_group_id", referencedColumnName = "id")
+    private OrderGroup orderGroup;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "customer_id", referencedColumnName = "customer_id", nullable = false)
     private Customer customer;
 

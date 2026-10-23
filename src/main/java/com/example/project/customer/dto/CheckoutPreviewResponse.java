@@ -24,6 +24,8 @@ public class CheckoutPreviewResponse {
     private BigDecimal grandTotal;
     @Builder.Default
     private java.util.List<CartItemResponse> items = new java.util.ArrayList<>();
+    @Builder.Default
+    private java.util.List<CartStoreGroupResponse> storeGroups = new java.util.ArrayList<>();
     private Boolean canPlaceOrder;
     private String orderBlockReason;
 }

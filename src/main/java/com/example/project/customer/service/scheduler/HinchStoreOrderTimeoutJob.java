@@ -2,11 +2,13 @@ package com.example.project.customer.service.scheduler;
 
 import com.example.project.customer.config.PlatformMarketplaceProperties;
 import com.example.project.customer.entity.Order;
+import com.example.project.customer.entity.OrderGroup;
 import com.example.project.customer.entity.TrackingCheckpoint;
+import com.example.project.customer.repository.OrderGroupRepository;
 import com.example.project.customer.repository.OrderRepository;
 import com.example.project.customer.service.OrderService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -17,12 +19,35 @@ import java.util.List;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class HinchStoreOrderTimeoutJob {
 
     private final OrderRepository orderRepository;
     private final OrderService orderService;
     private final PlatformMarketplaceProperties platformMarketplaceProperties;
+    private OrderGroupRepository orderGroupRepository;
+
+    @Autowired
+    public HinchStoreOrderTimeoutJob(
+            OrderRepository orderRepository,
+            OrderService orderService,
+            PlatformMarketplaceProperties platformMarketplaceProperties,
+            @Autowired(required = false) OrderGroupRepository orderGroupRepository) {
+        this.orderRepository = orderRepository;
+        this.orderService = orderService;
+        this.platformMarketplaceProperties = platformMarketplaceProperties;
+        this.orderGroupRepository = orderGroupRepository;
+    }
+
+    public HinchStoreOrderTimeoutJob(
+            OrderRepository orderRepository,
+            OrderService orderService,
+            PlatformMarketplaceProperties platformMarketplaceProperties) {
+        this(orderRepository, orderService, platformMarketplaceProperties, null);
+    }
+
+    public void setOrderGroupRepository(OrderGroupRepository orderGroupRepository) {
+        this.orderGroupRepository = orderGroupRepository;
+    }
 
     @Value("${marketplace.hinch-store.unpaid-timeout-minutes:15}")
     private int unpaidTimeoutMinutes;
@@ -62,6 +87,22 @@ public class HinchStoreOrderTimeoutJob {
                 order.getCheckpoints().add(timeoutCheckpoint);
 
                 orderRepository.save(order);
+
+                // 4. Update parent OrderGroup if present
+                if (order.getOrderGroup() != null && orderGroupRepository != null) {
+                    OrderGroup group = order.getOrderGroup();
+                    List<Order> siblings = orderRepository.findByOrderGroup_Id(group.getId());
+                    boolean allCancelledOrExpired = siblings.isEmpty() || siblings.stream().allMatch(
+                            s -> "CANCELLED".equalsIgnoreCase(s.getOrderStatus()) || "EXPIRED".equalsIgnoreCase(s.getPaymentStatus()));
+                    if (allCancelledOrExpired) {
+                        group.setGroupStatus("CANCELLED");
+                        group.setPaymentStatus("EXPIRED");
+                    } else {
+                        group.setGroupStatus("PARTIALLY_CANCELLED");
+                    }
+                    orderGroupRepository.save(group);
+                }
+
                 log.info("Successfully cancelled expired HinchStore Order #{} (Invoice: {}) and released inventory.",
                         order.getOrderId(), order.getStoreInvoiceNumber());
             } catch (Exception e) {

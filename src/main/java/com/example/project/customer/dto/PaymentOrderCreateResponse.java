@@ -20,6 +20,8 @@ public class PaymentOrderCreateResponse {
     private String currency;
     private Integer orderId;
     private String orderNumber;
+    private Integer orderGroupId;
+    private String groupOrderNumber;
     private String purpose;
     private String customerName;
     private String customerEmail;

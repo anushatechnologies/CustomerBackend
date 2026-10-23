@@ -59,6 +59,9 @@ public class OrderResponse {
     private String firstItemTitle;
     private String firstItemImage;
     private List<OrderItemDto> items;
+    private Integer orderGroupId;
+    private String groupOrderNumber;
+    private List<OrderResponse> childOrders;
     private LocalDateTime createdAt;
     private LocalDateTime estimatedDelivery;
 

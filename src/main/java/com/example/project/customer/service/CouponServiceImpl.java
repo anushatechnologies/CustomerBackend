@@ -44,16 +44,21 @@ public class CouponServiceImpl implements CouponService {
     }
 
     @Override
-    public void recordCouponUsage(String code, Customer customer, Order order, BigDecimal discount) {
+    public void recordCouponUsage(String code, Customer customer, OrderGroup orderGroup, Order order, BigDecimal discount) {
         if (code == null || code.isBlank()) throw new IllegalArgumentException("Coupon code is required");
         Coupon coupon = couponRepository.findByCodeIgnoreCase(code.trim())
                 .orElseThrow(() -> new ResourceNotFoundException("Coupon not found"));
-        // The order is already persisted to obtain its foreign-key id. Do not count that
-        // just-created order against a first-order coupon.
-        validate(coupon, customer, amount(order.getSubtotal()), true);
-        CouponValidationResult result = new CouponValidationResult(coupon, calculate(coupon, amount(order.getSubtotal())));
+        BigDecimal subtotal = orderGroup != null ? amount(orderGroup.getSubtotal()) : (order != null ? amount(order.getSubtotal()) : BigDecimal.ZERO);
+        validate(coupon, customer, subtotal, true);
+        CouponValidationResult result = new CouponValidationResult(coupon, calculate(coupon, subtotal));
         if (couponRepository.incrementUsageIfAvailable(result.getCoupon().getId()) == 0) throw new ResourceConflictException("Coupon usage limit has been reached");
-        couponUsageRepository.save(CouponUsage.builder().coupon(result.getCoupon()).customer(customer).order(order).discountApplied(result.getDiscount()).build());
+        couponUsageRepository.save(CouponUsage.builder()
+                .coupon(result.getCoupon())
+                .customer(customer)
+                .order(order)
+                .orderGroup(orderGroup)
+                .discountApplied(discount != null ? discount : result.getDiscount())
+                .build());
     }
 
     private void validate(Coupon c, Customer customer, BigDecimal subtotal, boolean orderAlreadyPersisted) {
@@ -96,7 +101,7 @@ public class CouponServiceImpl implements CouponService {
         couponRepository.delete(coupon);
     }
     @Override @Transactional(readOnly = true) public Page<CouponAdminResponse> list(Boolean active, String search, int page, int size) { return couponRepository.search(active, blankToNull(search), PageRequest.of(Math.max(0, page), Math.max(1, size), Sort.by("createdAt").descending())).map(this::response); }
-    @Override @Transactional(readOnly = true) public Page<CouponUsageResponse> usages(Long id, int page, int size) { return couponUsageRepository.findByCouponOrderByUsedAtDesc(find(id), PageRequest.of(Math.max(0, page), Math.max(1, size))).map(u -> CouponUsageResponse.builder().id(u.getId()).customerId(u.getCustomer().getCustomerId()).customerName(u.getCustomer().getName()).orderId(u.getOrder().getOrderId()).orderNumber(u.getOrder().getOrderNumber()).discountApplied(u.getDiscountApplied()).usedAt(u.getUsedAt()).build()); }
+    @Override @Transactional(readOnly = true) public Page<CouponUsageResponse> usages(Long id, int page, int size) { return couponUsageRepository.findByCouponOrderByUsedAtDesc(find(id), PageRequest.of(Math.max(0, page), Math.max(1, size))).map(u -> CouponUsageResponse.builder().id(u.getId()).customerId(u.getCustomer().getCustomerId()).customerName(u.getCustomer().getName()).orderId(u.getOrder() != null ? u.getOrder().getOrderId() : null).orderNumber(u.getOrder() != null ? u.getOrder().getOrderNumber() : (u.getOrderGroup() != null ? u.getOrderGroup().getGroupOrderNumber() : null)).discountApplied(u.getDiscountApplied()).usedAt(u.getUsedAt()).build()); }
     private Coupon find(Long id) { return couponRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Coupon not found with id: " + id)); }
     private String blankToNull(String s) { return s == null || s.isBlank() ? null : s.trim(); }
     private void apply(Coupon c, CouponAdminRequest r) {

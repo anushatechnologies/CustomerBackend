@@ -57,17 +57,7 @@ public class CheckoutServiceImpl implements CheckoutService {
         Address address = addressRepository.findByCustomer_CustomerIdAndId(userId, request.getAddressId())
                 .orElseThrow(() -> new ResourceNotFoundException("Address not found with id: " + request.getAddressId()));
 
-        String originState = "Telangana";
-        if (cart.getStoreId() != null) {
-            Store store = storeRepository.findById(cart.getStoreId()).orElse(null);
-            if (store != null && store.getSeller() != null && store.getSeller().getState() != null && !store.getSeller().getState().isBlank()) {
-                originState = store.getSeller().getState().trim();
-            }
-        }
-
         String buyerState = address.getState();
-        boolean isIntraState = taxCalculationService.isIntraState(originState, buyerState);
-
         BigDecimal freightCharge = (cart.getDeliveryCharge() != null
                 && cart.getDeliveryCharge().compareTo(BigDecimal.valueOf(4500.0)) != 0)
                 ? cart.getDeliveryCharge()
@@ -75,10 +65,67 @@ public class CheckoutServiceImpl implements CheckoutService {
         BigDecimal craneUnloadingCharge = Boolean.TRUE.equals(request.getRequiresCraneUnloading())
                 ? BigDecimal.valueOf(2500.0) : BigDecimal.ZERO;
 
-        List<TaxableItemInput> taxInputs = new ArrayList<>();
-        if (cart.getItems() != null) {
-            for (CartItemResponse item : cart.getItems()) {
-                taxInputs.add(TaxableItemInput.builder()
+        List<CartItemResponse> cartItems = cart.getItems() != null ? cart.getItems() : new ArrayList<>();
+
+        if (cartItems.isEmpty()) {
+            return CheckoutPreviewResponse.builder()
+                    .subtotal(BigDecimal.ZERO)
+                    .discount(BigDecimal.ZERO)
+                    .taxableAmount(BigDecimal.ZERO)
+                    .cgst(BigDecimal.ZERO)
+                    .sgst(BigDecimal.ZERO)
+                    .igst(BigDecimal.ZERO)
+                    .totalGst(BigDecimal.ZERO)
+                    .freightCharge(freightCharge)
+                    .craneUnloadingCharge(craneUnloadingCharge)
+                    .grandTotal(freightCharge.add(craneUnloadingCharge))
+                    .items(cartItems)
+                    .storeGroups(new ArrayList<>())
+                    .canPlaceOrder(false)
+                    .orderBlockReason("Cannot place order with an empty cart.")
+                    .build();
+        }
+
+        // Partition items by store
+        java.util.Map<Integer, List<CartItemResponse>> storeItemsMap = new java.util.LinkedHashMap<>();
+        for (CartItemResponse item : cartItems) {
+            Integer sId = item.getStoreId() != null ? item.getStoreId() : (cart.getStoreId() != null ? cart.getStoreId() : 1);
+            storeItemsMap.computeIfAbsent(sId, k -> new ArrayList<>()).add(item);
+        }
+
+        BigDecimal subtotalSum = BigDecimal.ZERO;
+        BigDecimal taxableAmountSum = BigDecimal.ZERO;
+        BigDecimal cgstSum = BigDecimal.ZERO;
+        BigDecimal sgstSum = BigDecimal.ZERO;
+        BigDecimal igstSum = BigDecimal.ZERO;
+        BigDecimal totalGstSum = BigDecimal.ZERO;
+        BigDecimal totalDiscount = cart.getCouponDiscount() != null ? cart.getCouponDiscount() : BigDecimal.ZERO;
+        BigDecimal cartSubtotal = cart.getSubtotal() != null && cart.getSubtotal().compareTo(BigDecimal.ZERO) > 0
+                ? cart.getSubtotal() : BigDecimal.ONE;
+
+        List<com.example.project.customer.dto.CartStoreGroupResponse> previewStoreGroups = new ArrayList<>();
+        BigDecimal allocatedDiscount = BigDecimal.ZERO;
+        int storeIndex = 0;
+        int totalStores = storeItemsMap.size();
+
+        for (java.util.Map.Entry<Integer, List<CartItemResponse>> entry : storeItemsMap.entrySet()) {
+            storeIndex++;
+            Integer storeId = entry.getKey();
+            List<CartItemResponse> sItems = entry.getValue();
+            Store store = storeRepository.findById(storeId).orElse(null);
+
+            String originState = "Telangana";
+            if (store != null && store.getSeller() != null && store.getSeller().getState() != null && !store.getSeller().getState().isBlank()) {
+                originState = store.getSeller().getState().trim();
+            }
+
+            boolean isIntraState = taxCalculationService.isIntraState(originState, buyerState);
+
+            List<TaxableItemInput> sTaxInputs = new ArrayList<>();
+            BigDecimal sSubtotal = BigDecimal.ZERO;
+            for (CartItemResponse item : sItems) {
+                sSubtotal = sSubtotal.add(item.getLineTotal());
+                sTaxInputs.add(TaxableItemInput.builder()
                         .productId(item.getProductId())
                         .title(item.getTitle())
                         .hsnCode(item.getHsnCode())
@@ -88,17 +135,66 @@ public class CheckoutServiceImpl implements CheckoutService {
                         .gstRate(item.getGstRate())
                         .build());
             }
+
+            BigDecimal sDiscount = BigDecimal.ZERO;
+            if (totalDiscount.compareTo(BigDecimal.ZERO) > 0) {
+                if (storeIndex == totalStores) {
+                    sDiscount = totalDiscount.subtract(allocatedDiscount);
+                } else {
+                    sDiscount = totalDiscount.multiply(sSubtotal).divide(cartSubtotal, 2, RoundingMode.HALF_UP);
+                    allocatedDiscount = allocatedDiscount.add(sDiscount);
+                }
+            }
+
+            BigDecimal sFreight = (storeIndex == 1) ? freightCharge : BigDecimal.ZERO;
+            BigDecimal sCrane = (storeIndex == 1) ? craneUnloadingCharge : BigDecimal.ZERO;
+
+            TaxCalculationResult sResult = taxCalculationService.calculateTaxes(
+                    sTaxInputs,
+                    sDiscount,
+                    isIntraState,
+                    sFreight,
+                    sCrane
+            );
+
+            if (sResult.getSubtotal() != null) subtotalSum = subtotalSum.add(sResult.getSubtotal());
+            if (sResult.getTaxableAmount() != null) taxableAmountSum = taxableAmountSum.add(sResult.getTaxableAmount());
+            if (sResult.getCgst() != null) cgstSum = cgstSum.add(sResult.getCgst());
+            if (sResult.getSgst() != null) sgstSum = sgstSum.add(sResult.getSgst());
+            if (sResult.getIgst() != null) igstSum = igstSum.add(sResult.getIgst());
+            if (sResult.getTotalGst() != null) totalGstSum = totalGstSum.add(sResult.getTotalGst());
+
+            int sCount = sItems.stream().mapToInt(it -> it.getQuantity() != null ? it.getQuantity() : 0).sum();
+            boolean sCanCheckout = sItems.stream().allMatch(ir ->
+                    Boolean.TRUE.equals(ir.getInStock())
+                    && ir.getQuantity() <= ir.getAvailableQty()
+                    && !"CHECKOUT_DISABLED".equals(ir.getReason())
+                    && !"UNAVAILABLE_NO_VENDOR_STOCK".equals(ir.getReason()));
+            String sBlockReason = sCanCheckout ? null : "Items in this store are out of stock or unavailable.";
+
+            previewStoreGroups.add(com.example.project.customer.dto.CartStoreGroupResponse.builder()
+                    .storeId(storeId)
+                    .storeName(store != null ? store.getName() : "Store #" + storeId)
+                    .storeSlug(store != null ? store.getSlug() : null)
+                    .items(sItems)
+                    .subtotal(sSubtotal)
+                    .discount(sDiscount)
+                    .taxableAmount(sResult.getTaxableAmount())
+                    .cgst(sResult.getCgst())
+                    .sgst(sResult.getSgst())
+                    .igst(sResult.getIgst())
+                    .totalGst(sResult.getTotalGst())
+                    .deliveryCharge(sFreight)
+                    .craneUnloadingCharge(sCrane)
+                    .grandTotal(sResult.getGrandTotal())
+                    .itemCount(sCount)
+                    .canCheckout(sCanCheckout)
+                    .checkoutBlockReason(sBlockReason)
+                    .build());
         }
 
-        TaxCalculationResult result = taxCalculationService.calculateTaxes(
-                taxInputs,
-                cart.getCouponDiscount(),
-                isIntraState,
-                freightCharge,
-                craneUnloadingCharge
-        );
+        BigDecimal grandTotal = taxableAmountSum.add(totalGstSum).add(freightCharge).add(craneUnloadingCharge);
 
-        List<CartItemResponse> cartItems = cart.getItems() != null ? cart.getItems() : new ArrayList<>();
         boolean canPlaceOrder = true;
         String orderBlockReason = null;
 
@@ -118,17 +214,18 @@ public class CheckoutServiceImpl implements CheckoutService {
         }
 
         return CheckoutPreviewResponse.builder()
-                .subtotal(result.getSubtotal())
-                .discount(result.getDiscount())
-                .taxableAmount(result.getTaxableAmount())
-                .cgst(result.getCgst())
-                .sgst(result.getSgst())
-                .igst(result.getIgst())
-                .totalGst(result.getTotalGst())
-                .freightCharge(result.getFreightCharge())
-                .craneUnloadingCharge(result.getCraneUnloadingCharge())
-                .grandTotal(result.getGrandTotal())
+                .subtotal(subtotalSum)
+                .discount(totalDiscount)
+                .taxableAmount(taxableAmountSum)
+                .cgst(cgstSum)
+                .sgst(sgstSum)
+                .igst(igstSum)
+                .totalGst(totalGstSum)
+                .freightCharge(freightCharge)
+                .craneUnloadingCharge(craneUnloadingCharge)
+                .grandTotal(grandTotal)
                 .items(cartItems)
+                .storeGroups(previewStoreGroups)
                 .canPlaceOrder(canPlaceOrder)
                 .orderBlockReason(orderBlockReason)
                 .build();

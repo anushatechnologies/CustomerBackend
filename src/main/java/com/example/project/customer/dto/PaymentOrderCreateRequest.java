@@ -21,6 +21,9 @@ public class PaymentOrderCreateRequest {
     @JsonAlias({"order_id"})
     private Integer orderId;
 
+    @JsonAlias({"order_group_id", "orderGroupId"})
+    private Integer orderGroupId;
+
     /**
      * Target address ID for Checkout / Cart payment preview
      */

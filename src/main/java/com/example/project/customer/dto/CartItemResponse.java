@@ -30,4 +30,7 @@ public class CartItemResponse {
     private Integer availableQty;
     private Boolean inStock;
     private String reason;
+    private Integer storeId;
+    private String storeName;
+    private String storeSlug;
 }

@@ -18,6 +18,8 @@ import com.example.project.customer.repository.WalletTransactionRepository;
 import com.razorpay.RazorpayClient;
 import com.razorpay.RazorpayException;
 import com.razorpay.Utils;
+import com.example.project.customer.entity.OrderGroup;
+import com.example.project.customer.repository.OrderGroupRepository;
 import com.example.project.customer.event.OrderCancelledEvent;
 import org.springframework.context.event.EventListener;
 import lombok.RequiredArgsConstructor;
@@ -81,6 +83,9 @@ public class PaymentServiceImpl implements PaymentService {
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.example.project.customer.repository.SellerPayoutLedgerRepository sellerPayoutLedgerRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private OrderGroupRepository orderGroupRepository;
 
     private int doClaimRefundAtomic(Integer paymentId) {
         if (paymentRefundExecutionHelper != null) {
@@ -148,23 +153,48 @@ public class PaymentServiceImpl implements PaymentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found with id: " + uid));
 
         Order order = null;
+        OrderGroup orderGroup = null;
         BigDecimal amount = request.getAmount();
         String receipt = "RCP-" + System.currentTimeMillis();
         String purpose = request.getPurpose() != null ? request.getPurpose().toUpperCase() : "ORDER_PAYMENT";
         String description = "Payment for Construction Materials";
 
-        // 1. If paying for an existing Order -> Fetch price directly from Order
-        if (request.getOrderId() != null) {
+        // 1. If paying for an OrderGroup
+        if (request.getOrderGroupId() != null) {
+            orderGroup = (orderGroupRepository != null)
+                    ? orderGroupRepository.findById(request.getOrderGroupId()).orElse(null)
+                    : null;
+            if (orderGroup != null) {
+                amount = orderGroup.getGrandTotal();
+                receipt = orderGroup.getGroupOrderNumber();
+                purpose = "ORDER_PAYMENT";
+                description = "Payment for Order Group #" + orderGroup.getGroupOrderNumber();
+                List<Order> childOrders = orderRepository.findByOrderGroup_Id(orderGroup.getId());
+                if (!childOrders.isEmpty()) {
+                    order = childOrders.get(0);
+                }
+            }
+        }
+        // 2. If paying for an existing Order -> Fetch price from Order or its OrderGroup
+        else if (request.getOrderId() != null) {
             order = orderRepository.findById(request.getOrderId())
                     .orElseThrow(
                             () -> new ResourceNotFoundException("Order not found with id: " + request.getOrderId()));
-            amount = order.getTotalAmount();
-            receipt = order.getOrderNumber() != null ? order.getOrderNumber() : "ORD-" + order.getOrderId();
-            purpose = "ORDER_PAYMENT";
-            description = "Payment for Order #"
-                    + (order.getOrderNumber() != null ? order.getOrderNumber() : order.getOrderId());
+            if (order.getOrderGroup() != null) {
+                orderGroup = order.getOrderGroup();
+                amount = orderGroup.getGrandTotal();
+                receipt = orderGroup.getGroupOrderNumber();
+                purpose = "ORDER_PAYMENT";
+                description = "Payment for Order Group #" + orderGroup.getGroupOrderNumber();
+            } else {
+                amount = order.getTotalAmount();
+                receipt = order.getOrderNumber() != null ? order.getOrderNumber() : "ORD-" + order.getOrderId();
+                purpose = "ORDER_PAYMENT";
+                description = "Payment for Order #"
+                        + (order.getOrderNumber() != null ? order.getOrderNumber() : order.getOrderId());
+            }
         }
-        // 2. If paying directly from Cart or Checkout preview (or if amount is not
+        // 3. If paying directly from Cart or Checkout preview (or if amount is not
         // specified and purpose is not WALLET_TOPUP)
         else if ("CART".equalsIgnoreCase(purpose) || "CART_PAYMENT".equalsIgnoreCase(purpose)
                 || "CHECKOUT".equalsIgnoreCase(purpose)
@@ -196,7 +226,7 @@ public class PaymentServiceImpl implements PaymentService {
             }
             receipt = "CRT-" + uid + "-" + System.currentTimeMillis();
         }
-        // 3. If Wallet Top-up
+        // 4. If Wallet Top-up
         else if ("WALLET_TOPUP".equalsIgnoreCase(purpose)) {
             if (amount == null || amount.compareTo(BigDecimal.ONE) < 0) {
                 throw new IllegalArgumentException("Wallet top-up amount must be at least ₹1.00");
@@ -223,6 +253,9 @@ public class PaymentServiceImpl implements PaymentService {
             notes.put("purpose", purpose);
             if (order != null) {
                 notes.put("orderId", String.valueOf(order.getOrderId()));
+            }
+            if (orderGroup != null) {
+                notes.put("orderGroupId", String.valueOf(orderGroup.getId()));
             }
             if (request.getAddressId() != null) {
                 notes.put("addressId", String.valueOf(request.getAddressId()));
@@ -277,6 +310,7 @@ public class PaymentServiceImpl implements PaymentService {
             Payment payment = Payment.builder()
                     .customer(customer)
                     .order(order)
+                    .orderGroup(orderGroup)
                     .razorpayOrderId(razorpayOrderId)
                     .amount(amount)
                     .currency("INR")
@@ -296,6 +330,8 @@ public class PaymentServiceImpl implements PaymentService {
                     .currency("INR")
                     .orderId(order != null ? order.getOrderId() : null)
                     .orderNumber(order != null ? order.getOrderNumber() : null)
+                    .orderGroupId(orderGroup != null ? orderGroup.getId() : null)
+                    .groupOrderNumber(orderGroup != null ? orderGroup.getGroupOrderNumber() : null)
                     .purpose(purpose)
                     .customerName(customer.getName())
                     .customerEmail(customer.getEmail())
@@ -370,9 +406,11 @@ public class PaymentServiceImpl implements PaymentService {
                     Customer c = customerId != null ? customerRepository.findById(customerId).orElse(null) : null;
                     Order o = request.getOrderId() != null ? orderRepository.findById(request.getOrderId()).orElse(null)
                             : null;
+                    OrderGroup og = (o != null && o.getOrderGroup() != null) ? o.getOrderGroup() : null;
                     return Payment.builder()
                             .customer(c)
                             .order(o)
+                            .orderGroup(og)
                             .razorpayOrderId(request.getRazorpayOrderId())
                             .amount(verifiedAmount)
                             .currency("INR")
@@ -403,18 +441,21 @@ public class PaymentServiceImpl implements PaymentService {
             return mapToStatusResponse(payment, rzpPayment);
         }
 
-        // Step 4: If payment is captured/authorized, update business entities (Order or
-        // Wallet)
+        // Step 4: If payment is captured/authorized, update business entities (Order, OrderGroup, or Wallet)
         if ("captured".equalsIgnoreCase(rzpStatus) || "authorized".equalsIgnoreCase(rzpStatus)) {
-            // Update Order
+            // Update Order and/or OrderGroup
             Order order = payment.getOrder();
+            OrderGroup orderGroup = payment.getOrderGroup();
             if (order == null && request.getOrderId() != null) {
                 order = orderRepository.findById(request.getOrderId()).orElse(null);
+            }
+            if (orderGroup == null && order != null && order.getOrderGroup() != null) {
+                orderGroup = order.getOrderGroup();
             }
 
             // If paying from CART_PAYMENT or CHECKOUT without an existing order,
             // automatically convert cart into placed order
-            if (order == null && ("CART_PAYMENT".equalsIgnoreCase(payment.getPurpose())
+            if (order == null && orderGroup == null && ("CART_PAYMENT".equalsIgnoreCase(payment.getPurpose())
                     || "CHECKOUT".equalsIgnoreCase(payment.getPurpose()))) {
                 try {
                     Integer addrId = null;
@@ -442,10 +483,18 @@ public class PaymentServiceImpl implements PaymentService {
                                 .build();
                         OrderResponse placed = orderService.createOrder(payment.getCustomer().getCustomerId(), oReq);
                         order = orderRepository.findById(placed.getOrderId()).orElse(null);
+                        if (placed.getOrderGroupId() != null && orderGroupRepository != null) {
+                            orderGroup = orderGroupRepository.findById(placed.getOrderGroupId()).orElse(null);
+                        }
+                        if (orderGroup == null && order != null) {
+                            orderGroup = order.getOrderGroup();
+                        }
                         payment.setOrder(order);
+                        payment.setOrderGroup(orderGroup);
                         paymentRepository.save(payment);
-                        log.info("Auto-placed Order #{} for customer #{} from captured payment {}",
-                                placed.getOrderId(), payment.getCustomer().getCustomerId(),
+                        log.info("Auto-placed Order #{} (OrderGroup #{}) for customer #{} from captured payment {}",
+                                placed.getOrderId(), orderGroup != null ? orderGroup.getId() : "none",
+                                payment.getCustomer().getCustomerId(),
                                 payment.getRazorpayPaymentId());
                     } else {
                         throw new IllegalStateException(
@@ -459,8 +508,47 @@ public class PaymentServiceImpl implements PaymentService {
                 }
             }
 
-            if (order != null) {
-                // If payment captured AFTER order was cancelled or expired -> auto-refund
+            if (orderGroup != null) {
+                // If payment captured AFTER group was cancelled -> auto-refund
+                if ("CANCELLED".equalsIgnoreCase(orderGroup.getGroupStatus())) {
+                    log.warn("Payment {} captured for already cancelled OrderGroup #{}. Initiating automatic refund.",
+                            request.getRazorpayPaymentId(), orderGroup.getId());
+                    refundPaymentOrCreditWallet(payment, request.getRazorpayPaymentId(),
+                            "Late payment captured for cancelled OrderGroup #" + orderGroup.getId());
+                    return mapToStatusResponse(payment, rzpPayment);
+                }
+
+                orderGroup.setPaymentStatus("PAID");
+                if ("PLACED".equalsIgnoreCase(orderGroup.getGroupStatus()) || "PENDING".equalsIgnoreCase(orderGroup.getGroupStatus())) {
+                    orderGroup.setGroupStatus("CONFIRMED");
+                }
+                if (orderGroupRepository != null) {
+                    orderGroupRepository.save(orderGroup);
+                }
+
+                List<Order> childOrders = orderRepository.findByOrderGroup_Id(orderGroup.getId());
+                for (Order child : childOrders) {
+                    if ("CANCELLED".equalsIgnoreCase(child.getOrderStatus()) || "EXPIRED".equalsIgnoreCase(child.getPaymentStatus())) {
+                        continue;
+                    }
+                    child.setPaymentStatus("PAID");
+                    if (payment.getPaymentMethod() != null) {
+                        child.setPaymentMethod(payment.getPaymentMethod());
+                    }
+                    boolean transitioningToConfirmed = "PLACED".equalsIgnoreCase(child.getOrderStatus())
+                            || "PENDING".equalsIgnoreCase(child.getOrderStatus());
+                    if (transitioningToConfirmed) {
+                        child.setOrderStatus("CONFIRMED");
+                        orderService.commitHinchStoreReservation(child);
+                    }
+                    orderRepository.save(child);
+                    log.info("Child Order #{} under OrderGroup #{} marked as PAID and CONFIRMED", child.getOrderId(), orderGroup.getId());
+                    if (transitioningToConfirmed) {
+                        outboxService.recordOrderConfirmed(child);
+                    }
+                }
+            } else if (order != null) {
+                // Legacy single-store order without orderGroup
                 if ("CANCELLED".equalsIgnoreCase(order.getOrderStatus()) || "EXPIRED".equalsIgnoreCase(order.getPaymentStatus())) {
                     log.warn("Payment {} captured for already cancelled/expired Order #{}. Initiating automatic refund.",
                             request.getRazorpayPaymentId(), order.getOrderId());
@@ -513,7 +601,17 @@ public class PaymentServiceImpl implements PaymentService {
     @Transactional(readOnly = true)
     public PaymentStatusResponse getLatestOrderPaymentStatus(Integer orderId) {
         Payment payment = paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException("No payment record found for order id: " + orderId));
+                .orElse(null);
+        if (payment == null) {
+            Order o = orderRepository.findById(orderId).orElse(null);
+            if (o != null && o.getOrderGroup() != null) {
+                payment = paymentRepository.findFirstByOrderGroup_IdOrderByCreatedAtDesc(o.getOrderGroup().getId())
+                        .orElse(null);
+            }
+        }
+        if (payment == null) {
+            throw new ResourceNotFoundException("No payment record found for order id: " + orderId);
+        }
 
         if (!SecurityUtils.isAdmin()) {
             Integer currentUserId = userContextUtil.getCurrentUserId();
@@ -522,7 +620,9 @@ public class PaymentServiceImpl implements PaymentService {
             }
             Integer orderBuyerId = (payment.getOrder() != null && payment.getOrder().getCustomer() != null)
                     ? payment.getOrder().getCustomer().getCustomerId()
-                    : (payment.getCustomer() != null ? payment.getCustomer().getCustomerId() : null);
+                    : (payment.getOrderGroup() != null && payment.getOrderGroup().getCustomer() != null
+                            ? payment.getOrderGroup().getCustomer().getCustomerId()
+                            : (payment.getCustomer() != null ? payment.getCustomer().getCustomerId() : null));
             if (orderBuyerId == null || !orderBuyerId.equals(currentUserId)) {
                 throw new ForbiddenException("Access denied: You do not own this order's payment.");
             }
@@ -538,8 +638,9 @@ public class PaymentServiceImpl implements PaymentService {
                 .customerId(custId)
                 .customerName(custName)
                 .customerPhone(custPhone)
-                .orderId(payment.getOrder() != null ? payment.getOrder().getOrderId() : null)
-                .orderNumber(payment.getOrder() != null ? payment.getOrder().getOrderNumber() : null)
+                .orderId(payment.getOrder() != null ? payment.getOrder().getOrderId() : orderId)
+                .orderNumber(payment.getOrder() != null ? payment.getOrder().getOrderNumber()
+                        : (payment.getOrderGroup() != null ? payment.getOrderGroup().getGroupOrderNumber() : null))
                 .razorpayOrderId(payment.getRazorpayOrderId())
                 .razorpayPaymentId(payment.getRazorpayPaymentId())
                 .status(payment.getStatus())
@@ -626,9 +727,45 @@ public class PaymentServiceImpl implements PaymentService {
                 }
                 paymentRepository.save(p);
 
-                // Branch by purpose: WALLET_TOPUP vs Order Payment
+                // Branch by purpose: WALLET_TOPUP vs Order / OrderGroup Payment
                 if ("WALLET_TOPUP".equalsIgnoreCase(p.getPurpose()) && p.getCustomer() != null) {
                     creditCustomerWallet(p.getCustomer().getCustomerId(), p.getAmount(), rzpPaymentId);
+                } else if (p.getOrderGroup() != null || (p.getOrder() != null && p.getOrder().getOrderGroup() != null)) {
+                    OrderGroup og = p.getOrderGroup() != null ? p.getOrderGroup() : p.getOrder().getOrderGroup();
+                    p.setOrderGroup(og);
+                    if ("CANCELLED".equalsIgnoreCase(og.getGroupStatus())) {
+                        log.warn("Late payment received via webhook for already cancelled OrderGroup #{}. Initiating automatic refund.", og.getId());
+                        refundPaymentOrCreditWallet(p, rzpPaymentId, "Late payment captured via webhook for cancelled OrderGroup #" + og.getId());
+                        return;
+                    }
+                    og.setPaymentStatus("PAID");
+                    if ("PLACED".equalsIgnoreCase(og.getGroupStatus()) || "PENDING".equalsIgnoreCase(og.getGroupStatus())) {
+                        og.setGroupStatus("CONFIRMED");
+                    }
+                    if (orderGroupRepository != null) {
+                        orderGroupRepository.save(og);
+                    }
+                    List<Order> childOrders = orderRepository.findByOrderGroup_Id(og.getId());
+                    for (Order child : childOrders) {
+                        if ("CANCELLED".equalsIgnoreCase(child.getOrderStatus()) || "EXPIRED".equalsIgnoreCase(child.getPaymentStatus())) {
+                            continue;
+                        }
+                        child.setPaymentStatus("PAID");
+                        if (p.getPaymentMethod() != null) {
+                            child.setPaymentMethod(p.getPaymentMethod());
+                        }
+                        boolean transitioningToConfirmed = "PLACED".equalsIgnoreCase(child.getOrderStatus())
+                                || "PENDING".equalsIgnoreCase(child.getOrderStatus());
+                        if (transitioningToConfirmed) {
+                            child.setOrderStatus("CONFIRMED");
+                            orderService.commitHinchStoreReservation(child);
+                        }
+                        orderRepository.save(child);
+                        log.info("Child Order #{} under OrderGroup #{} marked PAID via webhook", child.getOrderId(), og.getId());
+                        if (transitioningToConfirmed) {
+                            outboxService.recordOrderConfirmed(child);
+                        }
+                    }
                 } else if (p.getOrder() != null) {
                     Order o = p.getOrder();
                     if ("CANCELLED".equalsIgnoreCase(o.getOrderStatus()) || "EXPIRED".equalsIgnoreCase(o.getPaymentStatus())) {
@@ -679,16 +816,33 @@ public class PaymentServiceImpl implements PaymentService {
                                     .build();
                             OrderResponse placed = orderService.createOrder(p.getCustomer().getCustomerId(), oReq);
                             Order order = orderRepository.findById(placed.getOrderId()).orElse(null);
-                            if (order != null) {
+                            OrderGroup orderGroup = (placed.getOrderGroupId() != null && orderGroupRepository != null)
+                                    ? orderGroupRepository.findById(placed.getOrderGroupId()).orElse(null)
+                                    : (order != null ? order.getOrderGroup() : null);
+                            p.setOrder(order);
+                            p.setOrderGroup(orderGroup);
+                            paymentRepository.save(p);
+
+                            if (orderGroup != null) {
+                                orderGroup.setPaymentStatus("PAID");
+                                orderGroup.setGroupStatus("CONFIRMED");
+                                orderGroupRepository.save(orderGroup);
+                                List<Order> childOrders = orderRepository.findByOrderGroup_Id(orderGroup.getId());
+                                for (Order child : childOrders) {
+                                    child.setPaymentStatus("PAID");
+                                    child.setOrderStatus("CONFIRMED");
+                                    orderRepository.save(child);
+                                    outboxService.recordOrderConfirmed(child);
+                                }
+                            } else if (order != null) {
                                 order.setPaymentStatus("PAID");
                                 order.setOrderStatus("CONFIRMED");
                                 orderRepository.save(order);
-                                p.setOrder(order);
-                                paymentRepository.save(p);
                                 outboxService.recordOrderConfirmed(order);
-                                log.info("Auto-placed Order #{} via webhook for customer #{} from captured payment {}",
-                                        order.getOrderId(), p.getCustomer().getCustomerId(), rzpPaymentId);
                             }
+                            log.info("Auto-placed Order #{} (OrderGroup #{}) via webhook for customer #{} from captured payment {}",
+                                    placed.getOrderId(), orderGroup != null ? orderGroup.getId() : "none",
+                                    p.getCustomer().getCustomerId(), rzpPaymentId);
                         } else {
                             throw new IllegalStateException(
                                     "No delivery address available to auto-place order from webhook.");
@@ -717,7 +871,17 @@ public class PaymentServiceImpl implements PaymentService {
                 p.setErrorDescription(paymentObj.optString("error_description"));
                 paymentRepository.save(p);
 
-                if (p.getOrder() != null) {
+                if (p.getOrderGroup() != null) {
+                    p.getOrderGroup().setPaymentStatus("FAILED");
+                    if (orderGroupRepository != null) {
+                        orderGroupRepository.save(p.getOrderGroup());
+                    }
+                    List<Order> childOrders = orderRepository.findByOrderGroup_Id(p.getOrderGroup().getId());
+                    for (Order child : childOrders) {
+                        child.setPaymentStatus("FAILED");
+                        orderRepository.save(child);
+                    }
+                } else if (p.getOrder() != null) {
                     p.getOrder().setPaymentStatus("FAILED");
                     orderRepository.save(p.getOrder());
                 }
@@ -747,6 +911,9 @@ public class PaymentServiceImpl implements PaymentService {
         Order order = (payment != null && payment.getOrder() != null)
                 ? payment.getOrder()
                 : orderRepository.findById(orderId).orElse(null);
+        if (payment == null && order != null && order.getOrderGroup() != null) {
+            payment = paymentRepository.findFirstByOrderGroup_IdOrderByCreatedAtDesc(order.getOrderGroup().getId()).orElse(null);
+        }
 
         if (order != null) {
             validateOrderRefundAccess(order, payment);
@@ -765,23 +932,51 @@ public class PaymentServiceImpl implements PaymentService {
                     .build();
         }
 
+        if (order != null && "REFUNDED".equalsIgnoreCase(order.getPaymentStatus())) {
+            log.info("Order #{} is already marked as REFUNDED.", orderId);
+            return mapToStatusResponse(payment, null);
+        }
+
         if ("REFUNDED".equalsIgnoreCase(payment.getStatus())
                 || "REFUNDED_TO_WALLET".equalsIgnoreCase(payment.getStatus())) {
             log.info("Payment #{} for Order #{} is already refunded: {}", payment.getPaymentId(), orderId,
                     payment.getStatus());
+            if (order != null) {
+                order.setPaymentStatus("REFUNDED");
+                orderRepository.save(order);
+            }
             return mapToStatusResponse(payment, null);
         }
 
+        BigDecimal refundAmount = (order != null && order.getTotalAmount() != null)
+                ? order.getTotalAmount()
+                : payment.getAmount();
+
         refundPaymentOrCreditWallet(payment, payment.getRazorpayPaymentId(),
-                reason != null ? reason : "Order #" + orderId + " cancellation refund");
+                reason != null ? reason : "Order #" + orderId + " cancellation refund",
+                refundAmount, orderId);
 
         if (order != null) {
-            if ("REFUNDED".equalsIgnoreCase(payment.getStatus()) || "REFUNDED_TO_WALLET".equalsIgnoreCase(payment.getStatus())) {
+            if ("REFUNDED".equalsIgnoreCase(payment.getStatus())
+                    || "PARTIALLY_REFUNDED".equalsIgnoreCase(payment.getStatus())
+                    || "REFUNDED_TO_WALLET".equalsIgnoreCase(payment.getStatus())) {
                 order.setPaymentStatus("REFUNDED");
             } else if ("REFUND_PENDING".equalsIgnoreCase(payment.getStatus())) {
                 order.setPaymentStatus("REFUND_PENDING");
             }
             orderRepository.save(order);
+        }
+
+        if (payment.getOrderGroup() != null && orderGroupRepository != null) {
+            OrderGroup group = payment.getOrderGroup();
+            List<Order> siblings = orderRepository.findByOrderGroup_Id(group.getId());
+            boolean allRefunded = !siblings.isEmpty() && siblings.stream().allMatch(o -> "REFUNDED".equalsIgnoreCase(o.getPaymentStatus()));
+            if (allRefunded) {
+                group.setPaymentStatus("REFUNDED");
+            } else {
+                group.setPaymentStatus("PARTIALLY_REFUNDED");
+            }
+            orderGroupRepository.save(group);
         }
 
         return mapToStatusResponse(payment, null);
@@ -818,7 +1013,7 @@ public class PaymentServiceImpl implements PaymentService {
                 if ("REFUND_PENDING".equalsIgnoreCase(paymentStatus) || "REFUND_IN_PROGRESS".equalsIgnoreCase(paymentStatus)) {
                     throw new ForbiddenException("Retrying pending or in-progress refunds is restricted to administrators.");
                 }
-                if (!"CAPTURED".equalsIgnoreCase(paymentStatus)) {
+                if (!"CAPTURED".equalsIgnoreCase(paymentStatus) && !"PARTIALLY_REFUNDED".equalsIgnoreCase(paymentStatus)) {
                     throw new IllegalStateException("Refund can only be requested for captured payments (current status: " + paymentStatus + ").");
                 }
             }
@@ -839,8 +1034,18 @@ public class PaymentServiceImpl implements PaymentService {
      * customer's in-app wallet.
      */
     private void refundPaymentOrCreditWallet(Payment payment, String razorpayPaymentId, String reason) {
+        BigDecimal amount = payment != null ? payment.getAmount() : BigDecimal.ZERO;
+        Integer orderId = (payment != null && payment.getOrder() != null) ? payment.getOrder().getOrderId() : null;
+        refundPaymentOrCreditWallet(payment, razorpayPaymentId, reason, amount, orderId);
+    }
+
+    private void refundPaymentOrCreditWallet(Payment payment, String razorpayPaymentId, String reason,
+            BigDecimal refundAmount, Integer orderId) {
         if (payment == null) {
             return;
+        }
+        if (refundAmount == null || refundAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            refundAmount = payment.getAmount();
         }
         // Ensure entity is persisted so paymentId is available
         if (payment.getPaymentId() == null) {
@@ -850,9 +1055,25 @@ public class PaymentServiceImpl implements PaymentService {
         // (a) Claim the refund atomically in an isolated transaction so it survives rollbacks
         int claimed = doClaimRefundAtomic(payment.getPaymentId());
         if (claimed == 0) {
-            log.info("Payment #{} refund already claimed or in final state (status: {}). Skipping duplicate refund attempt.",
-                    payment.getPaymentId(), payment.getStatus());
-            return;
+            // For OrderGroup payments, another child order may currently be executing its refund.
+            // Wait briefly (up to 3 seconds) for the in-progress refund of the sibling order to finish,
+            // then re-attempt the atomic claim for this child order.
+            if (payment.getOrderGroup() != null) {
+                for (int attempt = 1; attempt <= 6; attempt++) {
+                    try {
+                        Thread.sleep(500);
+                    } catch (InterruptedException ignored) {}
+                    claimed = doClaimRefundAtomic(payment.getPaymentId());
+                    if (claimed > 0) {
+                        break;
+                    }
+                }
+            }
+            if (claimed == 0) {
+                log.info("Payment #{} refund already claimed or in final state (status: {}). Skipping duplicate refund attempt.",
+                        payment.getPaymentId(), payment.getStatus());
+                return;
+            }
         }
         payment.setStatus("REFUND_IN_PROGRESS");
 
@@ -860,38 +1081,57 @@ public class PaymentServiceImpl implements PaymentService {
                 razorpayPaymentId, payment.getCustomer() != null ? payment.getCustomer().getCustomerId() : "unknown",
                 reason);
 
+        boolean isPartial = false;
+        if (payment.getOrderGroup() != null) {
+            List<Order> siblings = orderRepository.findByOrderGroup_Id(payment.getOrderGroup().getId());
+            boolean otherActiveOrders = siblings.stream()
+                    .anyMatch(s -> (orderId == null || !s.getOrderId().equals(orderId))
+                            && !"CANCELLED".equalsIgnoreCase(s.getOrderStatus())
+                            && !"REFUNDED".equalsIgnoreCase(s.getPaymentStatus()));
+            if (otherActiveOrders) {
+                isPartial = true;
+            }
+        } else if (refundAmount.compareTo(payment.getAmount()) < 0) {
+            isPartial = true;
+        }
+        String targetSuccessStatus = isPartial ? "PARTIALLY_REFUNDED" : "REFUNDED";
+
         boolean refundedViaGateway = false;
         if (razorpayPaymentId != null && !razorpayPaymentId.isBlank()) {
             try {
                 JSONObject refundRequest = new JSONObject();
                 // (c) receipt and notes kept for human/gateway reference only (not relied upon as the idempotency mechanism)
-                refundRequest.put("receipt", "ref_" + razorpayPaymentId.trim());
+                refundRequest.put("receipt", "ref_" + razorpayPaymentId.trim() + (orderId != null ? "_ord" + orderId : ""));
+                if (isPartial && refundAmount.compareTo(BigDecimal.ZERO) > 0) {
+                    long amountInPaise = refundAmount.multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValue();
+                    refundRequest.put("amount", amountInPaise);
+                }
                 refundRequest.put("notes", new JSONObject()
                         .put("reason", "Automatic refund")
+                        .put("orderId", orderId != null ? String.valueOf(orderId) : "")
                         .put("details", reason != null ? reason : "Customer protection refund"));
                 com.razorpay.Refund rzpRefund = razorpayClient.payments.refund(razorpayPaymentId, refundRequest);
                 String refundId = (rzpRefund != null && rzpRefund.has("id")) ? rzpRefund.get("id") : "processed";
-                payment.setStatus("REFUNDED");
+                payment.setStatus(targetSuccessStatus);
                 payment.setErrorDescription(
-                        "Payment automatically refunded via Razorpay (Refund ID: " + refundId + "). Reason: " + reason);
-                doRecordRefundStatus(payment, "REFUNDED", payment.getErrorDescription());
+                        "Payment " + (isPartial ? "partially " : "") + "refunded via Razorpay (Refund ID: " + refundId + ", Amount: ₹" + refundAmount + "). Reason: " + reason);
+                doRecordRefundStatus(payment, targetSuccessStatus, payment.getErrorDescription());
                 refundedViaGateway = true;
-                log.info("Successfully processed gateway refund {} for payment {}", refundId, razorpayPaymentId);
+                log.info("Successfully processed gateway refund {} (status: {}) for payment {}", refundId, targetSuccessStatus, razorpayPaymentId);
             } catch (Exception rzpEx) {
                 log.error("Razorpay online refund threw exception for payment {}: {}. Inspecting existing refunds from gateway...",
                         razorpayPaymentId, rzpEx.getMessage(), rzpEx);
                 // (b) on a Razorpay exception, fetch the payment's refunds from Razorpay first:
-                // if one exists mark REFUNDED and stop; otherwise mark REFUND_PENDING (or similar) for retry/alert; do NOT credit the wallet on a bare exception;
                 try {
                     List<com.razorpay.Refund> existingRefunds = razorpayClient.payments.fetchAllRefunds(razorpayPaymentId);
                     if (existingRefunds != null && !existingRefunds.isEmpty()) {
                         com.razorpay.Refund existing = existingRefunds.get(0);
                         String refundId = (existing != null && existing.has("id")) ? existing.get("id") : "existing";
-                        payment.setStatus("REFUNDED");
+                        payment.setStatus(targetSuccessStatus);
                         payment.setErrorDescription("Discovered existing gateway refund (Refund ID: " + refundId + "). Reason: " + reason);
-                        doRecordRefundStatus(payment, "REFUNDED", payment.getErrorDescription());
+                        doRecordRefundStatus(payment, targetSuccessStatus, payment.getErrorDescription());
                         refundedViaGateway = true;
-                        log.info("Verified existing gateway refund {} for payment {}. Marked REFUNDED.", refundId, razorpayPaymentId);
+                        log.info("Verified existing gateway refund {} for payment {}. Marked {}.", refundId, razorpayPaymentId, targetSuccessStatus);
                     } else {
                         payment.setStatus("REFUND_PENDING");
                         payment.setErrorDescription("Razorpay refund failed (" + rzpEx.getMessage() + ") and no gateway refund exists. Queued for operational review/retry.");
@@ -910,17 +1150,19 @@ public class PaymentServiceImpl implements PaymentService {
         // Only offline or internal payments with no Razorpay payment ID credit wallet
         if (!refundedViaGateway && (razorpayPaymentId == null || razorpayPaymentId.isBlank()) && payment.getCustomer() != null) {
             try {
+                String walletRef = "REFUND-PAY-" + payment.getPaymentId() + (orderId != null ? "-ORD-" + orderId : "");
                 creditCustomerWallet(
                         payment.getCustomer().getCustomerId(),
-                        payment.getAmount(),
-                        "REFUND-PAY-" + payment.getPaymentId(),
+                        refundAmount,
+                        walletRef,
                         "REFUND",
                         "Automatic Wallet Refund: " + reason);
-                payment.setStatus("REFUNDED_TO_WALLET");
-                payment.setErrorDescription("Payment automatically credited to customer wallet. Reason: " + reason);
+                String walletSuccessStatus = isPartial ? "PARTIALLY_REFUNDED" : "REFUNDED_TO_WALLET";
+                payment.setStatus(walletSuccessStatus);
+                payment.setErrorDescription("Payment " + (isPartial ? "partially " : "") + "credited to customer wallet (Amount: ₹" + refundAmount + "). Reason: " + reason);
                 paymentRepository.save(payment);
                 log.info("Successfully credited {} INR to customer #{} wallet as internal refund",
-                        payment.getAmount(), payment.getCustomer().getCustomerId());
+                        refundAmount, payment.getCustomer().getCustomerId());
             } catch (Exception walletEx) {
                 log.error("CRITICAL: Failed to credit customer wallet for internal payment #{}: {}", payment.getPaymentId(),
                         walletEx.getMessage(), walletEx);
@@ -1124,6 +1366,24 @@ public class PaymentServiceImpl implements PaymentService {
                             payment.getOrder().setPaymentStatus("REFUNDED");
                             orderRepository.save(payment.getOrder());
                         }
+                        if (payment.getOrderGroup() != null && orderGroupRepository != null) {
+                            OrderGroup og = payment.getOrderGroup();
+                            List<Order> siblings = orderRepository.findByOrderGroup_Id(og.getId());
+                            boolean allRefundedOrCancelled = siblings.isEmpty() || siblings.stream().allMatch(
+                                    s -> "REFUNDED".equalsIgnoreCase(s.getPaymentStatus()) || "CANCELLED".equalsIgnoreCase(s.getOrderStatus()));
+                            if (allRefundedOrCancelled) {
+                                og.setPaymentStatus("REFUNDED");
+                            } else {
+                                og.setPaymentStatus("PARTIALLY_REFUNDED");
+                            }
+                            orderGroupRepository.save(og);
+                            for (Order s : siblings) {
+                                if ("CANCELLED".equalsIgnoreCase(s.getOrderStatus()) && !"REFUNDED".equalsIgnoreCase(s.getPaymentStatus())) {
+                                    s.setPaymentStatus("REFUNDED");
+                                    orderRepository.save(s);
+                                }
+                            }
+                        }
                         log.info("Stale refund #{} reconciled to REFUNDED (Gateway Refund ID: {})", payment.getPaymentId(), refundId);
                         reconciledCount++;
                     } else {
@@ -1190,6 +1450,18 @@ public class PaymentServiceImpl implements PaymentService {
                     payment.getOrder().setPaymentStatus("REFUNDED");
                     orderRepository.save(payment.getOrder());
                 }
+                if (payment.getOrderGroup() != null && orderGroupRepository != null) {
+                    OrderGroup og = payment.getOrderGroup();
+                    og.setPaymentStatus("REFUNDED");
+                    orderGroupRepository.save(og);
+                    List<Order> siblings = orderRepository.findByOrderGroup_Id(og.getId());
+                    for (Order s : siblings) {
+                        if ("CANCELLED".equalsIgnoreCase(s.getOrderStatus()) && !"REFUNDED".equalsIgnoreCase(s.getPaymentStatus())) {
+                            s.setPaymentStatus("REFUNDED");
+                            orderRepository.save(s);
+                        }
+                    }
+                }
                 log.info("Retry for payment #{} discovered existing gateway refund {}", paymentId, refundId);
                 return mapToStatusResponse(payment, null);
             }
@@ -1207,6 +1479,18 @@ public class PaymentServiceImpl implements PaymentService {
             if (payment.getOrder() != null) {
                 payment.getOrder().setPaymentStatus("REFUNDED");
                 orderRepository.save(payment.getOrder());
+            }
+            if (payment.getOrderGroup() != null && orderGroupRepository != null) {
+                OrderGroup og = payment.getOrderGroup();
+                og.setPaymentStatus("REFUNDED");
+                orderGroupRepository.save(og);
+                List<Order> siblings = orderRepository.findByOrderGroup_Id(og.getId());
+                for (Order s : siblings) {
+                    if ("CANCELLED".equalsIgnoreCase(s.getOrderStatus()) && !"REFUNDED".equalsIgnoreCase(s.getPaymentStatus())) {
+                        s.setPaymentStatus("REFUNDED");
+                        orderRepository.save(s);
+                    }
+                }
             }
             log.info("Retry for payment #{} succeeded with refund ID {}", paymentId, refundId);
         } catch (Exception e) {
@@ -1240,24 +1524,44 @@ public class PaymentServiceImpl implements PaymentService {
 
             for (Payment payment : candidates) {
                 lastId = payment.getPaymentId();
-                if (payment.getOrder() == null || payment.getOrder().getOrderId() == null) {
-                    continue;
-                }
-                Integer orderId = payment.getOrder().getOrderId();
-                try {
-                    PaymentStatusResponse resp;
-                    if (self != null) {
-                        resp = self.refundOrderPayment(orderId, "Cancelled-order background refund sweep");
-                    } else {
-                        resp = refundOrderPayment(orderId, "Cancelled-order background refund sweep");
+                if (payment.getOrderGroup() != null) {
+                    List<Order> unrefundedCancelled = orderRepository.findByOrderGroup_Id(payment.getOrderGroup().getId())
+                            .stream()
+                            .filter(o -> "CANCELLED".equalsIgnoreCase(o.getOrderStatus()) && !"REFUNDED".equalsIgnoreCase(o.getPaymentStatus()))
+                            .toList();
+                    for (Order child : unrefundedCancelled) {
+                        try {
+                            PaymentStatusResponse resp;
+                            if (self != null) {
+                                resp = self.refundOrderPayment(child.getOrderId(), "Cancelled-order background refund sweep");
+                            } else {
+                                resp = refundOrderPayment(child.getOrderId(), "Cancelled-order background refund sweep");
+                            }
+                            if (resp != null && ("REFUNDED".equalsIgnoreCase(resp.getStatus()) || "PARTIALLY_REFUNDED".equalsIgnoreCase(resp.getStatus()) || "REFUNDED_TO_WALLET".equalsIgnoreCase(resp.getStatus()))) {
+                                totalProcessed++;
+                            }
+                        } catch (Exception e) {
+                            log.warn("Cancelled-order refund sweep: Refund failed for child Order #{}, Payment #{}: {}",
+                                    child.getOrderId(), payment.getPaymentId(), e.getMessage());
+                        }
                     }
-                    if (resp != null && ("REFUNDED".equalsIgnoreCase(resp.getStatus()) || "REFUNDED_TO_WALLET".equalsIgnoreCase(resp.getStatus()))) {
-                        totalProcessed++;
+                } else if (payment.getOrder() != null && payment.getOrder().getOrderId() != null) {
+                    Integer orderId = payment.getOrder().getOrderId();
+                    try {
+                        PaymentStatusResponse resp;
+                        if (self != null) {
+                            resp = self.refundOrderPayment(orderId, "Cancelled-order background refund sweep");
+                        } else {
+                            resp = refundOrderPayment(orderId, "Cancelled-order background refund sweep");
+                        }
+                        if (resp != null && ("REFUNDED".equalsIgnoreCase(resp.getStatus()) || "REFUNDED_TO_WALLET".equalsIgnoreCase(resp.getStatus()))) {
+                            totalProcessed++;
+                        }
+                    } catch (Exception e) {
+                        log.warn("Cancelled-order refund sweep: Refund failed for Order #{}, Payment #{}: {}",
+                                orderId, payment.getPaymentId(), e.getMessage());
+                        // One failure never stops the rest of the batch
                     }
-                } catch (Exception e) {
-                    log.warn("Cancelled-order refund sweep: Refund failed for Order #{}, Payment #{}: {}",
-                            orderId, payment.getPaymentId(), e.getMessage());
-                    // One failure never stops the rest of the batch
                 }
             }
         }

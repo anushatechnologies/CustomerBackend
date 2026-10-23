@@ -16,6 +16,7 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
     Optional<Order> findByIdForUpdate(@org.springframework.data.repository.query.Param("orderId") Integer orderId);
 
     Optional<Order> findByOrderNumber(String orderNumber);
+    List<Order> findByOrderGroup_Id(Integer orderGroupId);
     List<Order> findByCustomer_CustomerIdOrderByCreatedAtDesc(Integer userId);
     List<Order> findByCustomer_CustomerIdAndOrderStatusIgnoreCaseOrderByCreatedAtDesc(Integer userId, String orderStatus);
     Page<Order> findByCustomer_CustomerIdOrderByCreatedAtDesc(Integer userId, Pageable pageable);

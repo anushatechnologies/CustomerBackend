@@ -46,6 +46,10 @@ public class Order {
     private String orderNumber;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_group_id", referencedColumnName = "id")
+    private OrderGroup orderGroup;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "customer_id", referencedColumnName = "customer_id")
     private Customer customer;
 
@@ -61,7 +65,8 @@ public class Order {
     private String storeInvoiceNumber;
 
     @Column(name = "commission_rate", precision = 5, scale = 2)
-    private BigDecimal commissionRate;
+    @Builder.Default
+    private BigDecimal commissionRate = BigDecimal.valueOf(5.00);
 
     @Column(name = "commission_amount", precision = 14, scale = 2)
     @Builder.Default
@@ -195,6 +200,9 @@ public class Order {
         this.updatedAt = LocalDateTime.now();
         if (this.orderNumber == null) {
             this.orderNumber = "ORD-" + System.currentTimeMillis();
+        }
+        if (this.commissionRate == null) {
+            this.commissionRate = BigDecimal.valueOf(5.00);
         }
     }
 

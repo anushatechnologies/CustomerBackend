@@ -8,3 +8,5 @@ src/main/resources/firebase-service-account.json
 *service-account*.json
 *serviceAccountKey*.json
 scratch/
+data/
+uploads/products/

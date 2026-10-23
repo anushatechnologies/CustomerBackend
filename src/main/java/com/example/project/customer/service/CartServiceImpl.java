@@ -4,6 +4,7 @@ import com.example.project.customer.dto.CartItemRequest;
 import com.example.project.customer.dto.CartItemResponse;
 import com.example.project.customer.dto.CartItemUpdateRequest;
 import com.example.project.customer.dto.CartResponse;
+import com.example.project.customer.dto.CartStoreGroupResponse;
 import com.example.project.customer.dto.CartSyncRequest;
 import com.example.project.customer.dto.CouponResponse;
 import com.example.project.customer.dto.SwitchStoreRequest;
@@ -139,13 +140,14 @@ public class CartServiceImpl implements CartService {
             if (currentItems.isEmpty()) {
                 // Empty cart adopted by the new item's store
                 activeCart.setStore(productStore);
-                cartRepository.save(activeCart);
-            } else if (!activeCart.getStore().getStoreId().equals(productStore.getStoreId())) {
-                // Different store -> Return 409 Store Mismatch Conflict
-                log.warn("Customer #{} attempted adding item from Store #{} ('{}') to active cart locked to Store #{} ('{}')",
+                activeCart = cartRepository.save(activeCart);
+            } else if (activeCart.getStore() != null && !activeCart.getStore().getStoreId().equals(productStore.getStoreId())) {
+                // Multi-store cart: allow items from multiple stores
+                log.info("Customer #{} adding item from Store #{} ('{}') to active cart previously locked to Store #{} ('{}') - converting to unified multi-store cart",
                         uid, productStore.getStoreId(), productStore.getName(),
                         activeCart.getStore().getStoreId(), activeCart.getStore().getName());
-                throw new StoreMismatchException(activeCart.getStore(), productStore);
+                activeCart.setStore(null);
+                activeCart = cartRepository.save(activeCart);
             }
         } else {
             // Activate or create cart for this product's store
@@ -263,6 +265,7 @@ public class CartServiceImpl implements CartService {
                 cart.getItems().remove(item);
             }
             cartItemRepository.delete(item);
+            normalizeCartStore(cart);
         } else {
             if (productAvailabilityService != null) {
                 com.example.project.customer.dto.ProductAvailability avail = productAvailabilityService.getAvailability(item.getProduct());
@@ -309,6 +312,7 @@ public class CartServiceImpl implements CartService {
                 cart.getItems().remove(item);
             }
             cartItemRepository.delete(item);
+            normalizeCartStore(cart);
         });
         revalidateAppliedCoupon(cart);
         return calculateCartResponse(cart);
@@ -339,16 +343,19 @@ public class CartServiceImpl implements CartService {
                 cartRepository.save(activeCart);
             }
         } else if (!request.getItems().isEmpty()) {
-            for (CartItemRequest itemReq : request.getItems()) {
-                if (itemReq.getProductId() != null) {
-                    Product product = productRepository.findById(itemReq.getProductId()).orElse(null);
-                    if (product != null && product.isActive()) {
-                        Store productStore = resolveProductStore(product);
-                        if (productStore.getStatus() == StoreStatus.ACTIVE
-                                && activeCart.getStore() != null
-                                && !activeCart.getStore().getStoreId().equals(productStore.getStoreId())) {
-                            activeCart = getOrCreateCartForStore(uid, productStore);
-                            break;
+            List<CartItem> currentItems = cartItemRepository.findByCart_CartId(activeCart.getCartId());
+            if (currentItems.isEmpty()) {
+                for (CartItemRequest itemReq : request.getItems()) {
+                    if (itemReq.getProductId() != null) {
+                        Product product = productRepository.findById(itemReq.getProductId()).orElse(null);
+                        if (product != null && product.isActive()) {
+                            Store productStore = resolveProductStore(product);
+                            if (productStore.getStatus() == StoreStatus.ACTIVE
+                                    && activeCart.getStore() != null
+                                    && !activeCart.getStore().getStoreId().equals(productStore.getStoreId())) {
+                                activeCart = getOrCreateCartForStore(uid, productStore);
+                                break;
+                            }
                         }
                     }
                 }
@@ -375,10 +382,10 @@ public class CartServiceImpl implements CartService {
             if (currentItems.isEmpty()) {
                 activeCart.setStore(productStore);
                 activeCart = cartRepository.save(activeCart);
-            } else if (!activeCart.getStore().getStoreId().equals(productStore.getStoreId())) {
-                log.warn("Skipping product #{} during cart sync due to store mismatch with active cart (store #{} vs #{})",
-                        product.getProductId(), activeCart.getStore().getStoreId(), productStore.getStoreId());
-                continue;
+            } else if (activeCart.getStore() != null && !activeCart.getStore().getStoreId().equals(productStore.getStoreId())) {
+                log.info("Converting cart #{} to multi-store cart during sync with Store #{}", activeCart.getCartId(), productStore.getStoreId());
+                activeCart.setStore(null);
+                activeCart = cartRepository.save(activeCart);
             }
 
             List<CartItem> existingItems = cartItemRepository.findAllByCart_CartIdAndProduct_ProductId(activeCart.getCartId(), product.getProductId());
@@ -418,6 +425,7 @@ public class CartServiceImpl implements CartService {
         }
         cart.setAppliedCoupon(null);
         cart.setDeliveryCharge(BigDecimal.ZERO);
+        cart.setStore(null);
         cartRepository.save(cart);
         cartItemRepository.deleteByCart_CartId(cart.getCartId());
     }
@@ -469,6 +477,26 @@ public class CartServiceImpl implements CartService {
                 });
     }
 
+    private void normalizeCartStore(Cart cart) {
+        List<CartItem> remaining = cartItemRepository.findByCart_CartId(cart.getCartId());
+        if (remaining.isEmpty()) {
+            cart.setStore(null);
+            cartRepository.save(cart);
+        } else {
+            Store firstStore = resolveProductStore(remaining.get(0).getProduct());
+            boolean allSame = remaining.stream().allMatch(it -> {
+                Store s = resolveProductStore(it.getProduct());
+                return s != null && s.getStoreId().equals(firstStore.getStoreId());
+            });
+            if (allSame) {
+                cart.setStore(firstStore);
+            } else {
+                cart.setStore(null);
+            }
+            cartRepository.save(cart);
+        }
+    }
+
     private Cart getOrCreateCartForStore(Integer customerId, Store store) {
         // First deactivate any currently active cart
         cartRepository.findByCustomer_CustomerIdAndIsActiveTrue(customerId).ifPresent(active -> {
@@ -499,7 +527,11 @@ public class CartServiceImpl implements CartService {
                 return sellerStore.get();
             }
         }
-        return getDefaultStore();
+        Store def = getDefaultStore();
+        if (def != null) {
+            return def;
+        }
+        throw new ResourceNotFoundException("No default marketplace store available for product: " + product.getProductId());
     }
 
     private Store getDefaultStore() {
@@ -507,7 +539,7 @@ public class CartServiceImpl implements CartService {
                 .filter(s -> s.getStatus() == StoreStatus.ACTIVE)
                 .findFirst()
                 .or(() -> storeRepository.findAll().stream().findFirst())
-                .orElseThrow(() -> new ResourceNotFoundException("No default marketplace store available."));
+                .orElse(null);
     }
 
     public CartResponse calculateCartResponse(Cart cart) {
@@ -597,6 +629,8 @@ public class CartServiceImpl implements CartService {
                 }
             }
 
+            Store itemStore = resolveProductStore(p);
+
             responseBuilders.add(CartItemResponse.builder()
                     .cartItemId(item.getCartItemId())
                     .productId(p.getProductId())
@@ -612,7 +646,10 @@ public class CartServiceImpl implements CartService {
                     .hsnCode(p.getHsnCode())
                     .availableQty(availableQty)
                     .inStock(inStock)
-                    .reason(reason));
+                    .reason(reason)
+                    .storeId(itemStore.getStoreId())
+                    .storeName(itemStore.getName())
+                    .storeSlug(itemStore.getSlug()));
         }
 
         BigDecimal couponDiscount = BigDecimal.ZERO;
@@ -651,7 +688,67 @@ public class CartServiceImpl implements CartService {
         BigDecimal grandTotal = taxResult.getGrandTotal();
         BigDecimal totalGst = taxResult.getTotalGst();
 
-        Store store = cart.getStore() != null ? cart.getStore() : getDefaultStore();
+        List<CartStoreGroupResponse> storeGroups = new ArrayList<>();
+        Map<Integer, List<CartItemResponse>> storeItemsMap = new java.util.LinkedHashMap<>();
+        for (CartItemResponse ir : itemResponses) {
+            storeItemsMap.computeIfAbsent(ir.getStoreId(), k -> new ArrayList<>()).add(ir);
+        }
+
+        for (Map.Entry<Integer, List<CartItemResponse>> entry : storeItemsMap.entrySet()) {
+            List<CartItemResponse> sItems = entry.getValue();
+            String sName = sItems.get(0).getStoreName();
+            String sSlug = sItems.get(0).getStoreSlug();
+            BigDecimal sSubtotal = sItems.stream().map(CartItemResponse::getLineTotal).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal sGst = sItems.stream().map(it -> it.getLineGst() != null ? it.getLineGst() : BigDecimal.ZERO).reduce(BigDecimal.ZERO, BigDecimal::add);
+            int sCount = sItems.stream().mapToInt(it -> it.getQuantity() != null ? it.getQuantity() : 0).sum();
+            boolean sCanCheckout = sItems.stream().allMatch(ir ->
+                    Boolean.TRUE.equals(ir.getInStock())
+                    && ir.getQuantity() <= ir.getAvailableQty()
+                    && !"CHECKOUT_DISABLED".equals(ir.getReason())
+                    && !"UNAVAILABLE_NO_VENDOR_STOCK".equals(ir.getReason()));
+            String sBlockReason = sCanCheckout ? null : "Items in this store are out of stock or unavailable.";
+
+            BigDecimal sGrandTotal = sSubtotal.add(sGst);
+            storeGroups.add(CartStoreGroupResponse.builder()
+                    .storeId(entry.getKey())
+                    .storeName(sName)
+                    .storeSlug(sSlug)
+                    .items(sItems)
+                    .subtotal(sSubtotal)
+                    .taxableAmount(sSubtotal)
+                    .totalGst(sGst)
+                    .deliveryCharge(BigDecimal.ZERO)
+                    .grandTotal(sGrandTotal)
+                    .itemCount(sCount)
+                    .canCheckout(sCanCheckout)
+                    .checkoutBlockReason(sBlockReason)
+                    .build());
+        }
+
+        Integer respStoreId = null;
+        String respStoreName = null;
+        String respStoreSlug = null;
+
+        if (cart.getStore() != null) {
+            respStoreId = cart.getStore().getStoreId();
+            respStoreName = cart.getStore().getName();
+            respStoreSlug = cart.getStore().getSlug();
+        } else if (!storeGroups.isEmpty()) {
+            if (storeGroups.size() == 1) {
+                respStoreId = storeGroups.get(0).getStoreId();
+                respStoreName = storeGroups.get(0).getStoreName();
+                respStoreSlug = storeGroups.get(0).getStoreSlug();
+            } else {
+                respStoreId = null;
+                respStoreName = "Unified Cart (" + storeGroups.size() + " Stores)";
+                respStoreSlug = "multi-store";
+            }
+        } else {
+            Store store = getDefaultStore();
+            respStoreId = store != null ? store.getStoreId() : 1;
+            respStoreName = store != null ? store.getName() : "HinchMart";
+            respStoreSlug = store != null ? store.getSlug() : "hinchmart";
+        }
 
         boolean canCheckout = itemResponses.stream().allMatch(ir ->
                 Boolean.TRUE.equals(ir.getInStock())
@@ -662,10 +759,11 @@ public class CartServiceImpl implements CartService {
 
         return CartResponse.builder()
                 .cartId(cart.getCartId())
-                .storeId(store.getStoreId())
-                .storeName(store.getName())
-                .storeSlug(store.getSlug())
+                .storeId(respStoreId)
+                .storeName(respStoreName)
+                .storeSlug(respStoreSlug)
                 .items(itemResponses)
+                .storeGroups(storeGroups)
                 .subtotal(subtotal)
                 .couponDiscount(couponDiscount)
                 .totalGst(totalGst)

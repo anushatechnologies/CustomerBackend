@@ -305,6 +305,7 @@ class CartSynchronizationServiceTest {
                 .freightCharge(BigDecimal.valueOf(4500.0))
                 .craneUnloadingCharge(BigDecimal.ZERO)
                 .grandTotal(BigDecimal.valueOf(5680.0))
+                .canPlaceOrder(true)
                 .build();
         when(checkoutService.previewCheckout(eq(101), any(CheckoutPreviewRequest.class))).thenReturn(preview);
         when(storeInvoiceSequenceService.generateNextInvoiceNumber(any(Store.class))).thenReturn("HM-INV-001");

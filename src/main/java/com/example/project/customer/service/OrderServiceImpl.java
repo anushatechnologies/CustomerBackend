@@ -3,6 +3,7 @@ package com.example.project.customer.service;
 import com.example.project.customer.dto.ApiResponse;
 import com.example.project.customer.dto.CartItemResponse;
 import com.example.project.customer.dto.CartResponse;
+import com.example.project.customer.dto.CartStoreGroupResponse;
 import com.example.project.customer.dto.CheckoutPreviewRequest;
 import com.example.project.customer.dto.CheckoutPreviewResponse;
 import com.example.project.customer.dto.InvoiceResponse;
@@ -17,6 +18,7 @@ import com.example.project.customer.entity.Address;
 import com.example.project.customer.entity.ApprovalStatus;
 import com.example.project.customer.entity.Customer;
 import com.example.project.customer.entity.Order;
+import com.example.project.customer.entity.OrderGroup;
 import com.example.project.customer.entity.OrderInventoryState;
 import com.example.project.customer.entity.OrderItem;
 import com.example.project.customer.entity.PayoutLedgerStatus;
@@ -24,6 +26,7 @@ import com.example.project.customer.entity.Product;
 import com.example.project.customer.entity.Seller;
 import com.example.project.customer.entity.SellerPayoutLedger;
 import com.example.project.customer.entity.Store;
+import com.example.project.customer.repository.OrderGroupRepository;
 import com.example.project.customer.entity.StoreStatus;
 import com.example.project.customer.entity.TrackingCheckpoint;
 import com.example.project.customer.config.PlatformMarketplaceProperties;
@@ -126,6 +129,13 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         this.hinchStoreVendorInventoryRepository = hinchStoreVendorInventoryRepository;
     }
 
+    private OrderGroupRepository orderGroupRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setOrderGroupRepository(OrderGroupRepository orderGroupRepository) {
+        this.orderGroupRepository = orderGroupRepository;
+    }
+
     @Autowired
     public OrderServiceImpl(
             OrderRepository orderRepository,
@@ -191,47 +201,31 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
             throw new IllegalStateException("Cannot place order with an empty cart");
         }
 
-        // 1. Resolve and validate store
-        Integer storeId = cart.getStoreId();
-        Store store = null;
-        if (storeId != null) {
-            store = storeRepository.findById(storeId).orElse(null);
+        // 1. Resolve primary store if specified on cart (for single-store compatibility and strict validation)
+        Integer cartStoreId = cart.getStoreId();
+        Store cartPrimaryStore = null;
+        if (cartStoreId != null) {
+            cartPrimaryStore = storeRepository.findById(cartStoreId).orElse(null);
         }
-        if (store == null && !cart.getItems().isEmpty()) {
-            Integer firstProductId = cart.getItems().get(0).getProductId();
-            Product p = productRepository.findById(firstProductId).orElse(null);
-            if (p != null) {
-                if (p.getStore() != null) {
-                    store = p.getStore();
-                } else if (p.getSeller() != null && p.getSeller().getSellerId() != null) {
-                    store = storeRepository.findBySeller_SellerId(p.getSeller().getSellerId()).orElse(null);
-                }
+        if (cartPrimaryStore != null) {
+            if (cartPrimaryStore.getStatus() != StoreStatus.ACTIVE) {
+                throw new IllegalStateException("Cannot checkout: Store '" + cartPrimaryStore.getName() + "' is currently " + cartPrimaryStore.getStatus() + " and not accepting orders.");
+            }
+            boolean isHinchStoreOrder = (platformMarketplaceProperties != null)
+                    ? platformMarketplaceProperties.isPlatformStore(cartPrimaryStore.getStoreId())
+                    : (cartPrimaryStore.getStoreId() != null && cartPrimaryStore.getStoreId().equals(1));
+            boolean checkoutEnabled = (platformMarketplaceProperties != null) && platformMarketplaceProperties.isHinchStoreCheckoutEnabled();
+            if (isHinchStoreOrder && !checkoutEnabled) {
+                throw new IllegalStateException("HinchStore checkout is temporarily disabled pending Phase 2 vendor consignment rollout.");
             }
         }
-        if (store == null) {
-            store = storeRepository.findById(1)
-                    .or(() -> storeRepository.findAll().stream()
-                            .filter(s -> s.getStatus() == StoreStatus.ACTIVE)
-                            .findFirst())
-                    .or(() -> storeRepository.findAll().stream().findFirst())
-                    .orElseThrow(() -> new ResourceNotFoundException("No active store available for checkout."));
-        }
 
-        if (store.getStatus() != StoreStatus.ACTIVE) {
-            throw new IllegalStateException("Cannot checkout: Store '" + store.getName() + "' is currently " + store.getStatus() + " and not accepting orders.");
-        }
-
-        // Feature flag gating for HinchStore checkout in Phase 1
-        boolean isHinchStoreOrder = (platformMarketplaceProperties != null)
-                ? platformMarketplaceProperties.isPlatformStore(store.getStoreId())
-                : (store.getStoreId() != null && store.getStoreId().equals(1));
-
-        boolean checkoutEnabled = (platformMarketplaceProperties != null) && platformMarketplaceProperties.isHinchStoreCheckoutEnabled();
-        if (isHinchStoreOrder && !checkoutEnabled) {
-            throw new IllegalStateException("HinchStore checkout is temporarily disabled pending Phase 2 vendor consignment rollout.");
-        }
-
+        // 2. Resolve products, validate store status and stock availability, partition items by store
         Map<Integer, Product> productMap = new HashMap<>();
+        Map<Integer, List<CartItemResponse>> storeItemsMap = new java.util.LinkedHashMap<>();
+        Map<Integer, Store> storeMap = new HashMap<>();
+        Map<Integer, Store> itemStoreMap = new HashMap<>();
+
         for (CartItemResponse ci : cart.getItems()) {
             Product p = productRepository.findById(ci.getProductId())
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found: " + ci.getTitle() + " (ID: " + ci.getProductId() + ")"));
@@ -242,7 +236,36 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
             if (!p.isActive()) {
                 throw new IllegalStateException("Product '" + p.getTitle() + "' is no longer active in the catalog.");
             }
-            if (!isHinchStoreOrder) {
+
+            Store store = null;
+            if (cartPrimaryStore != null) {
+                store = cartPrimaryStore;
+            } else if (p.getStore() != null) {
+                store = p.getStore();
+            } else if (p.getSeller() != null && p.getSeller().getSellerId() != null) {
+                store = storeRepository.findBySeller_SellerId(p.getSeller().getSellerId()).orElse(null);
+            }
+            if (store == null) {
+                store = storeRepository.findById(1)
+                        .or(() -> storeRepository.findAll().stream().filter(s -> s.getStatus() == StoreStatus.ACTIVE).findFirst())
+                        .or(() -> storeRepository.findAll().stream().findFirst())
+                        .orElseThrow(() -> new ResourceNotFoundException("No active store available for checkout."));
+            }
+
+            if (store.getStatus() != StoreStatus.ACTIVE) {
+                throw new IllegalStateException("Cannot checkout: Store '" + store.getName() + "' is currently " + store.getStatus() + " and not accepting orders.");
+            }
+
+            boolean isHinchStore = (platformMarketplaceProperties != null)
+                    ? platformMarketplaceProperties.isPlatformStore(store.getStoreId())
+                    : (store.getStoreId() != null && store.getStoreId().equals(1));
+
+            boolean checkoutEnabled = (platformMarketplaceProperties != null) && platformMarketplaceProperties.isHinchStoreCheckoutEnabled();
+            if (isHinchStore && !checkoutEnabled) {
+                throw new IllegalStateException("HinchStore checkout is temporarily disabled pending Phase 2 vendor consignment rollout.");
+            }
+
+            if (!isHinchStore) {
                 int availableStock = (productAvailabilityService != null)
                         ? productAvailabilityService.getAvailability(p).getAvailableQty()
                         : (p.getStockQty() != null ? p.getStockQty() : 0);
@@ -250,9 +273,14 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                     throw new ResourceConflictException("Insufficient stock for '" + p.getTitle() + "'. Requested: " + ci.getQuantity() + ", Available: " + availableStock);
                 }
             }
+
             productMap.put(ci.getProductId(), p);
+            storeMap.put(store.getStoreId(), store);
+            itemStoreMap.put(ci.getProductId(), store);
+            storeItemsMap.computeIfAbsent(store.getStoreId(), k -> new ArrayList<>()).add(ci);
         }
 
+        // 3. Resolve customer and address
         Customer customer = customerRepository.findById(uid)
                 .orElseGet(() -> Customer.builder().customerId(uid).build());
 
@@ -266,72 +294,126 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                             .orElseThrow(() -> new ResourceNotFoundException("No delivery address found for user ID: " + uid)));
         }
 
-        // Sort items ascending by productId for deadlock-free reservation & deterministic processing
-        List<CartItemResponse> sortedCartItems = new ArrayList<>(cart.getItems());
-        sortedCartItems.sort(Comparator.comparing(CartItemResponse::getProductId));
-
-        Store fulfillmentStore;
-        OrderInventoryState inventoryState;
-
-        if (isHinchStoreOrder) {
-            if (vendorSelectionService == null) {
-                throw new IllegalStateException("VendorSelectionService is required for HinchStore consignment order fulfillment.");
-            }
-            List<Store> candidates = vendorSelectionService.getRankedCandidateVendors(sortedCartItems, address);
-            if (candidates == null || candidates.isEmpty()) {
-                throw new ResourceConflictException("No consignment vendor has sufficient stock to fulfill this order.");
-            }
-
-            Store chosenVendor = null;
-            for (Store candidateStore : candidates) {
-                boolean allReserved = true;
-                List<CartItemResponse> reservedSoFar = new ArrayList<>();
-                for (CartItemResponse ci : sortedCartItems) {
-                    int rows = (hinchStoreVendorInventoryRepository != null)
-                            ? hinchStoreVendorInventoryRepository.atomicReserve(ci.getProductId(), candidateStore.getStoreId(), ci.getQuantity())
-                            : 0;
-                    if (rows > 0) {
-                        reservedSoFar.add(ci);
-                    } else {
-                        allReserved = false;
-                        break;
-                    }
-                }
-                if (allReserved) {
-                    chosenVendor = candidateStore;
-                    break;
-                } else {
-                    if (hinchStoreVendorInventoryRepository != null) {
-                        for (CartItemResponse ci : reservedSoFar) {
-                            hinchStoreVendorInventoryRepository.atomicRelease(ci.getProductId(), candidateStore.getStoreId(), ci.getQuantity());
-                        }
-                    }
-                    log.warn("Candidate vendor store #{} failed atomic reservation. Retrying next candidate...", candidateStore.getStoreId());
-                }
-            }
-
-            if (chosenVendor == null) {
-                throw new ResourceConflictException("Consignment stock reservation failed across all candidate vendor stores. Items may be out of stock.");
-            }
-            fulfillmentStore = chosenVendor;
-            inventoryState = OrderInventoryState.RESERVED;
-        } else {
-            fulfillmentStore = store;
-            inventoryState = OrderInventoryState.NONE;
-        }
-
+        // 4. Preview checkout to obtain per-store taxes, freight, and discount allocation
         CheckoutPreviewRequest previewReq = CheckoutPreviewRequest.builder()
                 .addressId(address.getId())
                 .deliverySlot(request.getDeliverySlot())
                 .requiresCraneUnloading(request.getRequiresCraneUnloading())
                 .build();
+        CheckoutPreviewResponse preview = (checkoutService != null) ? checkoutService.previewCheckout(uid, previewReq) : null;
+        if (preview != null && Boolean.FALSE.equals(preview.getCanPlaceOrder())) {
+            throw new IllegalStateException(preview.getOrderBlockReason() != null
+                    ? preview.getOrderBlockReason()
+                    : "Cannot place order due to unavailable items.");
+        }
 
-        CheckoutPreviewResponse preview = checkoutService.previewCheckout(uid, previewReq);
+        // 2. Deadlock prevention: sort all items ascending by productId and perform atomic reservations
+        List<CartItemResponse> sortedCartItems = new ArrayList<>(cart.getItems());
+        sortedCartItems.sort(Comparator.comparing(CartItemResponse::getProductId));
 
+        List<CartItemResponse> reservedNonHinch = new ArrayList<>();
+        Map<Integer, Store> hinchFulfillmentStoreMap = new HashMap<>();
+        Map<Integer, List<CartItemResponse>> hinchReservedByStore = new HashMap<>();
+
+        try {
+            // Reserve non-HinchStore items (vendor-own)
+            for (CartItemResponse ci : sortedCartItems) {
+                Product p = productMap.get(ci.getProductId());
+                Store s = itemStoreMap.get(ci.getProductId());
+                if (s == null) {
+                    s = storeMap.get(1);
+                }
+                boolean isHinch = (platformMarketplaceProperties != null && s != null)
+                        ? platformMarketplaceProperties.isPlatformStore(s.getStoreId())
+                        : (s != null && s.getStoreId() != null && s.getStoreId().equals(1));
+
+                if (!isHinch) {
+                    decrementStock(ci);
+                    reservedNonHinch.add(ci);
+                }
+            }
+
+            // Reserve HinchStore consignment items if any
+            for (Map.Entry<Integer, List<CartItemResponse>> entry : storeItemsMap.entrySet()) {
+                Integer sId = entry.getKey();
+                Store s = storeMap.get(sId);
+                boolean isHinch = (platformMarketplaceProperties != null)
+                        ? platformMarketplaceProperties.isPlatformStore(s.getStoreId())
+                        : (s.getStoreId() != null && s.getStoreId().equals(1));
+
+                if (isHinch) {
+                    if (vendorSelectionService == null) {
+                        throw new IllegalStateException("VendorSelectionService is required for HinchStore consignment order fulfillment.");
+                    }
+                    List<CartItemResponse> sItemsSorted = new ArrayList<>(entry.getValue());
+                    sItemsSorted.sort(Comparator.comparing(CartItemResponse::getProductId));
+
+                    List<Store> candidates = vendorSelectionService.getRankedCandidateVendors(sItemsSorted, address);
+                    if (candidates == null || candidates.isEmpty()) {
+                        throw new ResourceConflictException("No consignment vendor has sufficient stock to fulfill this order.");
+                    }
+
+                    Store chosenVendor = null;
+                    List<CartItemResponse> candidateReserved = new ArrayList<>();
+                    for (Store candidateStore : candidates) {
+                        boolean allReserved = true;
+                        candidateReserved.clear();
+                        for (CartItemResponse ci : sItemsSorted) {
+                            int rows = (hinchStoreVendorInventoryRepository != null)
+                                    ? hinchStoreVendorInventoryRepository.atomicReserve(ci.getProductId(), candidateStore.getStoreId(), ci.getQuantity())
+                                    : 0;
+                            if (rows > 0) {
+                                candidateReserved.add(ci);
+                            } else {
+                                allReserved = false;
+                                break;
+                            }
+                        }
+                        if (allReserved) {
+                            chosenVendor = candidateStore;
+                            break;
+                        } else {
+                            if (hinchStoreVendorInventoryRepository != null) {
+                                for (CartItemResponse ci : candidateReserved) {
+                                    hinchStoreVendorInventoryRepository.atomicRelease(ci.getProductId(), candidateStore.getStoreId(), ci.getQuantity());
+                                }
+                            }
+                            log.warn("Candidate vendor store #{} failed atomic reservation. Retrying next candidate...", candidateStore.getStoreId());
+                        }
+                    }
+
+                    if (chosenVendor == null) {
+                        throw new ResourceConflictException("Consignment stock reservation failed across all candidate vendor stores. Items may be out of stock.");
+                    }
+                    hinchFulfillmentStoreMap.put(sId, chosenVendor);
+                    hinchReservedByStore.put(sId, new ArrayList<>(candidateReserved));
+                }
+            }
+        } catch (RuntimeException ex) {
+            // Atomic rollback across all stores
+            for (CartItemResponse ci : reservedNonHinch) {
+                try {
+                    restoreStock(ci.getProductId(), ci.getQuantity());
+                } catch (Exception ignore) {}
+            }
+            if (hinchStoreVendorInventoryRepository != null) {
+                for (Map.Entry<Integer, Store> hEntry : hinchFulfillmentStoreMap.entrySet()) {
+                    Store fStore = hEntry.getValue();
+                    List<CartItemResponse> itemsToRelease = hinchReservedByStore.get(hEntry.getKey());
+                    if (itemsToRelease != null) {
+                        for (CartItemResponse ci : itemsToRelease) {
+                            try {
+                                hinchStoreVendorInventoryRepository.atomicRelease(ci.getProductId(), fStore.getStoreId(), ci.getQuantity());
+                            } catch (Exception ignore) {}
+                        }
+                    }
+                }
+            }
+            throw ex;
+        }
+
+        // Format delivery address string
         String dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String randomSuffix = UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase();
-        String orderNumber = "ORD-" + dateStr + "-" + randomSuffix;
-
         StringBuilder sb = new StringBuilder();
         if (address.getSiteName() != null && !address.getSiteName().isBlank()) {
             sb.append(address.getSiteName()).append(", ");
@@ -375,227 +457,379 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         }
         String formattedAddress = sb.toString();
 
-        // 3. Sequential GST Invoice Number per-store
-        String storeInvoiceNumber = storeInvoiceSequenceService.generateNextInvoiceNumber(store);
+        // 3. Create parent OrderGroup
+        String groupOrderNumber = "GRP-" + dateStr + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase();
+        BigDecimal groupSubtotal = preview != null && preview.getSubtotal() != null ? preview.getSubtotal() : BigDecimal.ZERO;
+        BigDecimal groupDiscount = preview != null && preview.getDiscount() != null ? preview.getDiscount() : BigDecimal.ZERO;
+        BigDecimal groupTaxable = preview != null && preview.getTaxableAmount() != null ? preview.getTaxableAmount() : BigDecimal.ZERO;
+        BigDecimal groupCgst = preview != null && preview.getCgst() != null ? preview.getCgst() : BigDecimal.ZERO;
+        BigDecimal groupSgst = preview != null && preview.getSgst() != null ? preview.getSgst() : BigDecimal.ZERO;
+        BigDecimal groupIgst = preview != null && preview.getIgst() != null ? preview.getIgst() : BigDecimal.ZERO;
+        BigDecimal groupTotalGst = preview != null && preview.getTotalGst() != null ? preview.getTotalGst() : BigDecimal.ZERO;
+        BigDecimal groupFreight = preview != null && preview.getFreightCharge() != null ? preview.getFreightCharge() : BigDecimal.ZERO;
+        BigDecimal groupCrane = preview != null && preview.getCraneUnloadingCharge() != null ? preview.getCraneUnloadingCharge() : BigDecimal.ZERO;
+        BigDecimal groupGrandTotal = preview != null && preview.getGrandTotal() != null ? preview.getGrandTotal() : BigDecimal.ZERO;
 
-        Order order = Order.builder()
-                .orderNumber(orderNumber)
+        OrderGroup orderGroup = OrderGroup.builder()
+                .groupOrderNumber(groupOrderNumber)
                 .customer(customer)
-                .store(store)
-                .fulfillmentStore(fulfillmentStore)
-                .inventoryState(inventoryState)
-                .storeInvoiceNumber(storeInvoiceNumber)
-                .commissionRate(BigDecimal.ZERO)
-                .commissionAmount(BigDecimal.ZERO)
                 .addressId(address.getId())
                 .deliveryLocation(formattedAddress)
                 .orderForSomeoneElse(isForOther)
                 .recipientName(effectiveRecipientName)
                 .recipientPhone(effectiveRecipientPhone)
-                .subtotal(preview.getSubtotal())
-                .discount(preview.getDiscount())
+                .subtotal(groupSubtotal)
+                .totalDiscount(groupDiscount)
                 .couponCode(cart.getAppliedCoupon())
-                .taxableAmount(preview.getTaxableAmount())
-                .cgst(preview.getCgst())
-                .sgst(preview.getSgst())
-                .igst(preview.getIgst())
-                .totalGst(preview.getTotalGst())
-                .freightCharge(preview.getFreightCharge())
-                .craneUnloadingCharge(preview.getCraneUnloadingCharge())
-                .totalAmount(preview.getGrandTotal())
+                .taxableAmount(groupTaxable)
+                .cgst(groupCgst)
+                .sgst(groupSgst)
+                .igst(groupIgst)
+                .totalGst(groupTotalGst)
+                .totalFreight(groupFreight)
+                .totalCraneCharge(groupCrane)
+                .grandTotal(groupGrandTotal)
                 .paymentMethod(request.getPaymentMethod() != null ? request.getPaymentMethod() : "RAZORPAY")
                 .paymentStatus("PENDING")
-                .orderStatus("PLACED")
-                .poNumber(request.getPoNumber())
-                .deliverySlot(request.getDeliverySlot())
-                .deliveryInstructions(request.getDeliveryInstructions())
-                .requiresCraneUnloading(Boolean.TRUE.equals(request.getRequiresCraneUnloading()))
-                .carrierName(null)
-                .vehicleNumber(null)
-                .driverName(null)
-                .trackingNumber(null)
-                .estimatedDelivery(null)
+                .groupStatus("PLACED")
                 .build();
-
-        Order savedOrder = orderRepository.save(order);
-
-        if (cart.getAppliedCoupon() != null && !cart.getAppliedCoupon().isBlank()) {
-            couponService.recordCouponUsage(cart.getAppliedCoupon(), savedOrder.getCustomer(), savedOrder, preview.getDiscount());
+        if (orderGroupRepository != null) {
+            orderGroup = orderGroupRepository.save(orderGroup);
         }
 
-        List<OrderItem> orderItems = new ArrayList<>();
-        BigDecimal totalWeightKg = BigDecimal.ZERO;
-        boolean hasAnyWeight = false;
-
-        BigDecimal subtotal = preview.getSubtotal() != null ? preview.getSubtotal() : BigDecimal.ZERO;
-        BigDecimal totalDiscount = preview.getDiscount() != null ? preview.getDiscount() : BigDecimal.ZERO;
-        BigDecimal allocatedDiscountSum = BigDecimal.ZERO;
-        int itemCount = sortedCartItems.size();
-
-        for (int i = 0; i < itemCount; i++) {
-            CartItemResponse ci = sortedCartItems.get(i);
-            if (!isHinchStoreOrder) {
-                decrementStock(ci);
-            }
-
-            Product p = productMap.get(ci.getProductId());
-            BigDecimal itemWeight = p != null ? p.getWeightKg() : null;
-
-            // Pro-rate coupon discount across items
-            BigDecimal itemDiscount = BigDecimal.ZERO;
-            if (totalDiscount.compareTo(BigDecimal.ZERO) > 0 && subtotal.compareTo(BigDecimal.ZERO) > 0) {
-                if (i == itemCount - 1) {
-                    itemDiscount = totalDiscount.subtract(allocatedDiscountSum);
-                } else {
-                    itemDiscount = totalDiscount.multiply(ci.getLineTotal())
-                            .divide(subtotal, 2, RoundingMode.HALF_UP);
-                    allocatedDiscountSum = allocatedDiscountSum.add(itemDiscount);
+        // 4. Create separate child Order records per store
+        Map<Integer, CartStoreGroupResponse> previewGroupMap = new HashMap<>();
+        if (preview != null && preview.getStoreGroups() != null) {
+            for (CartStoreGroupResponse grp : preview.getStoreGroups()) {
+                if (grp.getStoreId() != null) {
+                    previewGroupMap.put(grp.getStoreId(), grp);
                 }
             }
+        }
 
-            // Seller resolution: derive from product or store seller, throwing if missing for vendor products.
-            Seller itemSeller = null;
-            if (isHinchStoreOrder) {
-                // For HinchStore consignment orders, payout goes to the fulfillment vendor who holds and ships the physical stock
-                if (fulfillmentStore != null && fulfillmentStore.getSeller() != null) {
-                    itemSeller = fulfillmentStore.getSeller();
-                } else if (p != null && p.getSeller() != null) {
-                    itemSeller = p.getSeller();
+        List<Order> childOrders = new ArrayList<>();
+        for (Map.Entry<Integer, List<CartItemResponse>> entry : storeItemsMap.entrySet()) {
+            Integer sId = entry.getKey();
+            Store store = storeMap.get(sId);
+            List<CartItemResponse> storeItems = entry.getValue();
+            storeItems.sort(Comparator.comparing(CartItemResponse::getProductId));
+
+            CartStoreGroupResponse sg = previewGroupMap.get(sId);
+
+            boolean isHinchStoreOrder = (platformMarketplaceProperties != null)
+                    ? platformMarketplaceProperties.isPlatformStore(store.getStoreId())
+                    : (store.getStoreId() != null && store.getStoreId().equals(1));
+
+            Store fulfillmentStore = isHinchStoreOrder ? hinchFulfillmentStoreMap.get(sId) : store;
+            OrderInventoryState inventoryState = isHinchStoreOrder ? OrderInventoryState.RESERVED : OrderInventoryState.NONE;
+
+            String storeInvoiceNumber = storeInvoiceSequenceService.generateNextInvoiceNumber(store);
+            String childOrderNumber = "ORD-" + dateStr + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase();
+
+            BigDecimal sSubtotal = (sg != null && sg.getSubtotal() != null)
+                    ? sg.getSubtotal()
+                    : storeItems.stream().map(CartItemResponse::getLineTotal).reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            BigDecimal sDiscount;
+            if (sg != null && sg.getDiscount() != null) {
+                sDiscount = sg.getDiscount();
+            } else if (preview != null && preview.getDiscount() != null) {
+                if (storeItemsMap.size() == 1) {
+                    sDiscount = preview.getDiscount();
+                } else if (preview.getSubtotal() != null && preview.getSubtotal().compareTo(BigDecimal.ZERO) > 0) {
+                    sDiscount = preview.getDiscount().multiply(sSubtotal).divide(preview.getSubtotal(), 2, RoundingMode.HALF_UP);
+                } else {
+                    sDiscount = BigDecimal.ZERO;
                 }
             } else {
-                // Ordinary marketplace orders: product seller, then store seller, then fulfillment store seller
-                if (p != null && p.getSeller() != null) {
-                    itemSeller = p.getSeller();
-                } else if (store != null && store.getSeller() != null) {
-                    itemSeller = store.getSeller();
-                } else if (fulfillmentStore != null && fulfillmentStore.getSeller() != null) {
-                    itemSeller = fulfillmentStore.getSeller();
-                }
+                sDiscount = BigDecimal.ZERO;
             }
 
-            if (!isHinchStoreOrder && itemSeller == null) {
-                throw new IllegalStateException("Order item for product '" + (p != null ? p.getTitle() : ci.getTitle())
-                        + "' has no associated seller. Seller ID is required for vendor products.");
-            }
+            BigDecimal sTaxable = (sg != null && sg.getTaxableAmount() != null)
+                    ? sg.getTaxableAmount()
+                    : ((preview != null && preview.getTaxableAmount() != null && storeItemsMap.size() == 1)
+                            ? preview.getTaxableAmount()
+                            : sSubtotal.subtract(sDiscount));
 
-            ItemSettlementSnapshot settlement = null;
-            if (settlementCalculationService != null) {
-                Integer categoryId = null;
-                if (p != null) {
-                    if (p.getSubcategory() != null && p.getSubcategory().getCategory() != null) {
-                        categoryId = p.getSubcategory().getCategory().getCategoryId();
-                    } else if (p.getBrand() != null && p.getBrand().getSubcategory() != null && p.getBrand().getSubcategory().getCategory() != null) {
-                        categoryId = p.getBrand().getSubcategory().getCategory().getCategoryId();
+            BigDecimal sCgst = (sg != null && sg.getCgst() != null)
+                    ? sg.getCgst()
+                    : ((preview != null && preview.getCgst() != null && storeItemsMap.size() == 1)
+                            ? preview.getCgst() : BigDecimal.ZERO);
+            BigDecimal sSgst = (sg != null && sg.getSgst() != null)
+                    ? sg.getSgst()
+                    : ((preview != null && preview.getSgst() != null && storeItemsMap.size() == 1)
+                            ? preview.getSgst() : BigDecimal.ZERO);
+            BigDecimal sIgst = (sg != null && sg.getIgst() != null)
+                    ? sg.getIgst()
+                    : ((preview != null && preview.getIgst() != null && storeItemsMap.size() == 1)
+                            ? preview.getIgst() : BigDecimal.ZERO);
+            BigDecimal sTotalGst = (sg != null && sg.getTotalGst() != null)
+                    ? sg.getTotalGst()
+                    : ((preview != null && preview.getTotalGst() != null && storeItemsMap.size() == 1)
+                            ? preview.getTotalGst() : sCgst.add(sSgst).add(sIgst));
+
+            BigDecimal sFreight = (sg != null && sg.getDeliveryCharge() != null)
+                    ? sg.getDeliveryCharge()
+                    : ((preview != null && preview.getFreightCharge() != null && storeItemsMap.size() == 1)
+                            ? preview.getFreightCharge() : BigDecimal.ZERO);
+            BigDecimal sCrane = (sg != null && sg.getCraneUnloadingCharge() != null)
+                    ? sg.getCraneUnloadingCharge()
+                    : ((preview != null && preview.getCraneUnloadingCharge() != null && storeItemsMap.size() == 1)
+                            ? preview.getCraneUnloadingCharge() : BigDecimal.ZERO);
+            BigDecimal sTotalAmount = (sg != null && sg.getGrandTotal() != null)
+                    ? sg.getGrandTotal()
+                    : ((preview != null && preview.getGrandTotal() != null && storeItemsMap.size() == 1)
+                            ? preview.getGrandTotal() : sTaxable.add(sTotalGst).add(sFreight).add(sCrane));
+
+            Order childOrder = Order.builder()
+                    .orderNumber(childOrderNumber)
+                    .orderGroup(orderGroup)
+                    .customer(customer)
+                    .store(store)
+                    .fulfillmentStore(fulfillmentStore)
+                    .inventoryState(inventoryState)
+                    .storeInvoiceNumber(storeInvoiceNumber)
+                    .commissionRate(BigDecimal.ZERO)
+                    .commissionAmount(BigDecimal.ZERO)
+                    .addressId(address.getId())
+                    .deliveryLocation(formattedAddress)
+                    .orderForSomeoneElse(isForOther)
+                    .recipientName(effectiveRecipientName)
+                    .recipientPhone(effectiveRecipientPhone)
+                    .subtotal(sSubtotal)
+                    .discount(sDiscount)
+                    .couponCode(cart.getAppliedCoupon())
+                    .taxableAmount(sTaxable)
+                    .cgst(sCgst)
+                    .sgst(sSgst)
+                    .igst(sIgst)
+                    .totalGst(sTotalGst)
+                    .freightCharge(sFreight)
+                    .craneUnloadingCharge(sCrane)
+                    .totalAmount(sTotalAmount)
+                    .paymentMethod(request.getPaymentMethod() != null ? request.getPaymentMethod() : "RAZORPAY")
+                    .paymentStatus("PENDING")
+                    .orderStatus("PLACED")
+                    .poNumber(request.getPoNumber())
+                    .deliverySlot(request.getDeliverySlot())
+                    .deliveryInstructions(request.getDeliveryInstructions())
+                    .requiresCraneUnloading(Boolean.TRUE.equals(request.getRequiresCraneUnloading()))
+                    .build();
+
+            Order savedChildOrder = orderRepository.save(childOrder);
+
+            List<OrderItem> orderItems = new ArrayList<>();
+            BigDecimal totalWeightKg = BigDecimal.ZERO;
+            boolean hasAnyWeight = false;
+            BigDecimal allocatedDiscountSum = BigDecimal.ZERO;
+            int sItemCount = storeItems.size();
+
+            for (int i = 0; i < sItemCount; i++) {
+                CartItemResponse ci = storeItems.get(i);
+                Product p = productMap.get(ci.getProductId());
+                BigDecimal itemWeight = p != null ? p.getWeightKg() : null;
+
+                BigDecimal itemDiscount = BigDecimal.ZERO;
+                if (sDiscount.compareTo(BigDecimal.ZERO) > 0 && sSubtotal.compareTo(BigDecimal.ZERO) > 0) {
+                    if (i == sItemCount - 1) {
+                        itemDiscount = sDiscount.subtract(allocatedDiscountSum);
+                    } else {
+                        itemDiscount = sDiscount.multiply(ci.getLineTotal())
+                                .divide(sSubtotal, 2, RoundingMode.HALF_UP);
+                        allocatedDiscountSum = allocatedDiscountSum.add(itemDiscount);
                     }
                 }
-                settlement = settlementCalculationService.calculateItemSettlement(
-                        isHinchStoreOrder,
-                        ci.getLineTotal(),
-                        itemDiscount,
-                        categoryId
-                );
+
+                Seller itemSeller = null;
+                if (isHinchStoreOrder) {
+                    if (fulfillmentStore != null && fulfillmentStore.getSeller() != null) {
+                        itemSeller = fulfillmentStore.getSeller();
+                    } else if (p != null && p.getSeller() != null) {
+                        itemSeller = p.getSeller();
+                    }
+                } else {
+                    if (p != null && p.getSeller() != null) {
+                        itemSeller = p.getSeller();
+                    } else if (store != null && store.getSeller() != null) {
+                        itemSeller = store.getSeller();
+                    } else if (fulfillmentStore != null && fulfillmentStore.getSeller() != null) {
+                        itemSeller = fulfillmentStore.getSeller();
+                    }
+                }
+
+                if (!isHinchStoreOrder && itemSeller == null) {
+                    throw new IllegalStateException("Order item for product '" + (p != null ? p.getTitle() : ci.getTitle())
+                            + "' has no associated seller. Seller ID is required for vendor products.");
+                }
+
+                ItemSettlementSnapshot settlement = null;
+                if (settlementCalculationService != null) {
+                    Integer categoryId = null;
+                    if (p != null) {
+                        if (p.getSubcategory() != null && p.getSubcategory().getCategory() != null) {
+                            categoryId = p.getSubcategory().getCategory().getCategoryId();
+                        } else if (p.getBrand() != null && p.getBrand().getSubcategory() != null && p.getBrand().getSubcategory().getCategory() != null) {
+                            categoryId = p.getBrand().getSubcategory().getCategory().getCategoryId();
+                        }
+                    }
+                    settlement = settlementCalculationService.calculateItemSettlement(
+                            isHinchStoreOrder,
+                            ci.getLineTotal(),
+                            itemDiscount,
+                            categoryId
+                    );
+                }
+
+                if (!isHinchStoreOrder && itemDiscount.compareTo(BigDecimal.ZERO) > 0) {
+                    log.warn("Coupon applied to vendor-own item: orderId={}, orderNumber={}, productId={}, couponAmount={}. Platform funds full vendor settlement.",
+                            savedChildOrder.getOrderId(), savedChildOrder.getOrderNumber(), ci.getProductId(), itemDiscount);
+                }
+
+                BigDecimal commissionRate = settlement != null ? settlement.commissionRate() : BigDecimal.ZERO;
+                BigDecimal sellerPayable = settlement != null ? settlement.sellerPayable() : ci.getLineTotal();
+                BigDecimal hinchKeeps = settlement != null ? settlement.hinchKeeps() : BigDecimal.ZERO;
+
+                OrderItem oi = OrderItem.builder()
+                        .order(savedChildOrder)
+                        .productId(ci.getProductId())
+                        .title(ci.getTitle())
+                        .imageUrl(ci.getImageUrl())
+                        .quantity(ci.getQuantity())
+                        .unit(ci.getUnit())
+                        .weightKg(itemWeight)
+                        .unitPrice(ci.getUnitPrice())
+                        .originalPrice(ci.getOriginalPrice())
+                        .appliedTier(ci.getAppliedTier())
+                        .gstRate(ci.getGstRate())
+                        .lineTotal(ci.getLineTotal())
+                        .lineGst(ci.getLineGst())
+                        .seller(itemSeller)
+                        .fulfillmentStore(fulfillmentStore)
+                        .isHinchStore(isHinchStoreOrder && itemSeller == null)
+                        .commissionRate(commissionRate)
+                        .sellerPayable(sellerPayable)
+                        .hinchKeeps(hinchKeeps)
+                        .build();
+                OrderItem savedOi = orderItemRepository.save(oi);
+                orderItems.add(savedOi);
+
+                if (savedOi.getWeightKg() != null && savedOi.getQuantity() != null) {
+                    totalWeightKg = totalWeightKg.add(savedOi.getWeightKg().multiply(BigDecimal.valueOf(savedOi.getQuantity())));
+                    hasAnyWeight = true;
+                }
+            }
+            savedChildOrder.setItems(orderItems);
+            savedChildOrder.setTotalWeightKg(hasAnyWeight ? totalWeightKg : null);
+
+            BigDecimal totalHinchKeeps = orderItems.stream()
+                    .map(OrderItem::getHinchKeeps)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            savedChildOrder.setCommissionAmount(totalHinchKeeps);
+            savedChildOrder = orderRepository.save(savedChildOrder);
+
+            // SellerPayoutLedger entries per-item
+            for (OrderItem oi : orderItems) {
+                BigDecimal sellerPayable = oi.getSellerPayable();
+                BigDecimal tcsAmount = (isHinchStoreOrder || Boolean.TRUE.equals(oi.getIsHinchStore()))
+                        ? BigDecimal.ZERO
+                        : sellerPayable.multiply(BigDecimal.valueOf(0.01)).setScale(2, RoundingMode.HALF_UP);
+                BigDecimal netPayout = sellerPayable.subtract(tcsAmount);
+
+                PayoutLedgerStatus initialStatus = (isHinchStoreOrder && oi.getSeller() == null)
+                        ? PayoutLedgerStatus.ON_HOLD
+                        : PayoutLedgerStatus.PENDING;
+
+                SellerPayoutLedger ledger = SellerPayoutLedger.builder()
+                        .store(fulfillmentStore != null ? fulfillmentStore : store)
+                        .seller(oi.getSeller())
+                        .order(savedChildOrder)
+                        .orderItem(oi)
+                        .grossAmount(sellerPayable)
+                        .commissionAmount(BigDecimal.ZERO)
+                        .hinchKeeps(oi.getHinchKeeps())
+                        .tcsAmount(tcsAmount)
+                        .netPayoutAmount(netPayout)
+                        .status(initialStatus)
+                        .build();
+                sellerPayoutLedgerRepository.save(ledger);
             }
 
-            if (!isHinchStoreOrder && itemDiscount.compareTo(BigDecimal.ZERO) > 0) {
-                log.warn("Coupon applied to vendor-own item: orderId={}, orderNumber={}, productId={}, couponAmount={}. Platform funds full vendor settlement.",
-                        savedOrder.getOrderId(), savedOrder.getOrderNumber(), ci.getProductId(), itemDiscount);
-            }
-
-            BigDecimal commissionRate = settlement != null ? settlement.commissionRate() : BigDecimal.ZERO;
-            BigDecimal sellerPayable = settlement != null ? settlement.sellerPayable() : ci.getLineTotal();
-            BigDecimal hinchKeeps = settlement != null ? settlement.hinchKeeps() : BigDecimal.ZERO;
-
-            OrderItem oi = OrderItem.builder()
-                    .order(savedOrder)
-                    .productId(ci.getProductId())
-                    .title(ci.getTitle())
-                    .imageUrl(ci.getImageUrl())
-                    .quantity(ci.getQuantity())
-                    .unit(ci.getUnit())
-                    .weightKg(itemWeight)
-                    .unitPrice(ci.getUnitPrice())
-                    .originalPrice(ci.getOriginalPrice())
-                    .appliedTier(ci.getAppliedTier())
-                    .gstRate(ci.getGstRate())
-                    .lineTotal(ci.getLineTotal())
-                    .lineGst(ci.getLineGst())
-                    .seller(itemSeller)
-                    .fulfillmentStore(fulfillmentStore)
-                    .isHinchStore(isHinchStoreOrder && itemSeller == null)
-                    .commissionRate(commissionRate)
-                    .sellerPayable(sellerPayable)
-                    .hinchKeeps(hinchKeeps)
+            // Initial tracking checkpoint per store order
+            String logisticsHub = (fulfillmentStore != null ? fulfillmentStore.getName() : store.getName()) + " Logistics Hub";
+            String fulfillmentTeam = (fulfillmentStore != null ? fulfillmentStore.getName() : store.getName()) + " fulfillment team.";
+            TrackingCheckpoint initialCheckpoint = TrackingCheckpoint.builder()
+                    .order(savedChildOrder)
+                    .status("ORDER_PLACED")
+                    .title("Order Placed & Verified")
+                    .location(logisticsHub)
+                    .description("Order confirmed and assigned to " + fulfillmentTeam)
+                    .timestamp(LocalDateTime.now())
                     .build();
-            OrderItem savedOi = orderItemRepository.save(oi);
-            orderItems.add(savedOi);
+            savedChildOrder.getCheckpoints().add(initialCheckpoint);
+            orderRepository.save(savedChildOrder);
 
-            if (savedOi.getWeightKg() != null && savedOi.getQuantity() != null) {
-                totalWeightKg = totalWeightKg.add(savedOi.getWeightKg().multiply(BigDecimal.valueOf(savedOi.getQuantity())));
-                hasAnyWeight = true;
+            childOrders.add(savedChildOrder);
+            log.info("Successfully created child Order #{} (Invoice: {}) for Customer #{} from Store #{} ('{}')",
+                    savedChildOrder.getOrderId(), storeInvoiceNumber, uid, store.getStoreId(), store.getName());
+        }
+
+        if (orderGroup != null) {
+            orderGroup.setOrders(childOrders);
+            if (orderGroupRepository != null) {
+                orderGroup = orderGroupRepository.save(orderGroup);
             }
         }
-        savedOrder.setItems(orderItems);
-        savedOrder.setTotalWeightKg(hasAnyWeight ? totalWeightKg : null);
 
-        BigDecimal totalHinchKeeps = orderItems.stream()
-                .map(OrderItem::getHinchKeeps)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        savedOrder.setCommissionAmount(totalHinchKeeps);
-        savedOrder = orderRepository.save(savedOrder);
-
-        // 5. Create SellerPayoutLedger entries per-item (Gross = seller_payable, excluding GST and delivery fees)
-        for (OrderItem oi : orderItems) {
-            BigDecimal sellerPayable = oi.getSellerPayable();
-            BigDecimal tcsAmount = (isHinchStoreOrder || Boolean.TRUE.equals(oi.getIsHinchStore()))
-                    ? BigDecimal.ZERO
-                    : sellerPayable.multiply(BigDecimal.valueOf(0.01)).setScale(2, RoundingMode.HALF_UP);
-            BigDecimal netPayout = sellerPayable.subtract(tcsAmount);
-
-            PayoutLedgerStatus initialStatus = (isHinchStoreOrder && oi.getSeller() == null)
-                    ? PayoutLedgerStatus.ON_HOLD
-                    : PayoutLedgerStatus.PENDING;
-
-            SellerPayoutLedger ledger = SellerPayoutLedger.builder()
-                    .store(fulfillmentStore != null ? fulfillmentStore : store)
-                    .seller(oi.getSeller())
-                    .order(savedOrder)
-                    .orderItem(oi)
-                    .grossAmount(sellerPayable)
-                    .commissionAmount(BigDecimal.ZERO)
-                    .hinchKeeps(oi.getHinchKeeps())
-                    .tcsAmount(tcsAmount)
-                    .netPayoutAmount(netPayout)
-                    .status(initialStatus)
-                    .build();
-            sellerPayoutLedgerRepository.save(ledger);
+        // Record coupon usage linking orderGroup and first child order
+        if (cart.getAppliedCoupon() != null && !cart.getAppliedCoupon().isBlank() && !childOrders.isEmpty()) {
+            couponService.recordCouponUsage(cart.getAppliedCoupon(), customer, orderGroup, childOrders.get(0), preview.getDiscount());
         }
-
-        // Initial tracking checkpoint
-        String logisticsHub = (fulfillmentStore != null ? fulfillmentStore.getName() : store.getName()) + " Logistics Hub";
-        String fulfillmentTeam = (fulfillmentStore != null ? fulfillmentStore.getName() : store.getName()) + " fulfillment team.";
-        TrackingCheckpoint initialCheckpoint = TrackingCheckpoint.builder()
-                .order(savedOrder)
-                .status("ORDER_PLACED")
-                .title("Order Placed & Verified")
-                .location(logisticsHub)
-                .description("Order confirmed and assigned to " + fulfillmentTeam)
-                .timestamp(LocalDateTime.now())
-                .build();
-        savedOrder.getCheckpoints().add(initialCheckpoint);
-        orderRepository.save(savedOrder);
 
         // Clear active cart
         cartService.clearCart(uid);
 
-        log.info("Successfully created Order #{} (Invoice: {}) for Customer #{} from Store #{} ('{}'), fulfilled by Store #{} ('{}')",
-                savedOrder.getOrderId(), storeInvoiceNumber, uid, store.getStoreId(), store.getName(),
-                fulfillmentStore.getStoreId(), fulfillmentStore.getName());
+        // Build composite response
+        List<OrderResponse> childResponses = childOrders.stream().map(this::mapToOrderResponse).toList();
+        Order primaryOrder = childOrders.get(0);
+        OrderResponse rootResponse = mapToOrderResponse(primaryOrder);
+        Integer ogId = (orderGroup != null && orderGroup.getId() != null) ? orderGroup.getId() : primaryOrder.getOrderId();
+        String ogNum = (orderGroup != null && orderGroup.getGroupOrderNumber() != null) ? orderGroup.getGroupOrderNumber() : primaryOrder.getOrderNumber();
+        rootResponse.setOrderGroupId(ogId);
+        rootResponse.setGroupOrderNumber(ogNum);
+        rootResponse.setChildOrders(childResponses);
 
-        return mapToOrderResponse(savedOrder);
+        if (childOrders.size() > 1 && orderGroup != null) {
+            rootResponse.setOrderNumber(orderGroup.getGroupOrderNumber());
+            rootResponse.setStoreId(null);
+            rootResponse.setStoreName("Multiple Stores (" + childOrders.size() + ")");
+            rootResponse.setStoreSlug(null);
+            rootResponse.setSubtotal(orderGroup.getSubtotal());
+            rootResponse.setDiscount(orderGroup.getTotalDiscount());
+            rootResponse.setTaxableAmount(orderGroup.getTaxableAmount());
+            rootResponse.setCgst(orderGroup.getCgst());
+            rootResponse.setSgst(orderGroup.getSgst());
+            rootResponse.setIgst(orderGroup.getIgst());
+            rootResponse.setTotalGst(orderGroup.getTotalGst());
+            rootResponse.setFreightCharge(orderGroup.getTotalFreight());
+            rootResponse.setCraneUnloadingCharge(orderGroup.getTotalCraneCharge());
+            rootResponse.setTotalAmount(orderGroup.getGrandTotal());
+
+            List<OrderResponse.OrderItemDto> allItems = new ArrayList<>();
+            for (OrderResponse cr : childResponses) {
+                if (cr.getItems() != null) {
+                    allItems.addAll(cr.getItems());
+                }
+            }
+            rootResponse.setItems(allItems);
+            rootResponse.setItemCount(allItems.size());
+        }
+
+        return rootResponse;
     }
 
     private synchronized void decrementStock(CartItemResponse cartItem) {
         Product product = productRepository.findByIdForStockUpdate(cartItem.getProductId())
+                .or(() -> productRepository.findById(cartItem.getProductId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + cartItem.getProductId()));
 
         int currentStock = product.getStockQty() != null ? product.getStockQty() : 0;
@@ -942,6 +1176,22 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
             ));
         }
 
+        // Update parent OrderGroup status if part of a group
+        if (order.getOrderGroup() != null && order.getOrderGroup().getId() != null) {
+            OrderGroup group = order.getOrderGroup();
+            List<Order> siblings = orderRepository.findByOrderGroup_Id(group.getId());
+            boolean allCancelled = siblings.isEmpty() || siblings.stream().allMatch(o -> "CANCELLED".equalsIgnoreCase(o.getOrderStatus()));
+            if (allCancelled) {
+                group.setGroupStatus("CANCELLED");
+                group.setPaymentStatus("REFUND_PENDING");
+            } else {
+                group.setGroupStatus("PARTIALLY_CANCELLED");
+            }
+            if (orderGroupRepository != null) {
+                orderGroupRepository.save(group);
+            }
+        }
+
         return mapToOrderResponse(updated);
     }
 
@@ -1235,13 +1485,23 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
     }
 
     private synchronized void restoreStock(OrderItem orderItem) {
-        Product product = productRepository.findByIdForStockUpdate(orderItem.getProductId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Product not found with id: " + orderItem.getProductId()));
+        if (orderItem != null) {
+            restoreStock(orderItem.getProductId(), orderItem.getQuantity());
+        }
+    }
 
-        int availableStock = product.getStockQty() != null ? product.getStockQty() : 0;
-        product.setStockQty(availableStock + orderItem.getQuantity());
-        productRepository.save(product);
+    private synchronized void restoreStock(Integer productId, Integer quantity) {
+        if (productId == null || quantity == null || quantity <= 0) {
+            return;
+        }
+        Product product = productRepository.findByIdForStockUpdate(productId)
+                .or(() -> productRepository.findById(productId))
+                .orElse(null);
+        if (product != null) {
+            int availableStock = product.getStockQty() != null ? product.getStockQty() : 0;
+            product.setStockQty(availableStock + quantity);
+            productRepository.save(product);
+        }
     }
 
     private Order findOrder(Integer id) {
@@ -1342,6 +1602,8 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
         return OrderResponse.builder()
                 .orderId(o.getOrderId())
                 .orderNumber(o.getOrderNumber())
+                .orderGroupId(o.getOrderGroup() != null ? o.getOrderGroup().getId() : null)
+                .groupOrderNumber(o.getOrderGroup() != null ? o.getOrderGroup().getGroupOrderNumber() : null)
                 .customerId(customer != null ? customer.getCustomerId() : null)
                 .customerName(customer != null ? customer.getName() : null)
                 .customerEmail(customer != null ? customer.getEmail() : null)

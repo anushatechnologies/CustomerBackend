@@ -50,276 +50,279 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings("null")
 class OrderAddressIntegrationTest {
 
-    @Mock
-    private OrderRepository orderRepository;
+        @Mock
+        private OrderRepository orderRepository;
 
-    @Mock
-    private OrderItemRepository orderItemRepository;
+        @Mock
+        private OrderItemRepository orderItemRepository;
 
-    @Mock
-    private ProductRepository productRepository;
+        @Mock
+        private ProductRepository productRepository;
 
-    @Mock
-    private AddressRepository addressRepository;
+        @Mock
+        private AddressRepository addressRepository;
 
-    @Mock
-    private CustomerRepository customerRepository;
+        @Mock
+        private CustomerRepository customerRepository;
 
-    @Mock
-    private CartService cartService;
+        @Mock
+        private CartService cartService;
 
-    @Mock
-    private CheckoutService checkoutService;
+        @Mock
+        private CheckoutService checkoutService;
 
-    @Mock
-    private PdfInvoiceGeneratorService pdfInvoiceGeneratorService;
+        @Mock
+        private PdfInvoiceGeneratorService pdfInvoiceGeneratorService;
 
-    @Mock
-    private com.example.project.customer.service.StoreInvoiceSequenceService storeInvoiceSequenceService;
+        @Mock
+        private com.example.project.customer.service.StoreInvoiceSequenceService storeInvoiceSequenceService;
 
-    @Mock
-    private com.example.project.customer.repository.SellerPayoutLedgerRepository sellerPayoutLedgerRepository;
+        @Mock
+        private com.example.project.customer.repository.SellerPayoutLedgerRepository sellerPayoutLedgerRepository;
 
-    @Mock
-    private com.example.project.customer.repository.StoreRepository storeRepository;
+        @Mock
+        private com.example.project.customer.repository.StoreRepository storeRepository;
 
-    @Mock
-    private com.example.project.customer.config.UserContextUtil userContextUtil;
+        @Mock
+        private com.example.project.customer.config.UserContextUtil userContextUtil;
 
-    @Mock
-    private com.example.project.customer.config.SellerContextUtil sellerContextUtil;
+        @Mock
+        private com.example.project.customer.config.SellerContextUtil sellerContextUtil;
 
-    @Mock
-    private com.example.project.customer.service.VendorSelectionService vendorSelectionService;
+        @Mock
+        private com.example.project.customer.service.VendorSelectionService vendorSelectionService;
 
-    @Mock
-    private com.example.project.customer.repository.HinchStoreVendorInventoryRepository hinchStoreVendorInventoryRepository;
+        @Mock
+        private com.example.project.customer.repository.HinchStoreVendorInventoryRepository hinchStoreVendorInventoryRepository;
 
-    private OrderServiceImpl orderService;
-    private CheckoutServiceImpl checkoutServiceImpl;
+        private OrderServiceImpl orderService;
+        private CheckoutServiceImpl checkoutServiceImpl;
 
-    private Customer customer101;
-    private Address address1;
-    private Store mockStore;
-    private Seller mockSeller;
+        private Customer customer101;
+        private Address address1;
+        private Store mockStore;
+        private Seller mockSeller;
 
-    @BeforeEach
-    void setUp() {
-        orderService = new OrderServiceImpl(
-                orderRepository,
-                orderItemRepository,
-                productRepository,
-                addressRepository,
-                customerRepository,
-                cartService,
-                checkoutService,
-                pdfInvoiceGeneratorService,
-                storeInvoiceSequenceService,
-                sellerPayoutLedgerRepository,
-                storeRepository,
-                userContextUtil,
-                sellerContextUtil
-        );
+        @BeforeEach
+        void setUp() {
+                orderService = new OrderServiceImpl(
+                                orderRepository,
+                                orderItemRepository,
+                                productRepository,
+                                addressRepository,
+                                customerRepository,
+                                cartService,
+                                checkoutService,
+                                pdfInvoiceGeneratorService,
+                                storeInvoiceSequenceService,
+                                sellerPayoutLedgerRepository,
+                                storeRepository,
+                                userContextUtil,
+                                sellerContextUtil);
 
-        checkoutServiceImpl = new CheckoutServiceImpl(cartService, addressRepository, storeRepository);
+                checkoutServiceImpl = new CheckoutServiceImpl(cartService, addressRepository, storeRepository);
 
-        customer101 = Customer.builder().customerId(101).name("Pavan Kumar").phone("9876543210").build();
+                customer101 = Customer.builder().customerId(101).name("Pavan Kumar").phone("9876543210").build();
 
-        address1 = Address.builder()
-                .id(10)
-                .customer(customer101)
-                .siteName("Project Cyber Tower")
-                .recipientName("Pavan Kumar")
-                .phone("9876543210")
-                .houseFlatNo("Plot 42")
-                .addressLine1("HITEC City Main Road")
-                .areaLocality("Madhapur")
-                .city("Hyderabad")
-                .state("Telangana")
-                .pincode("500081")
-                .country("India")
-                .isDefault(true)
-                .build();
+                address1 = Address.builder()
+                                .id(10)
+                                .customer(customer101)
+                                .siteName("Project Cyber Tower")
+                                .recipientName("Pavan Kumar")
+                                .phone("9876543210")
+                                .houseFlatNo("Plot 42")
+                                .addressLine1("HITEC City Main Road")
+                                .areaLocality("Madhapur")
+                                .city("Hyderabad")
+                                .state("Telangana")
+                                .pincode("500081")
+                                .country("India")
+                                .isDefault(true)
+                                .build();
 
-        mockSeller = Seller.builder()
-                .sellerId(42)
-                .companyName("Vendor Infra")
-                .build();
+                mockSeller = Seller.builder()
+                                .sellerId(42)
+                                .companyName("Vendor Infra")
+                                .build();
 
-        mockStore = Store.builder()
-                .storeId(10)
-                .seller(mockSeller)
-                .name("Vendor Store")
-                .slug("vendor-store")
-                .status(StoreStatus.ACTIVE)
-                .commissionRate(BigDecimal.ZERO)
-                .build();
-        org.mockito.Mockito.lenient().when(storeRepository.findById(10)).thenReturn(Optional.of(mockStore));
-    }
+                mockStore = Store.builder()
+                                .storeId(10)
+                                .seller(mockSeller)
+                                .name("Vendor Store")
+                                .slug("vendor-store")
+                                .status(StoreStatus.ACTIVE)
+                                .commissionRate(BigDecimal.ZERO)
+                                .build();
+                org.mockito.Mockito.lenient().when(storeRepository.findById(10)).thenReturn(Optional.of(mockStore));
+        }
 
-    @Test
-    @DisplayName("Order Checkout: Captures full delivery address snapshot on the order")
-    void testOrderCreation_CapturesAddressSnapshot() {
-        CartItemResponse item = CartItemResponse.builder()
-                .productId(1)
-                .quantity(10)
-                .unitPrice(BigDecimal.valueOf(500.0))
-                .lineTotal(BigDecimal.valueOf(5000.0))
-                .build();
+        @Test
+        @DisplayName("Order Checkout: Captures full delivery address snapshot on the order")
+        void testOrderCreation_CapturesAddressSnapshot() {
+                CartItemResponse item = CartItemResponse.builder()
+                                .productId(1)
+                                .quantity(10)
+                                .unitPrice(BigDecimal.valueOf(500.0))
+                                .lineTotal(BigDecimal.valueOf(5000.0))
+                                .build();
 
-        CartResponse cart = CartResponse.builder()
-                .cartId(1)
-                .storeId(10)
-                .items(List.of(item))
-                .subtotal(BigDecimal.valueOf(5000.0))
-                .build();
+                CartResponse cart = CartResponse.builder()
+                                .cartId(1)
+                                .storeId(10)
+                                .items(List.of(item))
+                                .subtotal(BigDecimal.valueOf(5000.0))
+                                .build();
 
-        when(cartService.getCart(101)).thenReturn(cart);
-        when(addressRepository.findByCustomer_CustomerIdAndId(101, 10)).thenReturn(Optional.of(address1));
+                when(cartService.getCart(101)).thenReturn(cart);
+                when(addressRepository.findByCustomer_CustomerIdAndId(101, 10)).thenReturn(Optional.of(address1));
 
-        CheckoutPreviewResponse preview = CheckoutPreviewResponse.builder()
-                .subtotal(BigDecimal.valueOf(5000.0))
-                .discount(BigDecimal.ZERO)
-                .taxableAmount(BigDecimal.valueOf(5000.0))
-                .totalGst(BigDecimal.valueOf(900.0))
-                .freightCharge(BigDecimal.valueOf(4500.0))
-                .craneUnloadingCharge(BigDecimal.ZERO)
-                .grandTotal(BigDecimal.valueOf(10400.0))
-                .build();
+                CheckoutPreviewResponse preview = CheckoutPreviewResponse.builder()
+                                .subtotal(BigDecimal.valueOf(5000.0))
+                                .discount(BigDecimal.ZERO)
+                                .taxableAmount(BigDecimal.valueOf(5000.0))
+                                .totalGst(BigDecimal.valueOf(900.0))
+                                .freightCharge(BigDecimal.valueOf(4500.0))
+                                .craneUnloadingCharge(BigDecimal.ZERO)
+                                .grandTotal(BigDecimal.valueOf(10400.0))
+                                .build();
 
-        when(checkoutService.previewCheckout(eq(101), any(CheckoutPreviewRequest.class))).thenReturn(preview);
+                when(checkoutService.previewCheckout(eq(101), any(CheckoutPreviewRequest.class))).thenReturn(preview);
 
-        Product product = Product.builder().productId(1).seller(mockSeller).store(mockStore).title("Steel Rebar").stockQty(100).approvalStatus(ApprovalStatus.APPROVED).build();
-        when(productRepository.findById(1)).thenReturn(Optional.of(product));
-        when(productRepository.findByIdForStockUpdate(1)).thenReturn(Optional.of(product));
+                Product product = Product.builder().productId(1).seller(mockSeller).store(mockStore)
+                                .title("Steel Rebar").stockQty(100).approvalStatus(ApprovalStatus.APPROVED).build();
+                when(productRepository.findById(1)).thenReturn(Optional.of(product));
+                when(productRepository.findByIdForStockUpdate(1)).thenReturn(Optional.of(product));
 
-        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(orderItemRepository.save(any(com.example.project.customer.entity.OrderItem.class)))
-                .thenAnswer(invocation -> {
-                    com.example.project.customer.entity.OrderItem oi = invocation.getArgument(0);
-                    oi.setOrderItemId(1);
-                    return oi;
-                });
+                when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+                when(orderItemRepository.save(any(com.example.project.customer.entity.OrderItem.class)))
+                                .thenAnswer(invocation -> {
+                                        com.example.project.customer.entity.OrderItem oi = invocation.getArgument(0);
+                                        oi.setOrderItemId(1);
+                                        return oi;
+                                });
 
-        OrderCreateRequest req = OrderCreateRequest.builder()
-                .addressId(10)
-                .paymentMethod("RAZORPAY")
-                .build();
+                OrderCreateRequest req = OrderCreateRequest.builder()
+                                .addressId(10)
+                                .paymentMethod("RAZORPAY")
+                                .build();
 
-        OrderResponse orderResponse = orderService.createOrder(101, req);
+                OrderResponse orderResponse = orderService.createOrder(101, req);
 
-        assertThat(orderResponse).isNotNull();
+                assertThat(orderResponse).isNotNull();
 
-        // Verify that the saved Order entity contains the complete address snapshot
-        ArgumentCaptor<Order> orderCaptor = ArgumentCaptor.forClass(Order.class);
-        verify(orderRepository, org.mockito.Mockito.atLeastOnce()).save(orderCaptor.capture());
+                ArgumentCaptor<Order> orderCaptor = ArgumentCaptor.forClass(Order.class);
+                verify(orderRepository, org.mockito.Mockito.atLeastOnce()).save(orderCaptor.capture());
 
-        Order savedOrder = orderCaptor.getAllValues().get(0);
-        assertThat(savedOrder.getDeliveryLocation()).contains("Project Cyber Tower");
-        assertThat(savedOrder.getDeliveryLocation()).contains("Plot 42");
-        assertThat(savedOrder.getDeliveryLocation()).contains("HITEC City Main Road");
-        assertThat(savedOrder.getDeliveryLocation()).contains("Hyderabad");
-        assertThat(savedOrder.getDeliveryLocation()).contains("500081");
-        assertThat(savedOrder.getDeliveryLocation()).contains("Contact: Pavan Kumar / 9876543210");
-        assertThat(savedOrder.getAddressId()).isEqualTo(10);
-    }
+                Order savedOrder = orderCaptor.getAllValues().get(0);
+                assertThat(savedOrder.getDeliveryLocation()).contains("Project Cyber Tower");
+                assertThat(savedOrder.getDeliveryLocation()).contains("Plot 42");
+                assertThat(savedOrder.getDeliveryLocation()).contains("HITEC City Main Road");
+                assertThat(savedOrder.getDeliveryLocation()).contains("Hyderabad");
+                assertThat(savedOrder.getDeliveryLocation()).contains("500081");
+                assertThat(savedOrder.getDeliveryLocation()).contains("Contact: Pavan Kumar / 9876543210");
+                assertThat(savedOrder.getAddressId()).isEqualTo(10);
+        }
 
-    @Test
-    @DisplayName("Order Checkout: Captures recipient name and phone when ordering for someone else")
-    void testOrderCreation_ForSomeoneElse_CapturesRecipientSnapshot() {
-        CartItemResponse item = CartItemResponse.builder()
-                .cartItemId(1)
-                .productId(1)
-                .title("Steel Rebar")
-                .unitPrice(BigDecimal.valueOf(100.00))
-                .quantity(5)
-                .lineTotal(BigDecimal.valueOf(500.00))
-                .build();
+        @Test
+        @DisplayName("Order Checkout: Captures recipient name and phone when ordering for someone else")
+        void testOrderCreation_ForSomeoneElse_CapturesRecipientSnapshot() {
+                CartItemResponse item = CartItemResponse.builder()
+                                .cartItemId(1)
+                                .productId(1)
+                                .title("Steel Rebar")
+                                .unitPrice(BigDecimal.valueOf(100.00))
+                                .quantity(5)
+                                .lineTotal(BigDecimal.valueOf(500.00))
+                                .build();
 
-        CartResponse cart = CartResponse.builder()
-                .cartId(1)
-                .storeId(10)
-                .items(List.of(item))
-                .subtotal(BigDecimal.valueOf(500.00))
-                .build();
+                CartResponse cart = CartResponse.builder()
+                                .cartId(1)
+                                .storeId(10)
+                                .items(List.of(item))
+                                .subtotal(BigDecimal.valueOf(500.00))
+                                .build();
 
-        when(cartService.getCart(101)).thenReturn(cart);
-        when(addressRepository.findByCustomer_CustomerIdAndId(101, 10)).thenReturn(Optional.of(address1));
+                when(cartService.getCart(101)).thenReturn(cart);
+                when(addressRepository.findByCustomer_CustomerIdAndId(101, 10)).thenReturn(Optional.of(address1));
 
-        CheckoutPreviewResponse preview = CheckoutPreviewResponse.builder()
-                .subtotal(BigDecimal.valueOf(500.00))
-                .taxableAmount(BigDecimal.valueOf(500.00))
-                .grandTotal(BigDecimal.valueOf(590.00))
-                .build();
-        when(checkoutService.previewCheckout(eq(101), any(CheckoutPreviewRequest.class))).thenReturn(preview);
+                CheckoutPreviewResponse preview = CheckoutPreviewResponse.builder()
+                                .subtotal(BigDecimal.valueOf(500.00))
+                                .taxableAmount(BigDecimal.valueOf(500.00))
+                                .grandTotal(BigDecimal.valueOf(590.00))
+                                .build();
+                when(checkoutService.previewCheckout(eq(101), any(CheckoutPreviewRequest.class))).thenReturn(preview);
 
-        Product product = Product.builder().productId(1).seller(mockSeller).store(mockStore).title("Steel Rebar").stockQty(100).approvalStatus(ApprovalStatus.APPROVED).build();
-        when(productRepository.findById(1)).thenReturn(Optional.of(product));
-        when(productRepository.findByIdForStockUpdate(1)).thenReturn(Optional.of(product));
+                Product product = Product.builder().productId(1).seller(mockSeller).store(mockStore)
+                                .title("Steel Rebar").stockQty(100).approvalStatus(ApprovalStatus.APPROVED).build();
+                when(productRepository.findById(1)).thenReturn(Optional.of(product));
+                when(productRepository.findByIdForStockUpdate(1)).thenReturn(Optional.of(product));
 
-        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(orderItemRepository.save(any(com.example.project.customer.entity.OrderItem.class)))
-                .thenAnswer(invocation -> {
-                    com.example.project.customer.entity.OrderItem oi = invocation.getArgument(0);
-                    oi.setOrderItemId(1);
-                    return oi;
-                });
+                when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+                when(orderItemRepository.save(any(com.example.project.customer.entity.OrderItem.class)))
+                                .thenAnswer(invocation -> {
+                                        com.example.project.customer.entity.OrderItem oi = invocation.getArgument(0);
+                                        oi.setOrderItemId(1);
+                                        return oi;
+                                });
 
-        OrderCreateRequest req = OrderCreateRequest.builder()
-                .addressId(10)
-                .orderForSomeoneElse(true)
-                .recipientName("Ramesh Site Engineer")
-                .recipientPhone("9988776655")
-                .paymentMethod("RAZORPAY")
-                .build();
+                OrderCreateRequest req = OrderCreateRequest.builder()
+                                .addressId(10)
+                                .orderForSomeoneElse(true)
+                                .recipientName("Ramesh Site Engineer")
+                                .recipientPhone("9988776655")
+                                .paymentMethod("RAZORPAY")
+                                .build();
 
-        OrderResponse orderResponse = orderService.createOrder(101, req);
+                OrderResponse orderResponse = orderService.createOrder(101, req);
 
-        assertThat(orderResponse).isNotNull();
-        assertThat(orderResponse.getOrderForSomeoneElse()).isTrue();
-        assertThat(orderResponse.getRecipientName()).isEqualTo("Ramesh Site Engineer");
-        assertThat(orderResponse.getRecipientPhone()).isEqualTo("9988776655");
+                assertThat(orderResponse).isNotNull();
+                assertThat(orderResponse.getOrderForSomeoneElse()).isTrue();
+                assertThat(orderResponse.getRecipientName()).isEqualTo("Ramesh Site Engineer");
+                assertThat(orderResponse.getRecipientPhone()).isEqualTo("9988776655");
 
-        ArgumentCaptor<Order> orderCaptor = ArgumentCaptor.forClass(Order.class);
-        verify(orderRepository, org.mockito.Mockito.atLeastOnce()).save(orderCaptor.capture());
+                ArgumentCaptor<Order> orderCaptor = ArgumentCaptor.forClass(Order.class);
+                verify(orderRepository, org.mockito.Mockito.atLeastOnce()).save(orderCaptor.capture());
 
-        Order savedOrder = orderCaptor.getValue();
-        assertThat(savedOrder.getOrderForSomeoneElse()).isTrue();
-        assertThat(savedOrder.getRecipientName()).isEqualTo("Ramesh Site Engineer");
-        assertThat(savedOrder.getRecipientPhone()).isEqualTo("9988776655");
-        assertThat(savedOrder.getDeliveryLocation()).contains("Contact: Ramesh Site Engineer / 9988776655 [Order for Someone Else]");
-    }
+                Order savedOrder = orderCaptor.getValue();
+                assertThat(savedOrder.getOrderForSomeoneElse()).isTrue();
+                assertThat(savedOrder.getRecipientName()).isEqualTo("Ramesh Site Engineer");
+                assertThat(savedOrder.getRecipientPhone()).isEqualTo("9988776655");
+                assertThat(savedOrder.getDeliveryLocation())
+                                .contains("Contact: Ramesh Site Engineer / 9988776655 [Order for Someone Else]");
+        }
 
-    @Test
-    @DisplayName("Order Checkout: Rejects order placement when address belongs to another customer")
-    void testOrderCreation_RejectsUnauthorizedAddress() {
-        CartItemResponse item = CartItemResponse.builder().productId(1).title("Steel Rebar").quantity(2).build();
-        CartResponse cart = CartResponse.builder().storeId(10).items(List.of(item)).build();
+        @Test
+        @DisplayName("Order Checkout: Rejects order placement when address belongs to another customer")
+        void testOrderCreation_RejectsUnauthorizedAddress() {
+                CartItemResponse item = CartItemResponse.builder().productId(1).title("Steel Rebar").quantity(2)
+                                .build();
+                CartResponse cart = CartResponse.builder().storeId(10).items(List.of(item)).build();
 
-        Product product = Product.builder().productId(1).seller(mockSeller).store(mockStore).title("Steel Rebar").stockQty(100).approvalStatus(ApprovalStatus.APPROVED).build();
-        when(productRepository.findById(1)).thenReturn(Optional.of(product));
+                Product product = Product.builder().productId(1).seller(mockSeller).store(mockStore)
+                                .title("Steel Rebar").stockQty(100).approvalStatus(ApprovalStatus.APPROVED).build();
+                when(productRepository.findById(1)).thenReturn(Optional.of(product));
 
-        when(cartService.getCart(101)).thenReturn(cart);
-        // Address 99 does NOT belong to customer 101
-        when(addressRepository.findByCustomer_CustomerIdAndId(101, 99)).thenReturn(Optional.empty());
+                when(cartService.getCart(101)).thenReturn(cart);
+                // Address 99 does NOT belong to customer 101
+                when(addressRepository.findByCustomer_CustomerIdAndId(101, 99)).thenReturn(Optional.empty());
 
-        OrderCreateRequest req = OrderCreateRequest.builder().addressId(99).build();
+                OrderCreateRequest req = OrderCreateRequest.builder().addressId(99).build();
 
-        assertThatThrownBy(() -> orderService.createOrder(101, req))
-                .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessageContaining("Address not found with id: 99");
-    }
+                assertThatThrownBy(() -> orderService.createOrder(101, req))
+                                .isInstanceOf(ResourceNotFoundException.class)
+                                .hasMessageContaining("Address not found with id: 99");
+        }
 
-    @Test
-    @DisplayName("Checkout Preview: Rejects preview calculation when address belongs to another customer")
-    void testCheckoutPreview_RejectsUnauthorizedAddress() {
-        when(cartService.getCart(101)).thenReturn(CartResponse.builder().subtotal(BigDecimal.TEN).build());
-        when(addressRepository.findByCustomer_CustomerIdAndId(101, 99)).thenReturn(Optional.empty());
+        @Test
+        @DisplayName("Checkout Preview: Rejects preview calculation when address belongs to another customer")
+        void testCheckoutPreview_RejectsUnauthorizedAddress() {
+                when(cartService.getCart(101)).thenReturn(CartResponse.builder().subtotal(BigDecimal.TEN).build());
+                when(addressRepository.findByCustomer_CustomerIdAndId(101, 99)).thenReturn(Optional.empty());
 
-        CheckoutPreviewRequest req = CheckoutPreviewRequest.builder().addressId(99).build();
+                CheckoutPreviewRequest req = CheckoutPreviewRequest.builder().addressId(99).build();
 
-        assertThatThrownBy(() -> checkoutServiceImpl.previewCheckout(101, req))
-                .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessageContaining("Address not found with id: 99");
-    }
+                assertThatThrownBy(() -> checkoutServiceImpl.previewCheckout(101, req))
+                                .isInstanceOf(ResourceNotFoundException.class)
+                                .hasMessageContaining("Address not found with id: 99");
+        }
 }

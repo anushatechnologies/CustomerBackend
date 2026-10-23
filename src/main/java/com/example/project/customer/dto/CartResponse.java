@@ -24,6 +24,9 @@ public class CartResponse {
     @Builder.Default
     private List<CartItemResponse> items = new ArrayList<>();
 
+    @Builder.Default
+    private List<CartStoreGroupResponse> storeGroups = new ArrayList<>();
+
     private BigDecimal subtotal;
     private BigDecimal couponDiscount;
     private BigDecimal totalGst;

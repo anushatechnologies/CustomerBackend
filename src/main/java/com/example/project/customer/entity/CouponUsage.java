@@ -12,7 +12,8 @@ public class CouponUsage {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "coupon_id", nullable = false) private Coupon coupon;
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "customer_id", referencedColumnName = "customer_id", nullable = false) private Customer customer;
-    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "order_id", referencedColumnName = "order_id", nullable = false) private Order order;
+    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "order_id", referencedColumnName = "order_id") private Order order;
+    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "order_group_id", referencedColumnName = "id") private OrderGroup orderGroup;
     @Column(name = "discount_applied", nullable = false, precision = 10, scale = 2) private BigDecimal discountApplied;
     @Column(name = "used_at", nullable = false) private LocalDateTime usedAt;
     @PrePersist void create() { if (usedAt == null) usedAt = LocalDateTime.now(); }
