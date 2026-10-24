@@ -4,5 +4,6 @@ public enum StoreStatus {
     PENDING,
     ACTIVE,
     SUSPENDED,
-    CLOSED
+    CLOSED,
+    INACTIVE
 }

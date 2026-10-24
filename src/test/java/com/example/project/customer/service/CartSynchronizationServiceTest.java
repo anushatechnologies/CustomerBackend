@@ -17,9 +17,12 @@ import com.example.project.customer.entity.Order;
 import com.example.project.customer.entity.OrderItem;
 import com.example.project.customer.entity.Product;
 import com.example.project.customer.entity.Store;
+import com.example.project.customer.dto.ProductAvailability;
 import com.example.project.customer.entity.StoreStatus;
+import com.example.project.customer.exception.ResourceConflictException;
 import com.example.project.customer.exception.ResourceNotFoundException;
 import com.example.project.customer.exception.UnauthorizedException;
+import com.example.project.customer.service.ProductAvailabilityService;
 import com.example.project.customer.repository.AddressRepository;
 import com.example.project.customer.repository.CartItemRepository;
 import com.example.project.customer.repository.CartRepository;
@@ -370,6 +373,106 @@ class CartSynchronizationServiceTest {
         assertThat(response).isNotNull();
         assertThat(response.getStoreId()).isEqualTo(2);
         verify(cartItemRepository).save(any(CartItem.class));
+    }
+
+    @Test
+    @DisplayName("addItem failure: CHECKOUT_DISABLED throws ResourceConflictException")
+    void testAddItem_Failure_CheckoutDisabled() {
+        ProductAvailabilityService mockAvailService = mock(ProductAvailabilityService.class);
+        when(mockAvailService.getAvailability(testProduct)).thenReturn(ProductAvailability.builder()
+                .productId(201)
+                .availableQty(10)
+                .inStock(true)
+                .reason("CHECKOUT_DISABLED")
+                .build());
+        cartService.setProductAvailabilityService(mockAvailService);
+
+        CartItemRequest req = CartItemRequest.builder().productId(201).quantity(1).build();
+
+        assertThatThrownBy(() -> cartService.addItem(101, req))
+                .isInstanceOf(ResourceConflictException.class)
+                .hasMessageContaining("CHECKOUT_DISABLED");
+    }
+
+    @Test
+    @DisplayName("addItem failure: UNAVAILABLE_NO_VENDOR_STOCK throws ResourceConflictException")
+    void testAddItem_Failure_UnavailableNoVendorStock() {
+        ProductAvailabilityService mockAvailService = mock(ProductAvailabilityService.class);
+        when(mockAvailService.getAvailability(testProduct)).thenReturn(ProductAvailability.builder()
+                .productId(201)
+                .availableQty(0)
+                .inStock(false)
+                .reason("UNAVAILABLE_NO_VENDOR_STOCK")
+                .build());
+        cartService.setProductAvailabilityService(mockAvailService);
+
+        CartItemRequest req = CartItemRequest.builder().productId(201).quantity(1).build();
+
+        assertThatThrownBy(() -> cartService.addItem(101, req))
+                .isInstanceOf(ResourceConflictException.class)
+                .hasMessageContaining("UNAVAILABLE_NO_VENDOR_STOCK");
+    }
+
+    @Test
+    @DisplayName("addItem failure: OUT_OF_STOCK throws ResourceConflictException")
+    void testAddItem_Failure_OutOfStock() {
+        ProductAvailabilityService mockAvailService = mock(ProductAvailabilityService.class);
+        when(mockAvailService.getAvailability(testProduct)).thenReturn(ProductAvailability.builder()
+                .productId(201)
+                .availableQty(0)
+                .inStock(false)
+                .reason("OUT_OF_STOCK")
+                .build());
+        cartService.setProductAvailabilityService(mockAvailService);
+
+        CartItemRequest req = CartItemRequest.builder().productId(201).quantity(1).build();
+
+        assertThatThrownBy(() -> cartService.addItem(101, req))
+                .isInstanceOf(ResourceConflictException.class)
+                .hasMessageContaining("OUT_OF_STOCK");
+    }
+
+    @Test
+    @DisplayName("addItem failure: inactive product throws ResourceConflictException")
+    void testAddItem_Failure_ProductInactive() {
+        testProduct.setActive(false);
+        CartItemRequest req = CartItemRequest.builder().productId(201).quantity(1).build();
+
+        assertThatThrownBy(() -> cartService.addItem(101, req))
+                .isInstanceOf(ResourceConflictException.class)
+                .hasMessageContaining("Product is inactive");
+    }
+
+    @Test
+    @DisplayName("addItem failure: unapproved product throws ResourceConflictException")
+    void testAddItem_Failure_ProductPendingApproval() {
+        testProduct.setApprovalStatus(ApprovalStatus.PENDING);
+        CartItemRequest req = CartItemRequest.builder().productId(201).quantity(1).build();
+
+        assertThatThrownBy(() -> cartService.addItem(101, req))
+                .isInstanceOf(ResourceConflictException.class)
+                .hasMessageContaining("Product is pending admin approval");
+    }
+
+    @Test
+    @DisplayName("addItem failure: inactive store throws IllegalStateException")
+    void testAddItem_Failure_StoreInactive() {
+        testStore.setStatus(StoreStatus.INACTIVE);
+        CartItemRequest req = CartItemRequest.builder().productId(201).quantity(1).build();
+
+        assertThatThrownBy(() -> cartService.addItem(101, req))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("is currently not accepting new orders (status: INACTIVE)");
+    }
+
+    @Test
+    @DisplayName("addItem failure: unauthenticated request (userId null) throws UnauthorizedException")
+    void testAddItem_Failure_Unauthenticated() {
+        CartItemRequest req = CartItemRequest.builder().productId(201).quantity(1).build();
+
+        assertThatThrownBy(() -> cartService.addItem(null, req))
+                .isInstanceOf(UnauthorizedException.class)
+                .hasMessageContaining("Authentication required: User ID must not be null.");
     }
 }
 

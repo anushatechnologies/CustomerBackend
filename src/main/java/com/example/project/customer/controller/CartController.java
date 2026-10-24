@@ -12,6 +12,7 @@ import com.example.project.customer.dto.SwitchStoreRequest;
 import com.example.project.customer.service.CartService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Slf4j
 @RestController
 @RequestMapping({"/api/cart", "/api/customer/cart"})
 @RequiredArgsConstructor
@@ -42,8 +44,18 @@ public class CartController {
     @PostMapping("/items")
     public ResponseEntity<ApiResponse<CartResponse>> addOrUpdateItem(@Valid @RequestBody CartItemRequest request) {
         Integer userId = userContextUtil.getCurrentUserId();
-        CartResponse updated = cartService.addItem(userId, request);
-        return ResponseEntity.ok(ApiResponse.ok("Cart updated successfully", updated));
+        log.info("Processing add-to-cart request: endpoint='POST /api/cart/items', userId={}, productId={}, quantity={}",
+                userId, request.getProductId(), request.getQuantity());
+        try {
+            CartResponse updated = cartService.addItem(userId, request);
+            log.info("Add-to-cart request outcome=SUCCESS: userId={}, productId={}, cartId={}",
+                    userId, request.getProductId(), updated != null ? updated.getCartId() : null);
+            return ResponseEntity.ok(ApiResponse.ok("Cart updated successfully", updated));
+        } catch (Exception ex) {
+            log.warn("Add-to-cart request outcome=FAILURE: endpoint='POST /api/cart/items', userId={}, productId={}, error={}",
+                    userId, request.getProductId(), ex.getMessage());
+            throw ex;
+        }
     }
 
     @PutMapping("/items/{id}")
@@ -51,8 +63,17 @@ public class CartController {
             @PathVariable Integer id,
             @Valid @RequestBody CartItemUpdateRequest request) {
         Integer userId = userContextUtil.getCurrentUserId();
-        CartResponse updated = cartService.updateItem(userId, id, request);
-        return ResponseEntity.ok(ApiResponse.ok("Cart item updated successfully", updated));
+        log.info("Processing update cart item request: endpoint='PUT /api/cart/items/{}', userId={}, quantity={}",
+                id, userId, request.getQuantity());
+        try {
+            CartResponse updated = cartService.updateItem(userId, id, request);
+            log.info("Update cart item outcome=SUCCESS: userId={}, cartItemId={}", userId, id);
+            return ResponseEntity.ok(ApiResponse.ok("Cart item updated successfully", updated));
+        } catch (Exception ex) {
+            log.warn("Update cart item outcome=FAILURE: endpoint='PUT /api/cart/items/{}', userId={}, error={}",
+                    id, userId, ex.getMessage());
+            throw ex;
+        }
     }
 
     @PostMapping("/sync")

@@ -372,4 +372,100 @@ class InventorySynchronizationServiceTest {
         assertThat(afterAvail.getAvailableQty()).isEqualTo(100);
         assertThat(afterAvail.getReason()).isNull();
     }
+
+    @Test
+    @DisplayName("9. StoreStatus enum correctly parses INACTIVE database status without throwing IllegalArgumentException")
+    void testStoreStatus_ParsesInactive() {
+        StoreStatus status = StoreStatus.valueOf("INACTIVE");
+        assertThat(status).isEqualTo(StoreStatus.INACTIVE);
+        assertThat(status).isNotEqualTo(StoreStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("10. Inactive stores are not treated as active inventory suppliers during reconciliation")
+    void testReconciliation_WithInactiveStore_DoesNotTreatAsInventorySupplier() {
+        Seller inactiveSeller = Seller.builder().sellerId(4).name("Inactive Seller").build();
+        Store inactiveStore = Store.builder()
+                .storeId(4)
+                .seller(inactiveSeller)
+                .name("Inactive Store 4")
+                .status(StoreStatus.INACTIVE)
+                .build();
+
+        Product prodWithInactiveStore = Product.builder()
+                .productId(904)
+                .title("Product from Inactive Store")
+                .store(platformStore)
+                .seller(inactiveSeller)
+                .stockQty(50)
+                .build();
+
+        when(storeRepository.findBySellerSellerId(4)).thenReturn(Optional.of(inactiveStore));
+        when(productRepository.findByStore_StoreId(1)).thenReturn(List.of(prodWithInactiveStore));
+
+        // Must complete without throwing IllegalArgumentException: No enum constant StoreStatus.INACTIVE
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() ->
+                inventorySyncService.reconcileExistingPlatformInventories()
+        );
+
+        // Verify inactive store is NOT treated as an active inventory supplier
+        verify(hinchStoreVendorInventoryRepository, never()).save(any(HinchStoreVendorInventory.class));
+    }
+
+    @Test
+    @DisplayName("11. Reconciliation continues processing eligible stores when an inactive store is encountered")
+    void testReconciliation_ContinuesProcessingEligibleStoresWhenInactiveStoreEncountered() {
+        Seller inactiveSeller = Seller.builder().sellerId(4).name("Inactive Seller").build();
+        Store inactiveStore = Store.builder()
+                .storeId(4)
+                .seller(inactiveSeller)
+                .name("Inactive Store 4")
+                .status(StoreStatus.INACTIVE)
+                .build();
+
+        Seller activeSeller = Seller.builder().sellerId(5).name("Active Seller").build();
+        Store activeStore = Store.builder()
+                .storeId(5)
+                .seller(activeSeller)
+                .name("Active Store 5")
+                .status(StoreStatus.ACTIVE)
+                .build();
+
+        Product prodInactive = Product.builder()
+                .productId(904)
+                .title("Product from Inactive Store")
+                .store(platformStore)
+                .seller(inactiveSeller)
+                .stockQty(50)
+                .build();
+
+        Product prodActive = Product.builder()
+                .productId(905)
+                .title("Product from Active Store")
+                .store(platformStore)
+                .seller(activeSeller)
+                .stockQty(80)
+                .build();
+
+        when(storeRepository.findBySellerSellerId(4)).thenReturn(Optional.of(inactiveStore));
+        when(storeRepository.findBySellerSellerId(5)).thenReturn(Optional.of(activeStore));
+        when(productRepository.findByStore_StoreId(1)).thenReturn(List.of(prodInactive, prodActive));
+        when(hinchStoreVendorInventoryRepository.findByProduct_ProductIdAndVendorStore_StoreId(905, 5))
+                .thenReturn(Optional.empty());
+
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() ->
+                inventorySyncService.reconcileExistingPlatformInventories()
+        );
+
+        // Verify inactive store product is NOT saved
+        verify(hinchStoreVendorInventoryRepository, never()).save(argThat(inv ->
+                inv.getProduct().getProductId().equals(904) || inv.getVendorStore().getStoreId().equals(4)));
+
+        // Verify active store product IS saved
+        verify(hinchStoreVendorInventoryRepository).save(argThat(inv ->
+                inv.getProduct().getProductId().equals(905) &&
+                inv.getVendorStore().getStoreId().equals(5) &&
+                inv.getQty() == 80 &&
+                Boolean.TRUE.equals(inv.getIsActive())));
+    }
 }

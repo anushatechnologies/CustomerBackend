@@ -4,6 +4,7 @@ import com.example.project.customer.config.PlatformMarketplaceProperties;
 import com.example.project.customer.entity.HinchStoreVendorInventory;
 import com.example.project.customer.entity.Product;
 import com.example.project.customer.entity.Store;
+import com.example.project.customer.entity.StoreStatus;
 import com.example.project.customer.repository.HinchStoreVendorInventoryRepository;
 import com.example.project.customer.repository.ProductRepository;
 import com.example.project.customer.repository.StoreRepository;
@@ -63,6 +64,12 @@ public class InventorySynchronizationServiceImpl implements InventorySynchroniza
             return;
         }
 
+        if (vendorStore.getStatus() != StoreStatus.ACTIVE) {
+            log.info("Vendor store #{} is not ACTIVE (status={}). Inventory sync skipped for platform product #{}.",
+                    vendorStore.getStoreId(), vendorStore.getStatus(), product.getProductId());
+            return;
+        }
+
         Optional<HinchStoreVendorInventory> existingOpt = hinchStoreVendorInventoryRepository
                 .findByProduct_ProductIdAndVendorStore_StoreId(product.getProductId(), vendorStore.getStoreId());
 
@@ -102,31 +109,43 @@ public class InventorySynchronizationServiceImpl implements InventorySynchroniza
             if (p == null || p.getProductId() == null) {
                 continue;
             }
-            int stock = p.getStockQty() != null ? p.getStockQty() : 0;
-            if (stock <= 0) {
-                continue;
-            }
+            try {
+                int stock = p.getStockQty() != null ? p.getStockQty() : 0;
+                if (stock <= 0) {
+                    continue;
+                }
 
-            Store vendorStore = resolveSupplyingVendorStore(p, p.getSeller() != null ? p.getSeller().getSellerId() : null);
-            if (vendorStore == null) {
-                continue;
-            }
+                Store vendorStore = resolveSupplyingVendorStore(p, p.getSeller() != null ? p.getSeller().getSellerId() : null);
+                if (vendorStore == null) {
+                    continue;
+                }
 
-            Optional<HinchStoreVendorInventory> existingOpt = hinchStoreVendorInventoryRepository
-                    .findByProduct_ProductIdAndVendorStore_StoreId(p.getProductId(), vendorStore.getStoreId());
+                // Verify inactive stores are not treated as active inventory suppliers
+                if (vendorStore.getStatus() != StoreStatus.ACTIVE) {
+                    log.info("Skipping platform product #{} inventory reconciliation: vendor store #{} is not ACTIVE (status={})",
+                            p.getProductId(), vendorStore.getStoreId(), vendorStore.getStatus());
+                    continue;
+                }
 
-            if (existingOpt.isEmpty()) {
-                HinchStoreVendorInventory newInv = HinchStoreVendorInventory.builder()
-                        .product(p)
-                        .vendorStore(vendorStore)
-                        .qty(stock)
-                        .reservedQty(0)
-                        .isActive(true)
-                        .build();
-                hinchStoreVendorInventoryRepository.save(newInv);
-                reconciledCount++;
-                log.info("Reconciled missing HinchStore vendor inventory for product #{} ('{}') at vendor store #{}: qty={}",
-                        p.getProductId(), p.getTitle(), vendorStore.getStoreId(), stock);
+                Optional<HinchStoreVendorInventory> existingOpt = hinchStoreVendorInventoryRepository
+                        .findByProduct_ProductIdAndVendorStore_StoreId(p.getProductId(), vendorStore.getStoreId());
+
+                if (existingOpt.isEmpty()) {
+                    HinchStoreVendorInventory newInv = HinchStoreVendorInventory.builder()
+                            .product(p)
+                            .vendorStore(vendorStore)
+                            .qty(stock)
+                            .reservedQty(0)
+                            .isActive(true)
+                            .build();
+                    hinchStoreVendorInventoryRepository.save(newInv);
+                    reconciledCount++;
+                    log.info("Reconciled missing HinchStore vendor inventory for product #{} ('{}') at vendor store #{}: qty={}",
+                            p.getProductId(), p.getTitle(), vendorStore.getStoreId(), stock);
+                }
+            } catch (Exception ex) {
+                // Ensure one inactive store or error cannot abort the entire reconciliation process
+                log.error("Error reconciling inventory for platform product #{}: {}", p.getProductId(), ex.getMessage(), ex);
             }
         }
 

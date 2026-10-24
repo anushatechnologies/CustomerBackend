@@ -45,6 +45,15 @@ public class CustomerApplicationStartupTest {
     @Autowired(required = false)
     private PaymentRepository paymentRepository;
 
+    @Autowired(required = false)
+    private com.example.project.customer.repository.StoreRepository storeRepository;
+
+    @Autowired(required = false)
+    private com.example.project.customer.repository.SellerRepository sellerRepository;
+
+    @Autowired(required = false)
+    private jakarta.persistence.EntityManager entityManager;
+
     @Test
     @DisplayName("Application starts up cleanly and wires all multi-store cart & checkout components")
     void contextLoadsAndWiresMultiStoreComponents() {
@@ -56,5 +65,34 @@ public class CustomerApplicationStartupTest {
         assertThat(orderGroupRepository).isNotNull();
         assertThat(orderRepository).isNotNull();
         assertThat(paymentRepository).isNotNull();
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    @DisplayName("JPA Entity Loading: Store with INACTIVE status loads from database without enum conversion errors")
+    void testStoreStatus_JpaDatabaseLoading() {
+        if (storeRepository != null && sellerRepository != null && entityManager != null) {
+            com.example.project.customer.entity.Seller seller = com.example.project.customer.entity.Seller.builder()
+                    .name("Test Inactive Vendor")
+                    .email("inactive-vendor-" + System.currentTimeMillis() + "@example.com")
+                    .phone("99999" + (int)(Math.random() * 90000 + 10000))
+                    .build();
+            seller = sellerRepository.save(seller);
+
+            com.example.project.customer.entity.Store store = com.example.project.customer.entity.Store.builder()
+                    .seller(seller)
+                    .name("Inactive Hardware Depot")
+                    .slug("inactive-hw-" + System.currentTimeMillis())
+                    .status(com.example.project.customer.entity.StoreStatus.INACTIVE)
+                    .build();
+            store = storeRepository.save(store);
+
+            entityManager.flush();
+            entityManager.clear();
+
+            com.example.project.customer.entity.Store loaded = storeRepository.findById(store.getStoreId())
+                    .orElseThrow(() -> new AssertionError("Saved store not found"));
+            assertThat(loaded.getStatus()).isEqualTo(com.example.project.customer.entity.StoreStatus.INACTIVE);
+        }
     }
 }

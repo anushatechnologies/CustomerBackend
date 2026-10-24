@@ -154,6 +154,37 @@ public class CoreAndCustomerApisTest {
     }
 
     @Test
+    @DisplayName("Cart API: POST /api/customer/cart/items adds item via customer prefix")
+    void testAddCartItem_CustomerPrefix() throws Exception {
+        when(userContextUtil.getCurrentUserId()).thenReturn(101);
+        CartItemRequest req = CartItemRequest.builder().productId(10).quantity(2).build();
+        CartResponse mockCart = CartResponse.builder().cartId(1).grandTotal(BigDecimal.valueOf(10000.0)).build();
+        when(cartService.addItem(eq(101), any(CartItemRequest.class))).thenReturn(mockCart);
+
+        mockMvc.perform(post("/api/customer/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.cartId").value(1));
+    }
+
+    @Test
+    @DisplayName("Cart API: POST /api/cart/items propagates failure exception to GlobalExceptionHandler")
+    void testAddCartItem_FailurePropagates() {
+        when(userContextUtil.getCurrentUserId()).thenReturn(101);
+        CartItemRequest req = CartItemRequest.builder().productId(10).quantity(5).build();
+        when(cartService.addItem(eq(101), any(CartItemRequest.class)))
+                .thenThrow(new com.example.project.customer.exception.ResourceConflictException("Cannot add product: CHECKOUT_DISABLED"));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                mockMvc.perform(post("/api/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+        ).hasRootCauseInstanceOf(com.example.project.customer.exception.ResourceConflictException.class);
+    }
+
+    @Test
     @DisplayName("Cart API: PUT /api/cart/items/{id} updates item quantity")
     void testUpdateCartItemQuantity() throws Exception {
         when(userContextUtil.getCurrentUserId()).thenReturn(101);
