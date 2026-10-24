@@ -93,7 +93,7 @@ jobs:
           ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           JWT_EXPIRATION: ${{ secrets.JWT_EXPIRATION || '86400000' }}
-          APP_MARKETPLACE_HINCH_STORE_CHECKOUT_ENABLED: ${{ vars.APP_MARKETPLACE_HINCH_STORE_CHECKOUT_ENABLED || 'false' }}
+          APP_MARKETPLACE_HINCH_STORE_CHECKOUT_ENABLED: ${{ secrets.APP_MARKETPLACE_HINCH_STORE_CHECKOUT_ENABLED || 'false' }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
