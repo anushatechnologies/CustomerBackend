@@ -657,7 +657,30 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                     }
                 }
 
-                if (!isHinchStoreOrder && itemSeller == null) {
+                // Product ownership: An item is a HinchStore consignment product ONLY if:
+                // 1. Processed under the HinchStore platform flow (store #1)
+                // 2. Explicitly mapped to the platform catalog store (store #1)
+                // 3. Not owned by an independent vendor seller (seller is null or platform admin seller #1)
+                // Independent vendor-owned products must NEVER require a HinchStore holding-fee rule.
+                boolean isVendorOwned = (p != null && p.getSeller() != null && !Integer.valueOf(1).equals(p.getSeller().getSellerId()))
+                        || (p != null && p.getStore() != null && (platformMarketplaceProperties != null ? !platformMarketplaceProperties.isPlatformStore(p.getStore().getStoreId()) : !Integer.valueOf(1).equals(p.getStore().getStoreId())))
+                        || (!isHinchStoreOrder);
+
+                boolean isPlatformStore = p != null && p.getStore() != null && (platformMarketplaceProperties != null
+                        ? platformMarketplaceProperties.isPlatformStore(p.getStore().getStoreId())
+                        : Integer.valueOf(1).equals(p.getStore().getStoreId()));
+
+                boolean isPlatformSeller = p != null && (p.getSeller() == null || Integer.valueOf(1).equals(p.getSeller().getSellerId()));
+
+                boolean isConsignmentItem = isHinchStoreOrder && isPlatformStore && isPlatformSeller;
+
+                if (!isVendorOwned && !isConsignmentItem) {
+                    throw new IllegalStateException("Cannot determine product ownership for item '"
+                            + (p != null ? p.getTitle() : ci.getTitle())
+                            + "' (productId=" + ci.getProductId() + "). Ambiguous seller and store mapping.");
+                }
+
+                if (isVendorOwned && itemSeller == null) {
                     throw new IllegalStateException("Order item for product '" + (p != null ? p.getTitle() : ci.getTitle())
                             + "' has no associated seller. Seller ID is required for vendor products.");
                 }
@@ -673,14 +696,14 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                         }
                     }
                     settlement = settlementCalculationService.calculateItemSettlement(
-                            isHinchStoreOrder,
+                            isConsignmentItem,
                             ci.getLineTotal(),
                             itemDiscount,
                             categoryId
                     );
                 }
 
-                if (!isHinchStoreOrder && itemDiscount.compareTo(BigDecimal.ZERO) > 0) {
+                if (!isConsignmentItem && itemDiscount.compareTo(BigDecimal.ZERO) > 0) {
                     log.warn("Coupon applied to vendor-own item: orderId={}, orderNumber={}, productId={}, couponAmount={}. Platform funds full vendor settlement.",
                             savedChildOrder.getOrderId(), savedChildOrder.getOrderNumber(), ci.getProductId(), itemDiscount);
                 }
@@ -705,7 +728,7 @@ public class OrderServiceImpl implements OrderService, org.springframework.conte
                         .lineGst(ci.getLineGst())
                         .seller(itemSeller)
                         .fulfillmentStore(fulfillmentStore)
-                        .isHinchStore(isHinchStoreOrder && itemSeller == null)
+                        .isHinchStore(isConsignmentItem && itemSeller == null)
                         .commissionRate(commissionRate)
                         .sellerPayable(sellerPayable)
                         .hinchKeeps(hinchKeeps)

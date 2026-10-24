@@ -25,4 +25,12 @@ public interface CommissionRuleRepository extends JpaRepository<CommissionRule, 
            "AND r.effectiveFrom <= :now " +
            "AND (r.effectiveTo IS NULL OR r.effectiveTo >= :now)")
     List<CommissionRule> findActiveGlobalRules(@Param("now") LocalDateTime now);
+
+    List<CommissionRule> findAllByOrderByCreatedAtDesc();
+
+    List<CommissionRule> findByCategory_CategoryIdOrderByCreatedAtDesc(Integer categoryId);
+
+    List<CommissionRule> findByCategoryIsNullOrderByCreatedAtDesc();
+
+    List<CommissionRule> findByIsActiveOrderByCreatedAtDesc(Boolean isActive);
 }

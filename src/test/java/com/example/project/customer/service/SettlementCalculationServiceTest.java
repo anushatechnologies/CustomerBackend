@@ -221,4 +221,75 @@ class SettlementCalculationServiceTest {
         // 750 * (2/5) = 300.00
         assertThat(refund.reversalHinchKeeps()).isEqualByComparingTo("300.00");
     }
+
+    @Test
+    @DisplayName("8. Category-specific rule overrides global rule")
+    void testCategorySpecificRule_OverridesGlobalRule() {
+        CommissionRule globalRule = CommissionRule.builder()
+                .ruleId(1)
+                .rate(new BigDecimal("5.00"))
+                .isActive(true)
+                .build();
+        CommissionRule categoryRule = CommissionRule.builder()
+                .ruleId(2)
+                .rate(new BigDecimal("8.50"))
+                .isActive(true)
+                .build();
+
+        // Applicable rules query orders category-specific rule first
+        when(commissionRuleRepository.findActiveGlobalRules(any(LocalDateTime.class)))
+                .thenReturn(List.of(globalRule));
+        when(commissionRuleRepository.findApplicableRules(eq(36), any(LocalDateTime.class)))
+                .thenReturn(List.of(categoryRule, globalRule));
+
+        ItemSettlementSnapshot snapshot = settlementService.calculateItemSettlement(
+                true,
+                new BigDecimal("1000.00"),
+                BigDecimal.ZERO,
+                36
+        );
+
+        // Uses category-specific rate (8.50%) instead of global (5.00%)
+        assertThat(snapshot.commissionRate()).isEqualByComparingTo("8.50");
+        assertThat(snapshot.sellerPayable()).isEqualByComparingTo("85.00");
+        assertThat(snapshot.hinchKeeps()).isEqualByComparingTo("915.00");
+    }
+
+    @Test
+    @DisplayName("9. Inactive, future, and expired rules are rejected (throws IllegalStateException)")
+    void testInactiveFutureAndExpiredRules_AreRejected() {
+        // When repository finds no active rule valid for 'now', it returns empty
+        when(commissionRuleRepository.findActiveGlobalRules(any(LocalDateTime.class)))
+                .thenReturn(Collections.emptyList());
+        when(commissionRuleRepository.findApplicableRules(eq(36), any(LocalDateTime.class)))
+                .thenReturn(Collections.emptyList());
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalStateException.class,
+                () -> settlementService.calculateItemSettlement(
+                        true,
+                        new BigDecimal("1000.00"),
+                        BigDecimal.ZERO,
+                        36
+                )
+        );
+    }
+
+    @Test
+    @DisplayName("10. Vendor-owned product never queries commission rules repository")
+    void testVendorOwnedProduct_NeverQueriesCommissionRules() {
+        ItemSettlementSnapshot snapshot = settlementService.calculateItemSettlement(
+                false,
+                new BigDecimal("500.00"),
+                new BigDecimal("50.00"),
+                36
+        );
+
+        assertThat(snapshot.isHinchStore()).isFalse();
+        assertThat(snapshot.commissionRate()).isEqualByComparingTo("0.00");
+        assertThat(snapshot.sellerPayable()).isEqualByComparingTo("500.00");
+        assertThat(snapshot.hinchKeeps()).isEqualByComparingTo("-50.00");
+
+        org.mockito.Mockito.verifyNoInteractions(commissionRuleRepository);
+    }
 }
